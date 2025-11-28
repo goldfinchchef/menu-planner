@@ -108,9 +108,11 @@ export default function App() {
 
   // INGREDIENTS CSV
   const exportIngredientsCSV = () => {
-    const csv = Papa.unparse(masterIngredients);
-    downloadCSV(csv, 'ingredients.csv');
-  };
+  const csv = Papa.unparse(masterIngredients, {
+    columns: ['name', 'cost', 'unit', 'source', 'section']
+  });
+  downloadCSV(csv, 'ingredients.csv');
+};
 
   const importIngredientsCSV = (e) => {
     const file = e.target.files[0];
