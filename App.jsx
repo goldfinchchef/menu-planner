@@ -1,19 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, List, Book, ChefHat, Users, X, Monitor, Save, Download, Upload } from 'lucide-react';
+import { Plus, Trash2, List, Book, ChefHat, Users, X, Monitor, Save, Download, Upload, Edit2, Check } from 'lucide-react';
 import Papa from 'papaparse';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('menu');
   const [recipes, setRecipes] = useState({
-    protein: [
-      { name: "Chicken Shawarma", instructions: "Marinate chicken in spices and lemon. Grill until internal temp reaches 165°F.", ingredients: [{ name: "Boneless Chicken Thighs", quantity: "5", unit: "oz" }, { name: "Lemon", quantity: "1", unit: "oz" }, { name: "Garlic", quantity: "0.5", unit: "oz" }] }
-    ],
-    veg: [
-      { name: "Roasted Cauliflower", instructions: "", ingredients: [{ name: "Cauliflower", quantity: "8", unit: "oz" }, { name: "Olive Oil", quantity: "1", unit: "oz" }] }
-    ],
-    starch: [
-      { name: "Roasted Potatoes", instructions: "", ingredients: [{ name: "Red Potato", quantity: "4", unit: "oz" }, { name: "Olive Oil", quantity: "1", unit: "oz" }] }
-    ],
+    protein: [],
+    veg: [],
+    starch: [],
     sauces: [],
     breakfast: [],
     soups: []
@@ -31,7 +25,7 @@ export default function App() {
     category: 'protein',
     name: '',
     instructions: '',
-    ingredients: [{ name: '', quantity: '', unit: 'oz' }]
+    ingredients: [{ name: '', quantity: '', unit: 'oz', cost: '', source: '', section: 'Other' }]
   });
   const [newMenuItem, setNewMenuItem] = useState({
     protein: '',
@@ -48,6 +42,9 @@ export default function App() {
     source: '', 
     section: 'Produce' 
   });
+  
+  // For editing recipes
+  const [editingRecipe, setEditingRecipe] = useState(null); // { category, index, recipe }
 
   // Load data from localStorage on mount
   useEffect(() => {
@@ -71,11 +68,40 @@ export default function App() {
     localStorage.setItem('goldfinchChefData', JSON.stringify(dataToSave));
   }, [recipes, clients, menuItems, masterIngredients]);
 
+  // Auto-add ingredient to master list
+  const addToMasterIngredients = (ingredient) => {
+    const exists = masterIngredients.some(
+      mi => mi.name.toLowerCase() === ingredient.name.toLowerCase()
+    );
+    if (!exists && ingredient.name) {
+      setMasterIngredients(prev => [...prev, {
+        id: Date.now() + Math.random(),
+        name: ingredient.name,
+        cost: ingredient.cost || '',
+        unit: ingredient.unit || 'oz',
+        source: ingredient.source || '',
+        section: ingredient.section || 'Other'
+      }]);
+    }
+  };
+
   // ============ CSV IMPORT/EXPORT FUNCTIONS ============
+
+  const downloadCSV = (csv, filename) => {
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   // CLIENTS CSV
   const exportClientsCSV = () => {
-    const csv = Papa.unparse(clients);
+    const csv = Papa.unparse(clients, {
+      columns: ['name', 'persons', 'address', 'email', 'phone', 'notes', 'mealsPerWeek', 'status']
+    });
     downloadCSV(csv, 'clients.csv');
   };
 
@@ -108,11 +134,17 @@ export default function App() {
 
   // INGREDIENTS CSV
   const exportIngredientsCSV = () => {
-  const csv = Papa.unparse(masterIngredients, {
-    columns: ['name', 'cost', 'unit', 'source', 'section']
-  });
-  downloadCSV(csv, 'ingredients.csv');
-};
+    const csv = Papa.unparse(masterIngredients.map(ing => ({
+      name: ing.name,
+      cost: ing.cost,
+      unit: ing.unit,
+      source: ing.source,
+      section: ing.section
+    })), {
+      columns: ['name', 'cost', 'unit', 'source', 'section']
+    });
+    downloadCSV(csv, 'ingredients.csv');
+  };
 
   const importIngredientsCSV = (e) => {
     const file = e.target.files[0];
@@ -139,20 +171,42 @@ export default function App() {
     e.target.value = '';
   };
 
-  // RECIPES CSV
+  // RECIPES CSV - New simpler format: Recipe Name, Ingredient, Portion Size (oz), cost, source, section
   const exportRecipesCSV = () => {
-    const allRecipes = [];
+    const rows = [];
     Object.entries(recipes).forEach(([category, items]) => {
       items.forEach(recipe => {
-        allRecipes.push({
-          category,
-          name: recipe.name,
-          instructions: recipe.instructions,
-          ingredients: recipe.ingredients ? recipe.ingredients.map(i => `${i.name}:${i.quantity}:${i.unit}`).join('|') : ''
-        });
+        if (recipe.ingredients && recipe.ingredients.length > 0) {
+          recipe.ingredients.forEach(ing => {
+            rows.push({
+              'Recipe Name': recipe.name,
+              'Category': category,
+              'Instructions': recipe.instructions || '',
+              'Ingredient': ing.name,
+              'Portion Size (oz)': ing.quantity,
+              'cost': ing.cost || '',
+              'source': ing.source || '',
+              'section': ing.section || 'Other'
+            });
+          });
+        } else {
+          // Recipe with no ingredients
+          rows.push({
+            'Recipe Name': recipe.name,
+            'Category': category,
+            'Instructions': recipe.instructions || '',
+            'Ingredient': '',
+            'Portion Size (oz)': '',
+            'cost': '',
+            'source': '',
+            'section': ''
+          });
+        }
       });
     });
-    const csv = Papa.unparse(allRecipes);
+    const csv = Papa.unparse(rows, {
+      columns: ['Recipe Name', 'Category', 'Instructions', 'Ingredient', 'Portion Size (oz)', 'cost', 'source', 'section']
+    });
     downloadCSV(csv, 'recipes.csv');
   };
 
@@ -172,24 +226,50 @@ export default function App() {
           soups: []
         };
         
+        // Group rows by recipe name
+        const recipeMap = {};
         results.data.forEach(row => {
-          if (!row.name || !row.category) return;
+          if (!row['Recipe Name']) return;
           
-          const category = row.category.toLowerCase();
-          if (!newRecipes[category]) return;
+          const recipeName = row['Recipe Name'];
+          const category = (row['Category'] || 'protein').toLowerCase();
           
-          const ingredients = row.ingredients 
-            ? row.ingredients.split('|').map(ing => {
-                const [name, quantity, unit] = ing.split(':');
-                return { name: name || '', quantity: quantity || '', unit: unit || 'oz' };
-              })
-            : [];
+          if (!recipeMap[recipeName]) {
+            recipeMap[recipeName] = {
+              name: recipeName,
+              category: category,
+              instructions: row['Instructions'] || '',
+              ingredients: []
+            };
+          }
           
-          newRecipes[category].push({
-            name: row.name,
-            instructions: row.instructions || '',
-            ingredients
-          });
+          // Add ingredient if present
+          if (row['Ingredient']) {
+            const ingredient = {
+              name: row['Ingredient'],
+              quantity: row['Portion Size (oz)'] || '',
+              unit: 'oz',
+              cost: row['cost'] || '',
+              source: row['source'] || '',
+              section: row['section'] || 'Other'
+            };
+            recipeMap[recipeName].ingredients.push(ingredient);
+            
+            // Auto-add to master ingredients
+            addToMasterIngredients(ingredient);
+          }
+        });
+        
+        // Add recipes to appropriate categories
+        Object.values(recipeMap).forEach(recipe => {
+          const cat = recipe.category;
+          if (newRecipes[cat]) {
+            newRecipes[cat].push({
+              name: recipe.name,
+              instructions: recipe.instructions,
+              ingredients: recipe.ingredients
+            });
+          }
         });
         
         setRecipes(newRecipes);
@@ -201,38 +281,12 @@ export default function App() {
     e.target.value = '';
   };
 
-  const downloadCSV = (csv, filename) => {
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // ============ OTHER FUNCTIONS ============
-
-  const addMasterIngredient = () => {
-    if (!newIngredient.name) {
-      alert('Please enter an ingredient name');
-      return;
-    }
-    setMasterIngredients([...masterIngredients, { ...newIngredient, id: Date.now() }]);
-    setNewIngredient({ name: '', cost: '', unit: 'oz', source: '', section: 'Produce' });
-    alert('Ingredient added!');
-  };
-
-  const deleteMasterIngredient = (id) => {
-    if (window.confirm('Delete this ingredient?')) {
-      setMasterIngredients(masterIngredients.filter(ing => ing.id !== id));
-    }
-  };
+  // ============ RECIPE FUNCTIONS ============
 
   const addIngredient = () => {
     setNewRecipe({
       ...newRecipe,
-      ingredients: [...newRecipe.ingredients, { name: '', quantity: '', unit: 'oz' }]
+      ingredients: [...newRecipe.ingredients, { name: '', quantity: '', unit: 'oz', cost: '', source: '', section: 'Other' }]
     });
   };
 
@@ -253,12 +307,15 @@ export default function App() {
       return;
     }
     
-    const validIngredients = newRecipe.ingredients.filter(ing => ing.name && ing.quantity && ing.unit);
+    const validIngredients = newRecipe.ingredients.filter(ing => ing.name && ing.quantity);
     
     if (validIngredients.length === 0) {
-      alert('Please add at least one complete ingredient');
+      alert('Please add at least one ingredient with name and quantity');
       return;
     }
+
+    // Auto-add ingredients to master list
+    validIngredients.forEach(ing => addToMasterIngredients(ing));
 
     setRecipes({
       ...recipes,
@@ -273,7 +330,7 @@ export default function App() {
       category: 'protein',
       name: '',
       instructions: '',
-      ingredients: [{ name: '', quantity: '', unit: 'oz' }]
+      ingredients: [{ name: '', quantity: '', unit: 'oz', cost: '', source: '', section: 'Other' }]
     });
     
     alert('Recipe saved!');
@@ -285,6 +342,72 @@ export default function App() {
       setRecipes({ ...recipes, [category]: updated });
     }
   };
+
+  // Edit recipe functions
+  const startEditingRecipe = (category, index) => {
+    const recipe = recipes[category][index];
+    setEditingRecipe({
+      category,
+      index,
+      recipe: {
+        ...recipe,
+        ingredients: recipe.ingredients.map(ing => ({
+          name: ing.name || '',
+          quantity: ing.quantity || '',
+          unit: ing.unit || 'oz',
+          cost: ing.cost || '',
+          source: ing.source || '',
+          section: ing.section || 'Other'
+        }))
+      }
+    });
+  };
+
+  const updateEditingIngredient = (index, field, value) => {
+    const updated = [...editingRecipe.recipe.ingredients];
+    updated[index][field] = value;
+    setEditingRecipe({
+      ...editingRecipe,
+      recipe: { ...editingRecipe.recipe, ingredients: updated }
+    });
+  };
+
+  const addEditingIngredient = () => {
+    setEditingRecipe({
+      ...editingRecipe,
+      recipe: {
+        ...editingRecipe.recipe,
+        ingredients: [...editingRecipe.recipe.ingredients, { name: '', quantity: '', unit: 'oz', cost: '', source: '', section: 'Other' }]
+      }
+    });
+  };
+
+  const removeEditingIngredient = (index) => {
+    const updated = editingRecipe.recipe.ingredients.filter((_, i) => i !== index);
+    setEditingRecipe({
+      ...editingRecipe,
+      recipe: { ...editingRecipe.recipe, ingredients: updated }
+    });
+  };
+
+  const saveEditingRecipe = () => {
+    const { category, index, recipe } = editingRecipe;
+    const validIngredients = recipe.ingredients.filter(ing => ing.name && ing.quantity);
+    
+    // Auto-add ingredients to master list
+    validIngredients.forEach(ing => addToMasterIngredients(ing));
+    
+    const updatedRecipes = { ...recipes };
+    updatedRecipes[category][index] = {
+      ...recipe,
+      ingredients: validIngredients
+    };
+    setRecipes(updatedRecipes);
+    setEditingRecipe(null);
+    alert('Recipe updated!');
+  };
+
+  // ============ MENU FUNCTIONS ============
 
   const addMenuItem = () => {
     if (!newMenuItem.protein && !newMenuItem.veg && !newMenuItem.starch && newMenuItem.addons.length === 0) {
@@ -322,13 +445,15 @@ export default function App() {
     }
   };
 
+  // ============ KDS & PREP FUNCTIONS ============
+
   const categorizeIngredient = (name) => {
     const nameLower = name.toLowerCase();
-    if (['lettuce', 'cucumber', 'tomato', 'onion', 'garlic', 'carrot', 'potato', 'cauliflower'].some(item => nameLower.includes(item))) return 'Produce';
-    if (['chicken', 'beef', 'pork', 'salmon', 'fish'].some(item => nameLower.includes(item))) return 'Meat & Seafood';
-    if (['milk', 'cheese', 'butter', 'egg'].some(item => nameLower.includes(item))) return 'Dairy & Eggs';
-    if (['salt', 'pepper', 'spice'].some(item => nameLower.includes(item))) return 'Spices & Seasonings';
-    if (['rice', 'pasta', 'flour', 'sugar', 'oil'].some(item => nameLower.includes(item))) return 'Pantry & Dry Goods';
+    if (['lettuce', 'cucumber', 'tomato', 'onion', 'garlic', 'carrot', 'potato', 'cauliflower', 'broccoli', 'spinach', 'pepper'].some(item => nameLower.includes(item))) return 'Produce';
+    if (['chicken', 'beef', 'pork', 'salmon', 'fish', 'shrimp', 'turkey', 'lamb'].some(item => nameLower.includes(item))) return 'Meat & Seafood';
+    if (['milk', 'cheese', 'butter', 'egg', 'cream', 'yogurt'].some(item => nameLower.includes(item))) return 'Dairy & Eggs';
+    if (['salt', 'pepper', 'spice', 'cumin', 'paprika', 'oregano', 'basil', 'thyme'].some(item => nameLower.includes(item))) return 'Spices & Seasonings';
+    if (['rice', 'pasta', 'flour', 'sugar', 'oil', 'vinegar', 'sauce'].some(item => nameLower.includes(item))) return 'Pantry & Dry Goods';
     return 'Other';
   };
 
@@ -360,8 +485,10 @@ export default function App() {
             ingredients[key] = { 
               name: ing.name, 
               quantity: 0, 
-              unit: ing.unit,
-              section: categorizeIngredient(ing.name)
+              unit: ing.unit || 'oz',
+              section: ing.section || categorizeIngredient(ing.name),
+              cost: ing.cost || '',
+              source: ing.source || ''
             };
           }
           ingredients[key].quantity += parseFloat(ing.quantity) * data.totalPortions;
@@ -374,12 +501,19 @@ export default function App() {
 
   const exportPrepList = () => {
     const prepList = getPrepList();
-    let csv = 'Section,Ingredient,Quantity,Unit\n';
-    prepList.forEach(item => {
-      csv += `${item.section},"${item.name}",${item.quantity.toFixed(2)},${item.unit}\n`;
+    const csv = Papa.unparse(prepList.map(item => ({
+      Section: item.section,
+      Ingredient: item.name,
+      Quantity: item.quantity.toFixed(2),
+      Unit: item.unit,
+      Source: item.source
+    })), {
+      columns: ['Section', 'Ingredient', 'Quantity', 'Unit', 'Source']
     });
     downloadCSV(csv, 'shopping-list.csv');
   };
+
+  // ============ CLIENT & INGREDIENT FUNCTIONS ============
 
   const deleteClient = (index) => {
     if (window.confirm('Delete this client?')) {
@@ -396,6 +530,22 @@ export default function App() {
     setClients([...clients, { ...newClient }]);
     setNewClient({ name: '', persons: 1, address: '', email: '', phone: '', notes: '', mealsPerWeek: 0, status: 'Active' });
     alert('Client added!');
+  };
+
+  const addMasterIngredient = () => {
+    if (!newIngredient.name) {
+      alert('Please enter an ingredient name');
+      return;
+    }
+    setMasterIngredients([...masterIngredients, { ...newIngredient, id: Date.now() }]);
+    setNewIngredient({ name: '', cost: '', unit: 'oz', source: '', section: 'Produce' });
+    alert('Ingredient added!');
+  };
+
+  const deleteMasterIngredient = (id) => {
+    if (window.confirm('Delete this ingredient?')) {
+      setMasterIngredients(masterIngredients.filter(ing => ing.id !== id));
+    }
   };
 
   const kdsView = getKDSView();
@@ -452,6 +602,7 @@ export default function App() {
       </nav>
 
       <div className="max-w-6xl mx-auto p-4 space-y-6">
+        {/* ============ MENU TAB ============ */}
         {activeTab === 'menu' && (
           <div className="space-y-6">
             <div className="bg-white rounded-lg shadow-lg p-6">
@@ -575,6 +726,7 @@ export default function App() {
           </div>
         )}
 
+        {/* ============ RECIPES TAB ============ */}
         {activeTab === 'recipes' && (
           <div className="space-y-6">
             <div className="bg-white rounded-lg shadow-lg p-6">
@@ -635,37 +787,51 @@ export default function App() {
                 <div>
                   <label className="block text-sm font-medium mb-2" style={{ color: '#423d3c' }}>Ingredients</label>
                   {newRecipe.ingredients.map((ing, index) => (
-                    <div key={index} className="flex gap-2 mb-2">
+                    <div key={index} className="flex flex-wrap gap-2 mb-2 p-2 rounded" style={{ backgroundColor: '#f9f9ed' }}>
                       <input
                         type="text"
                         value={ing.name}
                         onChange={(e) => updateIngredient(index, 'name', e.target.value)}
                         placeholder="Ingredient name"
-                        className="flex-1 p-2 border-2 rounded-lg"
+                        className="flex-1 min-w-[150px] p-2 border-2 rounded-lg"
                         style={{ borderColor: '#ebb582' }}
                       />
                       <input
                         type="text"
                         value={ing.quantity}
                         onChange={(e) => updateIngredient(index, 'quantity', e.target.value)}
-                        placeholder="Qty"
+                        placeholder="Oz"
+                        className="w-16 p-2 border-2 rounded-lg"
+                        style={{ borderColor: '#ebb582' }}
+                      />
+                      <input
+                        type="text"
+                        value={ing.cost}
+                        onChange={(e) => updateIngredient(index, 'cost', e.target.value)}
+                        placeholder="Cost"
                         className="w-20 p-2 border-2 rounded-lg"
                         style={{ borderColor: '#ebb582' }}
                       />
+                      <input
+                        type="text"
+                        value={ing.source}
+                        onChange={(e) => updateIngredient(index, 'source', e.target.value)}
+                        placeholder="Source"
+                        className="w-24 p-2 border-2 rounded-lg"
+                        style={{ borderColor: '#ebb582' }}
+                      />
                       <select
-                        value={ing.unit}
-                        onChange={(e) => updateIngredient(index, 'unit', e.target.value)}
-                        className="w-20 p-2 border-2 rounded-lg"
+                        value={ing.section}
+                        onChange={(e) => updateIngredient(index, 'section', e.target.value)}
+                        className="w-32 p-2 border-2 rounded-lg"
                         style={{ borderColor: '#ebb582' }}
                       >
-                        <option value="oz">oz</option>
-                        <option value="lb">lb</option>
-                        <option value="g">g</option>
-                        <option value="kg">kg</option>
-                        <option value="cup">cup</option>
-                        <option value="tbsp">tbsp</option>
-                        <option value="tsp">tsp</option>
-                        <option value="each">each</option>
+                        <option value="Produce">Produce</option>
+                        <option value="Meat & Seafood">Meat & Seafood</option>
+                        <option value="Dairy & Eggs">Dairy & Eggs</option>
+                        <option value="Pantry & Dry Goods">Pantry & Dry Goods</option>
+                        <option value="Spices & Seasonings">Spices & Seasonings</option>
+                        <option value="Other">Other</option>
                       </select>
                       {newRecipe.ingredients.length > 1 && (
                         <button onClick={() => removeIngredient(index)} className="text-red-600 p-2">
@@ -698,30 +864,142 @@ export default function App() {
               <h2 className="text-2xl font-bold mb-4" style={{ color: '#3d59ab' }}>Recipe Library</h2>
               {Object.entries(recipes).map(([category, items]) => (
                 items.length > 0 && (
-                  <div key={category} className="mb-4">
+                  <div key={category} className="mb-6">
                     <h3 className="text-lg font-bold capitalize mb-2" style={{ color: '#ebb582' }}>{category}</h3>
                     <div className="space-y-2">
                       {items.map((recipe, index) => (
-                        <div key={index} className="flex justify-between items-center p-3 rounded-lg" style={{ backgroundColor: '#f9f9ed' }}>
-                          <div>
-                            <p className="font-medium">{recipe.name}</p>
-                            <p className="text-sm text-gray-600">
-                              {recipe.ingredients?.map(i => i.name).join(', ')}
-                            </p>
-                          </div>
-                          <button onClick={() => deleteRecipe(category, index)} className="text-red-600">
-                            <Trash2 size={18} />
-                          </button>
+                        <div key={index}>
+                          {editingRecipe?.category === category && editingRecipe?.index === index ? (
+                            // Editing view
+                            <div className="p-4 rounded-lg border-2" style={{ borderColor: '#3d59ab', backgroundColor: '#f9f9ed' }}>
+                              <input
+                                type="text"
+                                value={editingRecipe.recipe.name}
+                                onChange={(e) => setEditingRecipe({
+                                  ...editingRecipe,
+                                  recipe: { ...editingRecipe.recipe, name: e.target.value }
+                                })}
+                                className="w-full p-2 border-2 rounded-lg mb-2 font-bold"
+                                style={{ borderColor: '#ebb582' }}
+                              />
+                              <textarea
+                                value={editingRecipe.recipe.instructions}
+                                onChange={(e) => setEditingRecipe({
+                                  ...editingRecipe,
+                                  recipe: { ...editingRecipe.recipe, instructions: e.target.value }
+                                })}
+                                placeholder="Instructions..."
+                                className="w-full p-2 border-2 rounded-lg mb-2"
+                                style={{ borderColor: '#ebb582' }}
+                                rows="2"
+                              />
+                              <p className="text-sm font-medium mb-2">Ingredients:</p>
+                              {editingRecipe.recipe.ingredients.map((ing, ingIndex) => (
+                                <div key={ingIndex} className="flex flex-wrap gap-2 mb-2">
+                                  <input
+                                    type="text"
+                                    value={ing.name}
+                                    onChange={(e) => updateEditingIngredient(ingIndex, 'name', e.target.value)}
+                                    placeholder="Name"
+                                    className="flex-1 min-w-[120px] p-1 border rounded text-sm"
+                                  />
+                                  <input
+                                    type="text"
+                                    value={ing.quantity}
+                                    onChange={(e) => updateEditingIngredient(ingIndex, 'quantity', e.target.value)}
+                                    placeholder="Oz"
+                                    className="w-14 p-1 border rounded text-sm"
+                                  />
+                                  <input
+                                    type="text"
+                                    value={ing.cost}
+                                    onChange={(e) => updateEditingIngredient(ingIndex, 'cost', e.target.value)}
+                                    placeholder="Cost"
+                                    className="w-16 p-1 border rounded text-sm"
+                                  />
+                                  <input
+                                    type="text"
+                                    value={ing.source}
+                                    onChange={(e) => updateEditingIngredient(ingIndex, 'source', e.target.value)}
+                                    placeholder="Source"
+                                    className="w-20 p-1 border rounded text-sm"
+                                  />
+                                  <select
+                                    value={ing.section}
+                                    onChange={(e) => updateEditingIngredient(ingIndex, 'section', e.target.value)}
+                                    className="w-28 p-1 border rounded text-sm"
+                                  >
+                                    <option value="Produce">Produce</option>
+                                    <option value="Meat & Seafood">Meat & Seafood</option>
+                                    <option value="Dairy & Eggs">Dairy & Eggs</option>
+                                    <option value="Pantry & Dry Goods">Pantry & Dry Goods</option>
+                                    <option value="Spices & Seasonings">Spices & Seasonings</option>
+                                    <option value="Other">Other</option>
+                                  </select>
+                                  <button onClick={() => removeEditingIngredient(ingIndex)} className="text-red-600">
+                                    <X size={16} />
+                                  </button>
+                                </div>
+                              ))}
+                              <button
+                                onClick={addEditingIngredient}
+                                className="text-sm px-2 py-1 rounded mb-2"
+                                style={{ backgroundColor: '#ebb582' }}
+                              >
+                                + Add Ingredient
+                              </button>
+                              <div className="flex gap-2 mt-2">
+                                <button
+                                  onClick={saveEditingRecipe}
+                                  className="flex items-center gap-1 px-3 py-1 rounded text-white text-sm"
+                                  style={{ backgroundColor: '#3d59ab' }}
+                                >
+                                  <Check size={16} /> Save
+                                </button>
+                                <button
+                                  onClick={() => setEditingRecipe(null)}
+                                  className="px-3 py-1 rounded bg-gray-200 text-sm"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            // Display view
+                            <div className="flex justify-between items-start p-3 rounded-lg" style={{ backgroundColor: '#f9f9ed' }}>
+                              <div className="flex-1">
+                                <p className="font-medium">{recipe.name}</p>
+                                <p className="text-sm text-gray-600">
+                                  {recipe.ingredients?.map(i => `${i.name} (${i.quantity}oz)`).join(', ')}
+                                </p>
+                                {recipe.instructions && (
+                                  <p className="text-xs text-gray-500 mt-1">{recipe.instructions}</p>
+                                )}
+                              </div>
+                              <div className="flex gap-2">
+                                <button onClick={() => startEditingRecipe(category, index)} className="text-blue-600">
+                                  <Edit2 size={18} />
+                                </button>
+                                <button onClick={() => deleteRecipe(category, index)} className="text-red-600">
+                                  <Trash2 size={18} />
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
                   </div>
                 )
               ))}
+              {Object.values(recipes).flat().length === 0 && (
+                <p className="text-gray-500">No recipes yet. Add one above or import from CSV.</p>
+              )}
             </div>
           </div>
         )}
 
+        {/* ============ KDS TAB ============ */}
         {activeTab === 'kds' && (
           <div className="bg-white rounded-lg shadow-lg p-6">
             <h2 className="text-2xl font-bold mb-4" style={{ color: '#3d59ab' }}>Kitchen Display</h2>
@@ -734,17 +1012,25 @@ export default function App() {
                       <h3 className="text-xl font-bold" style={{ color: '#3d59ab' }}>{dishName}</h3>
                       <p className="text-lg font-semibold" style={{ color: '#ffd700' }}>Make {data.totalPortions} portions</p>
                       {recipe?.ingredients && (
-                        <div className="mt-2">
-                          <p className="text-sm font-medium text-gray-600">Ingredients (per portion):</p>
-                          <ul className="text-sm">
-                            {recipe.ingredients.map((ing, i) => (
-                              <li key={i}>{ing.name}: {ing.quantity} {ing.unit}</li>
-                            ))}
-                          </ul>
+                        <div className="mt-3">
+                          <p className="text-sm font-medium text-gray-600 mb-2">Total Ingredients Needed:</p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {recipe.ingredients.map((ing, i) => {
+                              const totalQty = (parseFloat(ing.quantity) * data.totalPortions).toFixed(1);
+                              return (
+                                <div key={i} className="flex justify-between p-2 rounded" style={{ backgroundColor: '#f9f9ed' }}>
+                                  <span>{ing.name}</span>
+                                  <span className="font-bold">{totalQty} {ing.unit || 'oz'}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
                       {recipe?.instructions && (
-                        <p className="mt-2 p-2 rounded text-sm" style={{ backgroundColor: '#fff4e0' }}>{recipe.instructions}</p>
+                        <p className="mt-3 p-2 rounded text-sm" style={{ backgroundColor: '#fff4e0' }}>
+                          <span className="font-medium">Instructions:</span> {recipe.instructions}
+                        </p>
                       )}
                     </div>
                   );
@@ -756,6 +1042,7 @@ export default function App() {
           </div>
         )}
 
+        {/* ============ PREP/SHOP TAB ============ */}
         {activeTab === 'prep' && (
           <div className="bg-white rounded-lg shadow-lg p-6">
             <div className="flex justify-between mb-4">
@@ -777,7 +1064,7 @@ export default function App() {
                       <h3 className="text-xl font-bold mb-2" style={{ color: '#3d59ab' }}>{section}</h3>
                       {items.map((item, i) => (
                         <div key={i} className="flex justify-between p-2 rounded mb-1" style={{ backgroundColor: '#f9f9ed' }}>
-                          <span>{item.name}</span>
+                          <span>{item.name} {item.source && <span className="text-gray-500 text-sm">({item.source})</span>}</span>
                           <span className="font-bold">{item.quantity.toFixed(1)} {item.unit}</span>
                         </div>
                       ))}
@@ -791,6 +1078,7 @@ export default function App() {
           </div>
         )}
 
+        {/* ============ CLIENTS TAB ============ */}
         {activeTab === 'clients' && (
           <div className="space-y-6">
             <div className="bg-white rounded-lg shadow-lg p-6">
@@ -897,6 +1185,7 @@ export default function App() {
           </div>
         )}
 
+        {/* ============ INGREDIENTS TAB ============ */}
         {activeTab === 'ingredients' && (
           <div className="space-y-6">
             <div className="bg-white rounded-lg shadow-lg p-6">
@@ -1001,7 +1290,7 @@ export default function App() {
                   ))}
                 </div>
               ) : (
-                <p className="text-gray-500">No ingredients added yet.</p>
+                <p className="text-gray-500">No ingredients added yet. Add them manually or import from CSV.</p>
               )}
             </div>
           </div>
