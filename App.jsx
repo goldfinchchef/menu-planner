@@ -1,4 +1,5 @@
-import RecipesView from './views/RecipesView';
+import KDSView from './components/KDSView';
+import RecipesView from './components/RecipesView';
 import MenuView from './components/MenuView';
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, List, Book, ChefHat, Users, X, Monitor, Save, Download, Upload, Edit2, Check, AlertCircle, Clock, DollarSign } from 'lucide-react';
@@ -662,16 +663,13 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === 'kds' && (
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-bold" style={{ color: '#3d59ab' }}>Kitchen Display</h2>
-              {menuItems.length > 0 && allDishesComplete() && (
-                <button onClick={completeAllOrders} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white" style={{ backgroundColor: '#22c55e' }}>
-                  <Check size={18} />Complete All & Save to History
-                </button>
-              )}
-            </div>
+       {activeTab === 'kds' && (
+  <KDSView
+    menuItems={menuItems}
+    allDishesComplete={allDishesComplete}
+    completeAllOrders={completeAllOrders}
+  />
+)}
             {Object.keys(kdsView).length > 0 ? (
               <div className="space-y-4">
                 {Object.entries(kdsView).map(([dishName, data]) => {
