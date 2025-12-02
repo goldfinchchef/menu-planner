@@ -1,3 +1,4 @@
+import RecipesView from './views/RecipesView';
 import MenuView from './components/MenuView';
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, List, Book, ChefHat, Users, X, Monitor, Save, Download, Upload, Edit2, Check, AlertCircle, Clock, DollarSign } from 'lucide-react';
@@ -540,21 +541,19 @@ export default function App() {
         )}
 
         {activeTab === 'recipes' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <div className="flex justify-between items-center mb-4">
-                <div>
-                  <h2 className="text-2xl font-bold" style={{ color: '#3d59ab' }}>Recipes</h2>
-                  <p className="text-sm text-gray-600">
-                    Total: {recipeCounts.total} | 
-                    Protein: {recipeCounts.protein || 0} | 
-                    Veg: {recipeCounts.veg || 0} | 
-                    Starch: {recipeCounts.starch || 0} | 
-                    Sauces: {recipeCounts.sauces || 0} | 
-                    Breakfast: {recipeCounts.breakfast || 0} | 
-                    Soups: {recipeCounts.soups || 0}
-                  </p>
-                </div>
+  <RecipesView
+    recipes={recipes}
+    setRecipes={setRecipes}
+    recipeCounts={recipeCounts}
+    setRecipeCounts={setRecipeCounts}
+    selectedClients={selectedClients}
+    setSelectedClients={setSelectedClients}
+    menuDate={menuDate}
+    setMenuDate={setMenuDate}
+    showNotes={showNotes}
+    setShowNotes={setShowNotes}
+  />
+)}
                 <div className="flex gap-2">
                   <button onClick={() => recipesFileRef.current.click()} className="flex items-center gap-2 px-4 py-2 rounded-lg border-2" style={{ borderColor: '#3d59ab', color: '#3d59ab' }}><Upload size={18} />Import</button>
                   <button onClick={exportRecipesCSV} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white" style={{ backgroundColor: '#3d59ab' }}><Download size={18} />Export</button>
