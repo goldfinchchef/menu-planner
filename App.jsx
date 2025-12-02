@@ -1,3 +1,4 @@
+import MenuView from './MenuView'; // adjust the path if you moved it into /views
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, List, Book, ChefHat, Users, X, Monitor, Save, Download, Upload, Edit2, Check, AlertCircle, Clock, DollarSign } from 'lucide-react';
 import Papa from 'papaparse';
@@ -469,30 +470,15 @@ export default function App() {
           ))}
         </div>
       </nav>
-
-      <div className="max-w-6xl mx-auto p-4 space-y-6">
-        {activeTab === 'menu' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <h2 className="text-2xl font-bold mb-4" style={{ color: '#3d59ab' }}>Build Menu</h2>
-              
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-2" style={{ color: '#423d3c' }}>Menu Date</label>
-                <input type="date" value={menuDate} onChange={(e) => setMenuDate(e.target.value)} className="p-2 border-2 rounded-lg" style={{ borderColor: '#ebb582' }} />
-              </div>
-
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-2" style={{ color: '#423d3c' }}>Select Clients</label>
-                <div className="flex flex-wrap gap-2">
-                  {clients.map((client, i) => (
-                    <button key={i} onClick={() => setSelectedClients(prev => prev.includes(client.name) ? prev.filter(c => c !== client.name) : [...prev, client.name])}
-                      className={`px-3 py-1 rounded-full border-2 transition-colors ${selectedClients.includes(client.name) ? 'text-white' : 'bg-white'}`}
-                      style={selectedClients.includes(client.name) ? { backgroundColor: '#3d59ab', borderColor: '#3d59ab' } : { borderColor: '#ebb582', color: '#423d3c' }}>
-                      {client.name} ({client.persons}p)
-                    </button>
-                  ))}
-                </div>
-              </div>
+{activeTab === 'menu' && (
+  <MenuView
+    clients={clients}
+    selectedClients={selectedClients}
+    setSelectedClients={setSelectedClients}
+    menuDate={menuDate}
+    setMenuDate={setMenuDate}
+  />
+)}
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 {['protein', 'veg', 'starch'].map(type => (
