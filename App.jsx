@@ -1,4 +1,4 @@
-import MenuView from './MenuView'; // adjust the path if you moved it into /views
+import MenuView from './components/MenuView';
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, List, Book, ChefHat, Users, X, Monitor, Save, Download, Upload, Edit2, Check, AlertCircle, Clock, DollarSign } from 'lucide-react';
 import Papa from 'papaparse';
