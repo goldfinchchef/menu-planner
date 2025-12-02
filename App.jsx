@@ -1,3 +1,4 @@
+import Tabs from './components/Tabs';
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, List, Book, ChefHat, Users, X, Monitor, Save, Download, Upload, Edit2, Check, AlertCircle, Clock, DollarSign } from 'lucide-react';
 import Papa from 'papaparse';
@@ -460,13 +461,7 @@ export default function App() {
 
       <nav className="bg-white shadow-md sticky top-0 z-10">
         <div className="max-w-6xl mx-auto flex overflow-x-auto">
-          {tabs.map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${activeTab === tab.id ? 'border-yellow-500 text-blue-700' : 'border-transparent text-gray-600 hover:text-blue-600'}`}
-              style={activeTab === tab.id ? { borderColor: '#ffd700', color: '#3d59ab' } : {}}>
-              <tab.icon size={18} />{tab.label}
-            </button>
-          ))}
+<Tabs activeTab={activeTab} setActiveTab={setActiveTab} />
         </div>
       </nav>
 
