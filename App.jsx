@@ -413,6 +413,7 @@ export default function App() {
             deliveryLog={deliveryLog}
             orderHistory={orderHistory}
             selectedDate={menuDate}
+            onNavigate={setActiveTab}
           />
         )}
 

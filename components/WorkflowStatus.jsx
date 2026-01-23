@@ -10,13 +10,23 @@ const stages = [
   { id: 'history', label: 'History', icon: Archive }
 ];
 
+const stageToTab = {
+  menu: 'menu',
+  cooking: 'kds',
+  ready: 'deliveries',
+  delivering: 'deliveries',
+  delivered: 'history',
+  history: 'history'
+};
+
 export default function WorkflowStatus({
   menuItems = [],
   completedDishes = {},
   readyForDelivery = [],
   deliveryLog = [],
   orderHistory = [],
-  selectedDate
+  selectedDate,
+  onNavigate
 }) {
   // Calculate counts for each stage
   const getKDSProgress = () => {
@@ -109,12 +119,13 @@ export default function WorkflowStatus({
               )}
               <div className="flex flex-col items-center flex-shrink-0 px-2">
                 <div
-                  className="relative w-12 h-12 rounded-full flex items-center justify-center transition-all"
+                  className="relative w-12 h-12 rounded-full flex items-center justify-center transition-all cursor-pointer"
                   style={{
                     backgroundColor: isActive ? '#3d59ab' : '#e5e7eb',
                     color: isActive ? 'white' : '#9ca3af',
                     boxShadow: isCurrent ? '0 0 0 3px white, 0 0 0 6px #ffd700' : 'none'
                   }}
+                  onClick={() => onNavigate && onNavigate(stageToTab[stage.id])}
                 >
                   <Icon size={24} />
                   {count > 0 && (

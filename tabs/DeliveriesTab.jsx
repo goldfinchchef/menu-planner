@@ -413,7 +413,18 @@ export default function DeliveriesTab({
                               </span>
                             )}
                           </div>
-                          {client.address && <p className="text-sm text-gray-500 truncate">{client.address}</p>}
+                          {client.address && (
+                            <a
+                              href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(client.address)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm text-blue-600 hover:underline truncate flex items-center gap-1"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <MapPin size={12} />
+                              {client.address}
+                            </a>
+                          )}
                           {client.orders && client.orders.length > 0 && (
                             <p className="text-xs text-gray-400 mt-1">
                               {client.orders.map(o => `${o.portions}p: ${o.dishes.join(', ')}`).join(' | ')}
