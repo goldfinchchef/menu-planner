@@ -6,3 +6,5 @@ export { default as HistoryTab } from './HistoryTab';
 export { default as ClientsTab } from './ClientsTab';
 export { default as IngredientsTab } from './IngredientsTab';
 export { default as SubscriptionsTab } from './SubscriptionsTab';
+export { default as DriversTab } from './DriversTab';
+export { default as DeliveriesTab } from './DeliveriesTab';

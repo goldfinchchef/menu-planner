@@ -2,6 +2,16 @@ import React, { useState } from 'react';
 import { Plus, Trash2, Upload, Download, Edit2, Check, X } from 'lucide-react';
 import { ZONES, DAYS } from '../constants';
 
+const FormField = ({ label, children }) => (
+  <div className="flex flex-col">
+    <label className="text-sm font-medium mb-1" style={{ color: '#423d3c' }}>{label}</label>
+    {children}
+  </div>
+);
+
+const inputStyle = "p-2 border-2 rounded-lg";
+const borderStyle = { borderColor: '#ebb582' };
+
 export default function ClientsTab({
   clients,
   newClient,
@@ -32,16 +42,6 @@ export default function ClientsTab({
     setEditingIndex(null);
     setEditingClient(null);
   };
-
-  const FormField = ({ label, children }) => (
-    <div className="flex flex-col">
-      <label className="text-sm font-medium mb-1" style={{ color: '#423d3c' }}>{label}</label>
-      {children}
-    </div>
-  );
-
-  const inputStyle = "p-2 border-2 rounded-lg";
-  const borderStyle = { borderColor: '#ebb582' };
 
   return (
     <div className="space-y-6">
@@ -190,6 +190,19 @@ export default function ClientsTab({
               rows="2"
             />
           </FormField>
+          <div className="flex items-center gap-2 pt-6">
+            <input
+              type="checkbox"
+              id="pickup"
+              checked={newClient.pickup || false}
+              onChange={(e) => setNewClient({ ...newClient, pickup: e.target.checked })}
+              className="w-5 h-5 rounded border-2"
+              style={{ accentColor: '#3d59ab' }}
+            />
+            <label htmlFor="pickup" className="text-sm font-medium" style={{ color: '#423d3c' }}>
+              Pickup (exclude from delivery routes)
+            </label>
+          </div>
         </div>
         <button
           onClick={addClient}
@@ -323,6 +336,19 @@ export default function ClientsTab({
                         rows="2"
                       />
                     </FormField>
+                    <div className="flex items-center gap-2 pt-6">
+                      <input
+                        type="checkbox"
+                        id={`pickup-edit-${i}`}
+                        checked={editingClient.pickup || false}
+                        onChange={(e) => setEditingClient({ ...editingClient, pickup: e.target.checked })}
+                        className="w-5 h-5 rounded border-2"
+                        style={{ accentColor: '#3d59ab' }}
+                      />
+                      <label htmlFor={`pickup-edit-${i}`} className="text-sm font-medium" style={{ color: '#423d3c' }}>
+                        Pickup (exclude from delivery routes)
+                      </label>
+                    </div>
                   </div>
                   <div className="flex gap-2 mt-4">
                     <button
@@ -354,6 +380,9 @@ export default function ClientsTab({
                       )}
                       {client.status === 'active' && (
                         <span className="text-xs px-2 py-1 rounded bg-green-100 text-green-700">Active</span>
+                      )}
+                      {client.pickup && (
+                        <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700">Pickup</span>
                       )}
                     </div>
                     <p className="text-sm text-gray-600">

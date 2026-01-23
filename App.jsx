@@ -10,7 +10,9 @@ import {
   HistoryTab,
   ClientsTab,
   IngredientsTab,
-  SubscriptionsTab
+  SubscriptionsTab,
+  DriversTab,
+  DeliveriesTab
 } from './tabs';
 import {
   categorizeIngredient,
@@ -45,6 +47,8 @@ export default function App() {
     completedDishes, setCompletedDishes,
     orderHistory, setOrderHistory,
     weeklyTasks, setWeeklyTasks,
+    drivers, setDrivers,
+    newDriver, setNewDriver,
     findSimilarIngredients,
     findExactMatch,
     addToMasterIngredients,
@@ -477,6 +481,22 @@ export default function App() {
             clients={clients}
             weeklyTasks={weeklyTasks}
             setWeeklyTasks={setWeeklyTasks}
+          />
+        )}
+
+        {activeTab === 'drivers' && (
+          <DriversTab
+            drivers={drivers}
+            setDrivers={setDrivers}
+            newDriver={newDriver}
+            setNewDriver={setNewDriver}
+          />
+        )}
+
+        {activeTab === 'deliveries' && (
+          <DeliveriesTab
+            clients={clients}
+            drivers={drivers}
           />
         )}
 

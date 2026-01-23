@@ -6,7 +6,8 @@ import {
   DEFAULT_NEW_CLIENT,
   DEFAULT_NEW_RECIPE,
   DEFAULT_NEW_MENU_ITEM,
-  DEFAULT_NEW_INGREDIENT
+  DEFAULT_NEW_INGREDIENT,
+  DEFAULT_NEW_DRIVER
 } from '../constants';
 
 export function useAppData() {
@@ -27,6 +28,8 @@ export function useAppData() {
   const [completedDishes, setCompletedDishes] = useState({});
   const [orderHistory, setOrderHistory] = useState([]);
   const [weeklyTasks, setWeeklyTasks] = useState({});
+  const [drivers, setDrivers] = useState([]);
+  const [newDriver, setNewDriver] = useState(DEFAULT_NEW_DRIVER);
 
   // Load from localStorage
   useEffect(() => {
@@ -40,6 +43,7 @@ export function useAppData() {
         if (parsed.masterIngredients) setMasterIngredients(parsed.masterIngredients);
         if (parsed.orderHistory) setOrderHistory(parsed.orderHistory);
         if (parsed.weeklyTasks) setWeeklyTasks(parsed.weeklyTasks);
+        if (parsed.drivers) setDrivers(parsed.drivers);
       } catch (e) {
         console.error('Error loading saved data:', e);
       }
@@ -55,10 +59,11 @@ export function useAppData() {
       masterIngredients,
       orderHistory,
       weeklyTasks,
+      drivers,
       lastSaved: new Date().toISOString()
     };
     localStorage.setItem('goldfinchChefData', JSON.stringify(dataToSave));
-  }, [recipes, clients, menuItems, masterIngredients, orderHistory, weeklyTasks]);
+  }, [recipes, clients, menuItems, masterIngredients, orderHistory, weeklyTasks, drivers]);
 
   const findSimilarIngredients = (name) => {
     if (!name || name.length < 2) return [];
@@ -169,6 +174,8 @@ export function useAppData() {
     completedDishes, setCompletedDishes,
     orderHistory, setOrderHistory,
     weeklyTasks, setWeeklyTasks,
+    drivers, setDrivers,
+    newDriver, setNewDriver,
     // Functions
     findSimilarIngredients,
     findExactMatch,

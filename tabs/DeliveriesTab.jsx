@@ -25,10 +25,11 @@ export default function DeliveriesTab({ clients, deliveryRoutes = {}, setDeliver
   // Get day of week for selected date
   const selectedDayOfWeek = new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' });
 
-  // Filter clients delivering on selected day
+  // Filter clients delivering on selected day (exclude pickup clients)
   const getClientsForDate = () => {
     return clients.filter(client => {
       if (client.status !== 'active') return false;
+      if (client.pickup) return false; // Exclude pickup clients from delivery routes
       if (!client.deliveryDay) return false;
       return client.deliveryDay === selectedDayOfWeek;
     });
