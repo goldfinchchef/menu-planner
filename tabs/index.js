@@ -5,3 +5,4 @@ export { default as PrepTab } from './PrepTab';
 export { default as HistoryTab } from './HistoryTab';
 export { default as ClientsTab } from './ClientsTab';
 export { default as IngredientsTab } from './IngredientsTab';
+export { default as SubscriptionsTab } from './SubscriptionsTab';

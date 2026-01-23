@@ -26,6 +26,7 @@ export function useAppData() {
   const [duplicateWarnings, setDuplicateWarnings] = useState([]);
   const [completedDishes, setCompletedDishes] = useState({});
   const [orderHistory, setOrderHistory] = useState([]);
+  const [weeklyTasks, setWeeklyTasks] = useState({});
 
   // Load from localStorage
   useEffect(() => {
@@ -38,6 +39,7 @@ export function useAppData() {
         if (parsed.menuItems) setMenuItems(parsed.menuItems);
         if (parsed.masterIngredients) setMasterIngredients(parsed.masterIngredients);
         if (parsed.orderHistory) setOrderHistory(parsed.orderHistory);
+        if (parsed.weeklyTasks) setWeeklyTasks(parsed.weeklyTasks);
       } catch (e) {
         console.error('Error loading saved data:', e);
       }
@@ -52,10 +54,11 @@ export function useAppData() {
       menuItems,
       masterIngredients,
       orderHistory,
+      weeklyTasks,
       lastSaved: new Date().toISOString()
     };
     localStorage.setItem('goldfinchChefData', JSON.stringify(dataToSave));
-  }, [recipes, clients, menuItems, masterIngredients, orderHistory]);
+  }, [recipes, clients, menuItems, masterIngredients, orderHistory, weeklyTasks]);
 
   const findSimilarIngredients = (name) => {
     if (!name || name.length < 2) return [];
@@ -165,6 +168,7 @@ export function useAppData() {
     duplicateWarnings, setDuplicateWarnings,
     completedDishes, setCompletedDishes,
     orderHistory, setOrderHistory,
+    weeklyTasks, setWeeklyTasks,
     // Functions
     findSimilarIngredients,
     findExactMatch,

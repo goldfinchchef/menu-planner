@@ -9,7 +9,8 @@ import {
   PrepTab,
   HistoryTab,
   ClientsTab,
-  IngredientsTab
+  IngredientsTab,
+  SubscriptionsTab
 } from './tabs';
 import {
   categorizeIngredient,
@@ -43,6 +44,7 @@ export default function App() {
     duplicateWarnings, setDuplicateWarnings,
     completedDishes, setCompletedDishes,
     orderHistory, setOrderHistory,
+    weeklyTasks, setWeeklyTasks,
     findSimilarIngredients,
     findExactMatch,
     addToMasterIngredients,
@@ -460,12 +462,21 @@ export default function App() {
         {activeTab === 'clients' && (
           <ClientsTab
             clients={clients}
+            setClients={setClients}
             newClient={newClient}
             setNewClient={setNewClient}
             addClient={addClient}
             deleteClient={deleteClient}
             clientsFileRef={clientsFileRef}
             exportClientsCSV={() => exportClientsCSV(clients)}
+          />
+        )}
+
+        {activeTab === 'subscriptions' && (
+          <SubscriptionsTab
+            clients={clients}
+            weeklyTasks={weeklyTasks}
+            setWeeklyTasks={setWeeklyTasks}
           />
         )}
 

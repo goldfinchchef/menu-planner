@@ -1,4 +1,4 @@
-import { Plus, Trash2, List, Book, ChefHat, Users, Clock, DollarSign, Monitor } from 'lucide-react';
+import { Plus, Trash2, List, Book, ChefHat, Users, Clock, DollarSign, Monitor, RefreshCw } from 'lucide-react';
 
 export const STORE_SECTIONS = [
   'Produce',
@@ -11,6 +11,12 @@ export const STORE_SECTIONS = [
 
 export const UNITS = ['oz', 'lb', 'g', 'kg', 'each'];
 
+export const ZONES = ['A', 'B'];
+
+export const DELIVERY_PROBLEMS = ['Not home', 'Wrong address', 'Refused delivery', 'House hard to find', 'Other'];
+
+export const DAYS = ['Monday', 'Tuesday', 'Thursday'];
+
 export const RECIPE_CATEGORIES = ['protein', 'veg', 'starch', 'sauces', 'breakfast', 'soups'];
 
 export const TABS = [
@@ -20,6 +26,7 @@ export const TABS = [
   { id: 'prep', label: 'Shop', icon: List },
   { id: 'history', label: 'History', icon: Clock },
   { id: 'clients', label: 'Clients', icon: Users },
+  { id: 'subscriptions', label: 'Subscriptions', icon: RefreshCw },
   { id: 'ingredients', label: 'Ingredients', icon: DollarSign }
 ];
 
@@ -33,19 +40,26 @@ export const DEFAULT_RECIPES = {
 };
 
 export const DEFAULT_CLIENTS = [
-  { name: "Tim Brown", persons: 7, address: "10590 Canterberry Rd, Fairfax Station, VA 22039", email: "", phone: "", notes: "", mealsPerWeek: 4, status: "Active" },
-  { name: "Scott Inman", persons: 4, address: "3418 Putnam Rd, Falls Church, VA 22042", email: "", phone: "", notes: "", mealsPerWeek: 4, status: "Active" }
+  { name: "Tim Brown", displayName: "", persons: 7, address: "10590 Canterberry Rd, Fairfax Station, VA 22039", email: "", phone: "", notes: "", mealsPerWeek: 4, frequency: "weekly", status: "active", pausedDate: "", honeyBookLink: "", billingNotes: "", deliveryDay: "", zone: "" },
+  { name: "Scott Inman", displayName: "", persons: 4, address: "3418 Putnam Rd, Falls Church, VA 22042", email: "", phone: "", notes: "", mealsPerWeek: 4, frequency: "weekly", status: "active", pausedDate: "", honeyBookLink: "", billingNotes: "", deliveryDay: "", zone: "" }
 ];
 
 export const DEFAULT_NEW_CLIENT = {
   name: '',
+  displayName: '',
   persons: 1,
   address: '',
   email: '',
   phone: '',
   notes: '',
   mealsPerWeek: 0,
-  status: 'Active'
+  frequency: 'weekly',
+  status: 'active',
+  pausedDate: '',
+  honeyBookLink: '',
+  billingNotes: '',
+  deliveryDay: '',
+  zone: ''
 };
 
 export const DEFAULT_NEW_RECIPE = {
