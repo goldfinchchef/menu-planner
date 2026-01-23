@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Upload, Download, Edit2, Check, X } from 'lucide-react';
+import { Plus, Trash2, Upload, Download, Edit2, Check, X, Link2 } from 'lucide-react';
 import { ZONES, DAYS } from '../constants';
 
 const FormField = ({ label, children }) => (
@@ -41,6 +41,20 @@ export default function ClientsTab({
     setClients(updated);
     setEditingIndex(null);
     setEditingClient(null);
+  };
+
+  const getClientPortalUrl = (clientName) => {
+    const slug = clientName.toLowerCase().replace(/\s+/g, '-');
+    return `${window.location.origin}/client/${slug}`;
+  };
+
+  const copyPortalLink = (clientName) => {
+    const url = getClientPortalUrl(clientName);
+    navigator.clipboard.writeText(url).then(() => {
+      alert(`Portal link copied!\n${url}`);
+    }).catch(() => {
+      prompt('Copy this link:', url);
+    });
   };
 
   return (
@@ -400,10 +414,17 @@ export default function ClientsTab({
                     )}
                   </div>
                   <div className="flex gap-2 self-start ml-4">
-                    <button onClick={() => startEditing(i)} className="text-blue-600">
+                    <button
+                      onClick={() => copyPortalLink(client.name)}
+                      className="text-purple-600"
+                      title="Copy portal link"
+                    >
+                      <Link2 size={18} />
+                    </button>
+                    <button onClick={() => startEditing(i)} className="text-blue-600" title="Edit">
                       <Edit2 size={18} />
                     </button>
-                    <button onClick={() => deleteClient(i)} className="text-red-600">
+                    <button onClick={() => deleteClient(i)} className="text-red-600" title="Delete">
                       <Trash2 size={18} />
                     </button>
                   </div>
