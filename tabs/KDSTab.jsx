@@ -22,7 +22,7 @@ export default function KDSTab({
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-white"
             style={{ backgroundColor: '#22c55e' }}
           >
-            <Check size={18} />Complete All & Save to History
+            <Check size={18} />Complete All & Ready for Delivery
           </button>
         )}
       </div>

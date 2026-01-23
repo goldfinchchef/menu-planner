@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { ChefHat } from 'lucide-react';
 import Tabs from './components/Tabs';
+import WorkflowStatus from './components/WorkflowStatus';
 import { useAppData } from './hooks/useAppData';
 import {
   MenuTab,
@@ -49,6 +50,9 @@ export default function App() {
     weeklyTasks, setWeeklyTasks,
     drivers, setDrivers,
     newDriver, setNewDriver,
+    deliveryLog, setDeliveryLog,
+    bagReminders, setBagReminders,
+    readyForDelivery, setReadyForDelivery,
     findSimilarIngredients,
     findExactMatch,
     addToMasterIngredients,
@@ -244,9 +248,9 @@ export default function App() {
   };
 
   const completeAllOrders = () => {
-    if (!window.confirm('Mark all orders complete and move to history?')) return;
+    if (!window.confirm('Mark all orders complete and move to Ready for Delivery?')) return;
     const ordersByClient = getOrdersByClient();
-    const newHistoryEntries = [];
+    const newReadyEntries = [];
     Object.entries(ordersByClient).forEach(([clientName, orders]) => {
       orders.forEach(order => {
         const dishes = [order.protein, order.veg, order.starch, ...(order.extras || [])].filter(Boolean);
@@ -256,7 +260,7 @@ export default function App() {
           const recipe = category ? recipes[category].find(r => r.name === dishName) : null;
           if (recipe) totalCost += getRecipeCost(recipe) * order.portions;
         });
-        newHistoryEntries.push({
+        newReadyEntries.push({
           id: Date.now() + Math.random(),
           clientName,
           date: order.date || menuDate,
@@ -266,11 +270,11 @@ export default function App() {
         });
       });
     });
-    setOrderHistory(prev => [...prev, ...newHistoryEntries]);
+    setReadyForDelivery(prev => [...prev, ...newReadyEntries]);
     setMenuItems([]);
     setCompletedDishes({});
     setSelectedClients([]);
-    alert('Orders moved to history!');
+    alert('Orders ready for delivery!');
   };
 
   // Prep list
@@ -401,6 +405,17 @@ export default function App() {
       </nav>
 
       <div className="max-w-6xl mx-auto p-4 space-y-6">
+        {['menu', 'kds', 'deliveries', 'history'].includes(activeTab) && (
+          <WorkflowStatus
+            menuItems={menuItems}
+            completedDishes={completedDishes}
+            readyForDelivery={readyForDelivery}
+            deliveryLog={deliveryLog}
+            orderHistory={orderHistory}
+            selectedDate={menuDate}
+          />
+        )}
+
         {activeTab === 'menu' && (
           <MenuTab
             menuDate={menuDate}
@@ -460,7 +475,11 @@ export default function App() {
         )}
 
         {activeTab === 'history' && (
-          <HistoryTab historyByClient={historyByClient} />
+          <HistoryTab
+            historyByClient={historyByClient}
+            orderHistory={orderHistory}
+            setOrderHistory={setOrderHistory}
+          />
         )}
 
         {activeTab === 'clients' && (
@@ -497,6 +516,14 @@ export default function App() {
           <DeliveriesTab
             clients={clients}
             drivers={drivers}
+            deliveryLog={deliveryLog}
+            setDeliveryLog={setDeliveryLog}
+            bagReminders={bagReminders}
+            setBagReminders={setBagReminders}
+            readyForDelivery={readyForDelivery}
+            setReadyForDelivery={setReadyForDelivery}
+            orderHistory={orderHistory}
+            setOrderHistory={setOrderHistory}
           />
         )}
 
