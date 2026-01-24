@@ -53,6 +53,7 @@ export default function App() {
     deliveryLog, setDeliveryLog,
     bagReminders, setBagReminders,
     readyForDelivery, setReadyForDelivery,
+    clientPortalData, setClientPortalData,
     findSimilarIngredients,
     findExactMatch,
     addToMasterIngredients,
@@ -501,6 +502,7 @@ export default function App() {
             clients={clients}
             weeklyTasks={weeklyTasks}
             setWeeklyTasks={setWeeklyTasks}
+            clientPortalData={clientPortalData}
           />
         )}
 

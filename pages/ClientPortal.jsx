@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import {
   ChefHat, Calendar, CreditCard, Truck, Check, Clock,
   AlertTriangle, Play, MapPin, Package, Home, User,
-  ExternalLink, ArrowLeft, Utensils
+  ExternalLink, ArrowLeft, Utensils, RefreshCw
 } from 'lucide-react';
 import { useClientPortalData } from '../hooks/useClientPortalData';
 
@@ -163,10 +163,12 @@ export default function ClientPortal() {
             client={client}
             selectedDates={selectedDates}
             setSelectedDates={setSelectedDates}
-            onSubmit={() => {
+            onSubmit={(notes) => {
               updateClientPortalData(client.name, {
                 selectedDates,
-                needsDateSelection: false
+                dateSelectionNotes: notes,
+                needsDateSelection: false,
+                dateSelectionSubmittedAt: new Date().toISOString()
               });
             }}
           />
@@ -178,6 +180,8 @@ export default function ClientPortal() {
             getClientMenuItems={getClientMenuItems}
             getClientReadyOrders={getClientReadyOrders}
             today={today}
+            clientPortalData={clientPortalData}
+            updateClientPortalData={updateClientPortalData}
           />
         )}
 
@@ -344,29 +348,106 @@ function PaymentView({ client }) {
 
 // Date Picker View
 function DatePickerView({ client, selectedDates, setSelectedDates, onSubmit }) {
-  const today = new Date();
-  const nextTwoWeeks = [];
+  const [notes, setNotes] = useState('');
+  const [validationError, setValidationError] = useState('');
 
-  for (let i = 1; i <= 14; i++) {
+  const today = new Date();
+  const isBiweekly = client.frequency === 'biweekly';
+  const maxDates = 4;
+
+  // Show next 6 weeks of dates for selection
+  const availableDates = [];
+  for (let i = 1; i <= 42; i++) {
     const date = new Date(today);
     date.setDate(date.getDate() + i);
-    const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'long' });
-    // Only show delivery days (Mon, Tue, Thu typically, but we'll show all weekdays)
+    // Only show weekdays (Mon-Fri)
     if (date.getDay() !== 0 && date.getDay() !== 6) {
-      nextTwoWeeks.push({
+      availableDates.push({
         date: date.toISOString().split('T')[0],
         display: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
-        dayOfWeek
+        weekNumber: Math.floor(i / 7)
       });
     }
   }
 
+  // Group dates by week for better display
+  const datesByWeek = {};
+  availableDates.forEach(d => {
+    const weekStart = new Date(d.date + 'T12:00:00');
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
+    const weekKey = weekStart.toISOString().split('T')[0];
+    if (!datesByWeek[weekKey]) {
+      datesByWeek[weekKey] = {
+        label: weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        dates: []
+      };
+    }
+    datesByWeek[weekKey].dates.push(d);
+  });
+
+  // Validate biweekly spacing (at least 2 weeks apart)
+  const validateBiweeklySpacing = (dates) => {
+    if (!isBiweekly || dates.length < 2) return true;
+    const sortedDates = [...dates].sort();
+    for (let i = 1; i < sortedDates.length; i++) {
+      const prev = new Date(sortedDates[i - 1] + 'T12:00:00');
+      const curr = new Date(sortedDates[i] + 'T12:00:00');
+      const daysDiff = (curr - prev) / (1000 * 60 * 60 * 24);
+      if (daysDiff < 14) {
+        return false;
+      }
+    }
+    return true;
+  };
+
   const toggleDate = (date) => {
+    setValidationError('');
+
     if (selectedDates.includes(date)) {
       setSelectedDates(selectedDates.filter(d => d !== date));
     } else {
-      setSelectedDates([...selectedDates, date]);
+      if (selectedDates.length >= maxDates) {
+        setValidationError(`You can only select ${maxDates} delivery dates`);
+        return;
+      }
+
+      const newDates = [...selectedDates, date];
+
+      if (isBiweekly && !validateBiweeklySpacing(newDates)) {
+        setValidationError('Biweekly deliveries must be at least 2 weeks apart');
+        return;
+      }
+
+      setSelectedDates(newDates);
     }
+  };
+
+  const handleSubmit = () => {
+    if (selectedDates.length === 0) {
+      setValidationError('Please select at least one delivery date');
+      return;
+    }
+    if (selectedDates.length > maxDates) {
+      setValidationError(`Please select no more than ${maxDates} dates`);
+      return;
+    }
+    if (isBiweekly && !validateBiweeklySpacing(selectedDates)) {
+      setValidationError('Biweekly deliveries must be at least 2 weeks apart');
+      return;
+    }
+    onSubmit(notes);
+  };
+
+  const isDateDisabled = (date) => {
+    if (selectedDates.includes(date)) return false;
+    if (selectedDates.length >= maxDates) return true;
+
+    if (isBiweekly && selectedDates.length > 0) {
+      const testDates = [...selectedDates, date];
+      return !validateBiweeklySpacing(testDates);
+    }
+
+    return false;
   };
 
   return (
@@ -374,31 +455,81 @@ function DatePickerView({ client, selectedDates, setSelectedDates, onSubmit }) {
       <div className="flex items-center gap-3 mb-4">
         <Calendar size={24} style={{ color: '#3d59ab' }} />
         <h3 className="text-xl font-bold" style={{ color: '#3d59ab' }}>
-          Select Delivery Dates
+          Select Your Next {maxDates} Delivery Dates
         </h3>
       </div>
-      <p className="text-gray-600 mb-4">
-        Choose the dates you'd like to receive your meals. You can select up to {client.mealsPerWeek || 4} days per week.
+
+      <p className="text-gray-600 mb-2">
+        Choose {maxDates} dates for your upcoming deliveries.
       </p>
-      <div className="grid grid-cols-2 gap-3 mb-6">
-        {nextTwoWeeks.map(({ date, display }) => (
-          <button
-            key={date}
-            onClick={() => toggleDate(date)}
-            className={`p-3 rounded-lg border-2 text-left transition-all ${
-              selectedDates.includes(date)
-                ? 'border-blue-500 bg-blue-50'
-                : 'border-gray-200 hover:border-gray-300'
-            }`}
-          >
-            <p className={`font-medium ${selectedDates.includes(date) ? 'text-blue-700' : ''}`}>
-              {display}
-            </p>
-          </button>
+
+      {isBiweekly && (
+        <p className="text-sm text-amber-600 mb-4 flex items-center gap-2">
+          <AlertTriangle size={16} />
+          Biweekly schedule: dates must be at least 2 weeks apart
+        </p>
+      )}
+
+      {validationError && (
+        <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+          {validationError}
+        </div>
+      )}
+
+      <div className="mb-4 text-sm text-gray-600">
+        Selected: {selectedDates.length} / {maxDates}
+      </div>
+
+      <div className="space-y-4 mb-6 max-h-64 overflow-y-auto">
+        {Object.entries(datesByWeek).map(([weekKey, { label, dates }]) => (
+          <div key={weekKey}>
+            <p className="text-xs font-medium text-gray-500 mb-2">Week of {label}</p>
+            <div className="grid grid-cols-3 gap-2">
+              {dates.map(({ date, display }) => {
+                const isSelected = selectedDates.includes(date);
+                const isDisabled = isDateDisabled(date);
+
+                return (
+                  <button
+                    key={date}
+                    onClick={() => toggleDate(date)}
+                    disabled={isDisabled && !isSelected}
+                    className={`p-2 rounded-lg border-2 text-center transition-all text-sm ${
+                      isSelected
+                        ? 'border-blue-500 bg-blue-50'
+                        : isDisabled
+                        ? 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <p className={`font-medium ${isSelected ? 'text-blue-700' : ''}`}>
+                      {display}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         ))}
       </div>
+
+      {/* Notes field */}
+      <div className="mb-6">
+        <label className="block text-sm font-medium mb-2">
+          Special requests or notes (optional)
+        </label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="E.g., 'No deliveries the week of the 15th' or 'Prefer morning deliveries'"
+          className="w-full p-3 border-2 rounded-lg"
+          style={{ borderColor: '#ebb582' }}
+          rows={3}
+        />
+      </div>
+
       <button
-        onClick={onSubmit}
+        onClick={handleSubmit}
         disabled={selectedDates.length === 0}
         className="w-full py-3 rounded-lg text-white font-medium disabled:opacity-50"
         style={{ backgroundColor: '#3d59ab' }}
@@ -410,7 +541,7 @@ function DatePickerView({ client, selectedDates, setSelectedDates, onSubmit }) {
 }
 
 // Menu Ready View
-function MenuReadyView({ client, getClientMenuItems, getClientReadyOrders, today }) {
+function MenuReadyView({ client, getClientMenuItems, getClientReadyOrders, today, clientPortalData, updateClientPortalData }) {
   const upcomingMenuItems = getClientMenuItems(client.name).filter(
     item => item.date >= today
   );
@@ -430,6 +561,19 @@ function MenuReadyView({ client, getClientMenuItems, getClientReadyOrders, today
   });
 
   const sortedDates = Object.keys(byDate).sort();
+
+  // Collect all dishes for substitution dropdown
+  const allDishes = [];
+  upcomingMenuItems.forEach(item => {
+    [item.protein, item.veg, item.starch, ...(item.extras || [])].filter(Boolean).forEach(dish => {
+      if (!allDishes.includes(dish)) allDishes.push(dish);
+    });
+  });
+  upcomingReadyOrders.forEach(order => {
+    (order.dishes || []).forEach(dish => {
+      if (!allDishes.includes(dish)) allDishes.push(dish);
+    });
+  });
 
   return (
     <div className="space-y-4">
@@ -469,6 +613,16 @@ function MenuReadyView({ client, getClientMenuItems, getClientReadyOrders, today
           </div>
         );
       })}
+
+      {/* Substitution Request Form */}
+      {allDishes.length > 0 && (
+        <SubstitutionRequestForm
+          dishes={allDishes}
+          clientName={client.name}
+          clientPortalData={clientPortalData}
+          updateClientPortalData={updateClientPortalData}
+        />
+      )}
     </div>
   );
 }
@@ -502,6 +656,160 @@ function ReadyOrderCard({ order }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// Helper to get next Saturday 11:59pm deadline
+function getNextSaturdayDeadline() {
+  const now = new Date();
+  const dayOfWeek = now.getDay();
+  const daysUntilSaturday = (6 - dayOfWeek + 7) % 7 || 7;
+  const saturday = new Date(now);
+  saturday.setDate(now.getDate() + daysUntilSaturday);
+  saturday.setHours(23, 59, 59, 999);
+  return saturday;
+}
+
+function isBeforeDeadline() {
+  return new Date() < getNextSaturdayDeadline();
+}
+
+// Substitution Request Form
+function SubstitutionRequestForm({ dishes, clientName, clientPortalData, updateClientPortalData }) {
+  const [selectedDish, setSelectedDish] = useState('');
+  const [substitution, setSubstitution] = useState('');
+  const [isSubmitted, setIsSubmitted] = useState(false);
+
+  const deadline = getNextSaturdayDeadline();
+  const canSubmit = isBeforeDeadline();
+
+  // Check for existing substitution request
+  const existingRequest = clientPortalData[clientName]?.substitutionRequest;
+
+  const formatDeadline = (date) => {
+    return date.toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric'
+    }) + ' at 11:59 PM';
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!selectedDish || !substitution.trim()) {
+      alert('Please select a dish and enter your substitution request');
+      return;
+    }
+
+    updateClientPortalData(clientName, {
+      substitutionRequest: {
+        originalDish: selectedDish,
+        requestedSubstitution: substitution.trim(),
+        submittedAt: new Date().toISOString(),
+        deadline: deadline.toISOString()
+      }
+    });
+    setIsSubmitted(true);
+  };
+
+  // Show confirmation if just submitted or has existing request
+  if (isSubmitted || existingRequest) {
+    const request = existingRequest || {
+      originalDish: selectedDish,
+      requestedSubstitution: substitution
+    };
+
+    return (
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: '#dcfce7' }}>
+            <Check size={20} className="text-green-600" />
+          </div>
+          <h4 className="font-bold" style={{ color: '#3d59ab' }}>Substitution Request Received</h4>
+        </div>
+        <div className="p-4 rounded-lg" style={{ backgroundColor: '#f9f9ed' }}>
+          <p className="text-sm text-gray-600 mb-1">Instead of:</p>
+          <p className="font-medium mb-3">{request.originalDish}</p>
+          <p className="text-sm text-gray-600 mb-1">You requested:</p>
+          <p className="font-medium">{request.requestedSubstitution}</p>
+        </div>
+        <p className="text-sm text-gray-500 mt-4">
+          We'll do our best to accommodate your request. If we can't, we'll reach out to you.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-lg shadow-lg p-6">
+      <div className="flex items-center gap-3 mb-4">
+        <RefreshCw size={24} style={{ color: '#3d59ab' }} />
+        <h4 className="font-bold" style={{ color: '#3d59ab' }}>Request a Substitution</h4>
+      </div>
+
+      {!canSubmit ? (
+        <div className="text-center py-4">
+          <AlertTriangle size={32} className="mx-auto mb-2 text-amber-500" />
+          <p className="text-gray-600">
+            The deadline for substitution requests has passed.
+          </p>
+          <p className="text-sm text-gray-500 mt-2">
+            Requests must be submitted by Saturday at 11:59 PM.
+          </p>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit}>
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2">
+              Which dish would you like to substitute?
+            </label>
+            <select
+              value={selectedDish}
+              onChange={(e) => setSelectedDish(e.target.value)}
+              className="w-full p-3 border-2 rounded-lg"
+              style={{ borderColor: '#ebb582' }}
+            >
+              <option value="">Select a dish...</option>
+              {dishes.map((dish, idx) => (
+                <option key={idx} value={dish}>{dish}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2">
+              What would you like instead?
+            </label>
+            <textarea
+              value={substitution}
+              onChange={(e) => setSubstitution(e.target.value)}
+              placeholder="E.g., 'Chicken instead of beef' or 'No onions please'"
+              className="w-full p-3 border-2 rounded-lg"
+              style={{ borderColor: '#ebb582' }}
+              rows={3}
+            />
+          </div>
+
+          <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200">
+            <div className="flex items-center gap-2 text-amber-700">
+              <Clock size={16} />
+              <span className="text-sm font-medium">
+                Deadline: {formatDeadline(deadline)}
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={!selectedDish || !substitution.trim()}
+            className="w-full py-3 rounded-lg text-white font-medium disabled:opacity-50"
+            style={{ backgroundColor: '#3d59ab' }}
+          >
+            Submit Request
+          </button>
+        </form>
+      )}
     </div>
   );
 }

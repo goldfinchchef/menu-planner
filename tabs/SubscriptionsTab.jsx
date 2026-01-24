@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { RefreshCw, Clock, Truck, CalendarOff, Pause, CheckSquare, DollarSign, Repeat, Package, MessageSquare } from 'lucide-react';
+import { RefreshCw, Clock, Truck, CalendarOff, Pause, CheckSquare, DollarSign, Repeat, Package, MessageSquare, ExternalLink, Calendar, ChefHat, AlertTriangle } from 'lucide-react';
 
-export default function SubscriptionsTab({ clients, weeklyTasks = {}, setWeeklyTasks }) {
+export default function SubscriptionsTab({ clients, weeklyTasks = {}, setWeeklyTasks, clientPortalData = {} }) {
   const today = new Date();
   const dayOfWeek = today.toLocaleDateString('en-US', { weekday: 'long' });
 
@@ -37,113 +37,91 @@ export default function SubscriptionsTab({ clients, weeklyTasks = {}, setWeeklyT
     }
   };
 
-  // Group clients by subscription status
-  const groupedClients = {
-    renewalsDue: [],
-    gracePeriod: [],
-    deliveringThisWeek: [],
-    notThisWeek: [],
-    paused: []
+  const updateHoneybookLink = (clientName, link) => {
+    updateTask(clientName, 'honeybookLink', link);
   };
+
+  // Calculate week number for each client (simulating subscription week)
+  const getClientWeekNumber = (client) => {
+    // Use client start date if available, otherwise use a hash of their name
+    const startDate = client.startDate ? new Date(client.startDate) : new Date(2024, 0, 1);
+    const weeksSinceStart = Math.floor((today - startDate) / (7 * 24 * 60 * 60 * 1000));
+    return (weeksSinceStart % 4) + 1; // Cycle through weeks 1-4
+  };
+
+  // Group clients
+  const week4Clients = []; // Billing clients
+  const deliveringThisWeek = []; // Menu planning clients
+  const pausedClients = [];
 
   clients.forEach(client => {
     if (client.status === 'paused') {
-      groupedClients.paused.push(client);
+      pausedClients.push(client);
     } else if (client.status === 'active') {
+      const weekNum = getClientWeekNumber(client);
+      if (weekNum === 4) {
+        week4Clients.push({ ...client, weekNumber: weekNum });
+      }
+
+      // Check if delivering this week
       if (client.frequency === 'weekly') {
-        groupedClients.deliveringThisWeek.push(client);
+        deliveringThisWeek.push(client);
       } else if (client.frequency === 'biweekly') {
         const weekNumber = Math.floor(today.getTime() / (7 * 24 * 60 * 60 * 1000));
         if (weekNumber % 2 === 0) {
-          groupedClients.deliveringThisWeek.push(client);
-        } else {
-          groupedClients.notThisWeek.push(client);
+          deliveringThisWeek.push(client);
         }
       }
     }
   });
 
-  const activeClients = groupedClients.deliveringThisWeek;
-
-  // Task definitions grouped by category
-  const taskGroups = [
-    {
-      key: 'billing',
-      title: 'Billing & Renewals',
-      icon: DollarSign,
-      color: '#e74c3c',
-      dueDay: 'Monday',
-      tasks: [
-        { key: 'invoicePrepared', label: 'Invoice prepared' },
-        { key: 'invoicePaid', label: 'Invoice paid' }
-      ]
-    },
-    {
-      key: 'substitutions',
-      title: 'Substitution Requests',
-      icon: Repeat,
-      color: '#f39c12',
-      dueDay: 'Tuesday',
-      tasks: [
-        { key: 'substitutionsHandled', label: 'Substitutions handled' }
-      ]
-    },
-    {
-      key: 'deliveryPrep',
-      title: 'Delivery Prep',
-      icon: Package,
-      color: '#27ae60',
-      dueDay: 'Wednesday',
-      tasks: [
-        { key: 'datesSelected', label: 'Dates selected' },
-        { key: 'menuSent', label: 'Menu sent' }
-      ]
-    },
-    {
-      key: 'followup',
-      title: 'Bags Follow-up',
-      icon: MessageSquare,
-      color: '#9b59b6',
-      dueDay: 'Thursday',
-      tasks: [
-        { key: 'reminderSent', label: 'Reminder sent' }
-      ]
-    }
-  ];
-
-  // Calculate progress for a task group
-  const getGroupProgress = (group) => {
-    let completed = 0;
-    let total = 0;
-    activeClients.forEach(client => {
-      group.tasks.forEach(task => {
-        total++;
-        if (tasks[client.name]?.[task.key]) completed++;
+  // Get substitution requests from clientPortalData
+  const substitutionRequests = [];
+  Object.entries(clientPortalData).forEach(([clientName, data]) => {
+    if (data.substitutionRequest) {
+      const client = clients.find(c => c.name === clientName);
+      substitutionRequests.push({
+        clientName,
+        displayName: client?.displayName || clientName,
+        ...data.substitutionRequest
       });
-    });
-    return { completed, total };
-  };
+    }
+  });
 
-  // Calculate overall progress
-  const getOverallProgress = () => {
+  // Calculate progress
+  const getBillingProgress = () => {
     let completed = 0;
-    let total = 0;
-    taskGroups.forEach(group => {
-      const progress = getGroupProgress(group);
-      completed += progress.completed;
-      total += progress.total;
+    let total = week4Clients.length * 5; // 5 tasks per client
+    week4Clients.forEach(client => {
+      if (tasks[client.name]?.invoicePrepared) completed++;
+      if (tasks[client.name]?.honeybookLink) completed++;
+      if (tasks[client.name]?.reminderSent) completed++;
+      if (tasks[client.name]?.invoicePaid) completed++;
+      if (tasks[client.name]?.datesSelected) completed++;
     });
     return { completed, total };
   };
 
-  const overallProgress = getOverallProgress();
+  const getMenuProgress = () => {
+    let completed = 0;
+    let total = deliveringThisWeek.length * 2; // 2 tasks per client
+    deliveringThisWeek.forEach(client => {
+      if (tasks[client.name]?.menusPlanned) completed++;
+      if (tasks[client.name]?.menusSent) completed++;
+    });
+    return { completed, total };
+  };
+
+  const billingProgress = getBillingProgress();
+  const menuProgress = getMenuProgress();
+  const totalProgress = {
+    completed: billingProgress.completed + menuProgress.completed + substitutionRequests.filter(r => tasks[r.clientName]?.substitutionHandled).length,
+    total: billingProgress.total + menuProgress.total + substitutionRequests.length
+  };
 
   const sections = [
-    { key: 'renewalsDue', title: 'Renewals Due', icon: RefreshCw, color: '#e74c3c' },
-    { key: 'gracePeriod', title: 'Grace Period', icon: Clock, color: '#f39c12' },
-    { key: 'deliveringThisWeek', title: 'Delivering This Week', icon: Truck, color: '#27ae60' },
-    { key: 'notThisWeek', title: 'Not This Week', icon: CalendarOff, color: '#7f8c8d' },
-    { key: 'paused', title: 'Paused', icon: Pause, color: '#9b59b6' }
+    { key: 'deliveringThisWeek', title: 'Delivering This Week', icon: Truck, color: '#27ae60', clients: deliveringThisWeek },
+    { key: 'paused', title: 'Paused', icon: Pause, color: '#9b59b6', clients: pausedClients }
   ];
 
   const ClientCard = ({ client }) => (
@@ -171,115 +149,281 @@ export default function SubscriptionsTab({ clients, weeklyTasks = {}, setWeeklyT
     <div className="space-y-6">
       {/* Header */}
       <div className="bg-white rounded-lg shadow-lg p-6">
-        <h2 className="text-2xl font-bold mb-2" style={{ color: '#3d59ab' }}>Subscriptions</h2>
-        <p className="text-gray-600">Today is {dayOfWeek}</p>
-      </div>
-
-      {/* Weekly Tasks Section */}
-      <div className="bg-white rounded-lg shadow-lg p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <CheckSquare size={24} style={{ color: '#3d59ab' }} />
-            <h3 className="text-xl font-bold" style={{ color: '#3d59ab' }}>Weekly Tasks</h3>
-          </div>
+        <h2 className="text-2xl font-bold mb-2" style={{ color: '#3d59ab' }}>Weekly Tasks</h2>
+        <div className="flex items-center justify-between">
+          <p className="text-gray-600">Today is {dayOfWeek}</p>
           <div className="text-right">
             <p className="text-sm text-gray-500">Week of {weekStartFormatted} - {weekEnd}</p>
-            <p className="text-lg font-bold" style={{ color: overallProgress.completed === overallProgress.total && overallProgress.total > 0 ? '#27ae60' : '#3d59ab' }}>
-              {overallProgress.completed} / {overallProgress.total} complete
+            <p className="text-lg font-bold" style={{ color: totalProgress.completed === totalProgress.total && totalProgress.total > 0 ? '#27ae60' : '#3d59ab' }}>
+              {totalProgress.completed} / {totalProgress.total} complete
             </p>
           </div>
         </div>
 
         {/* Progress Bar */}
-        <div className="w-full bg-gray-200 rounded-full h-3 mb-6">
+        <div className="w-full bg-gray-200 rounded-full h-3 mt-4">
           <div
             className="h-3 rounded-full transition-all duration-300"
             style={{
-              width: `${overallProgress.total > 0 ? (overallProgress.completed / overallProgress.total) * 100 : 0}%`,
-              backgroundColor: overallProgress.completed === overallProgress.total && overallProgress.total > 0 ? '#27ae60' : '#3d59ab'
+              width: `${totalProgress.total > 0 ? (totalProgress.completed / totalProgress.total) * 100 : 0}%`,
+              backgroundColor: totalProgress.completed === totalProgress.total && totalProgress.total > 0 ? '#27ae60' : '#3d59ab'
             }}
           />
         </div>
+      </div>
 
-        {activeClients.length === 0 ? (
-          <p className="text-gray-500 italic">No active clients delivering this week</p>
+      {/* Billing & Renewals Section */}
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <DollarSign size={24} style={{ color: '#e74c3c' }} />
+            <h3 className="text-xl font-bold" style={{ color: '#e74c3c' }}>Billing & Renewals</h3>
+          </div>
+          <span
+            className="px-3 py-1 rounded text-sm font-medium"
+            style={{
+              backgroundColor: billingProgress.completed === billingProgress.total && billingProgress.total > 0 ? '#e8f8f0' : '#fde8e8',
+              color: billingProgress.completed === billingProgress.total && billingProgress.total > 0 ? '#27ae60' : '#e74c3c'
+            }}
+          >
+            {billingProgress.completed}/{billingProgress.total}
+          </span>
+        </div>
+
+        <p className="text-sm text-gray-600 mb-4">Week 4 clients due for renewal</p>
+
+        {week4Clients.length === 0 ? (
+          <p className="text-gray-500 italic">No clients in Week 4 this week</p>
         ) : (
-          <div className="space-y-6">
-            {taskGroups.map(group => {
-              const progress = getGroupProgress(group);
-              const Icon = group.icon;
-              return (
-                <div key={group.key} className="border-2 rounded-lg p-4" style={{ borderColor: group.color + '40' }}>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <Icon size={20} style={{ color: group.color }} />
-                      <h4 className="font-bold" style={{ color: group.color }}>{group.title}</h4>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm text-gray-500">Due: {group.dueDay}</span>
-                      <span
-                        className="px-2 py-1 rounded text-sm font-medium"
-                        style={{
-                          backgroundColor: progress.completed === progress.total && progress.total > 0 ? '#e8f8f0' : group.color + '20',
-                          color: progress.completed === progress.total && progress.total > 0 ? '#27ae60' : group.color
-                        }}
-                      >
-                        {progress.completed}/{progress.total}
-                      </span>
-                    </div>
-                  </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left py-2 pr-4">Client</th>
+                  <th className="text-center py-2 px-2">Invoice Prepared</th>
+                  <th className="text-center py-2 px-2">Honeybook Link</th>
+                  <th className="text-center py-2 px-2">Reminder Sent</th>
+                  <th className="text-center py-2 px-2">Invoice Paid</th>
+                  <th className="text-center py-2 px-2">Dates Selected</th>
+                </tr>
+              </thead>
+              <tbody>
+                {week4Clients.map(client => (
+                  <tr key={client.name} className="border-b border-gray-100">
+                    <td className="py-3 pr-4">
+                      <p className="font-medium">{client.displayName || client.name}</p>
+                      <p className="text-xs text-gray-500">{client.frequency}</p>
+                    </td>
+                    <td className="text-center py-3 px-2">
+                      <input
+                        type="checkbox"
+                        checked={tasks[client.name]?.invoicePrepared || false}
+                        onChange={(e) => updateTask(client.name, 'invoicePrepared', e.target.checked)}
+                        className="w-5 h-5 rounded cursor-pointer"
+                        style={{ accentColor: '#e74c3c' }}
+                      />
+                    </td>
+                    <td className="text-center py-3 px-2">
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          value={tasks[client.name]?.honeybookLink || client.honeyBookLink || ''}
+                          onChange={(e) => updateHoneybookLink(client.name, e.target.value)}
+                          placeholder="Paste link..."
+                          className="w-24 p-1 text-xs border rounded"
+                        />
+                        {(tasks[client.name]?.honeybookLink || client.honeyBookLink) && (
+                          <a
+                            href={tasks[client.name]?.honeybookLink || client.honeyBookLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600"
+                          >
+                            <ExternalLink size={14} />
+                          </a>
+                        )}
+                      </div>
+                    </td>
+                    <td className="text-center py-3 px-2">
+                      <input
+                        type="checkbox"
+                        checked={tasks[client.name]?.reminderSent || false}
+                        onChange={(e) => updateTask(client.name, 'reminderSent', e.target.checked)}
+                        className="w-5 h-5 rounded cursor-pointer"
+                        style={{ accentColor: '#e74c3c' }}
+                      />
+                    </td>
+                    <td className="text-center py-3 px-2">
+                      <input
+                        type="checkbox"
+                        checked={tasks[client.name]?.invoicePaid || false}
+                        onChange={(e) => updateTask(client.name, 'invoicePaid', e.target.checked)}
+                        className="w-5 h-5 rounded cursor-pointer"
+                        style={{ accentColor: '#27ae60' }}
+                      />
+                    </td>
+                    <td className="text-center py-3 px-2">
+                      <input
+                        type="checkbox"
+                        checked={tasks[client.name]?.datesSelected || false}
+                        onChange={(e) => updateTask(client.name, 'datesSelected', e.target.checked)}
+                        className="w-5 h-5 rounded cursor-pointer"
+                        style={{ accentColor: '#3d59ab' }}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b">
-                          <th className="text-left py-2 pr-4">Client</th>
-                          {group.tasks.map(task => (
-                            <th key={task.key} className="text-center py-2 px-2">{task.label}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {activeClients.map(client => (
-                          <tr key={client.name} className="border-b border-gray-100">
-                            <td className="py-2 pr-4 font-medium">{client.displayName || client.name}</td>
-                            {group.tasks.map(task => (
-                              <td key={task.key} className="text-center py-2 px-2">
-                                <input
-                                  type="checkbox"
-                                  checked={tasks[client.name]?.[task.key] || false}
-                                  onChange={(e) => updateTask(client.name, task.key, e.target.checked)}
-                                  className="w-5 h-5 rounded cursor-pointer"
-                                  style={{ accentColor: group.color }}
-                                />
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+      {/* Menu Planning Section */}
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <ChefHat size={24} style={{ color: '#27ae60' }} />
+            <h3 className="text-xl font-bold" style={{ color: '#27ae60' }}>Menu Planning</h3>
+          </div>
+          <span
+            className="px-3 py-1 rounded text-sm font-medium"
+            style={{
+              backgroundColor: menuProgress.completed === menuProgress.total && menuProgress.total > 0 ? '#e8f8f0' : '#e8f8f0',
+              color: menuProgress.completed === menuProgress.total && menuProgress.total > 0 ? '#27ae60' : '#27ae60'
+            }}
+          >
+            {menuProgress.completed}/{menuProgress.total}
+          </span>
+        </div>
+
+        <p className="text-sm text-gray-600 mb-4">Clients with deliveries this week</p>
+
+        {deliveringThisWeek.length === 0 ? (
+          <p className="text-gray-500 italic">No deliveries scheduled this week</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left py-2 pr-4">Client</th>
+                  <th className="text-center py-2 px-2">Menus Planned</th>
+                  <th className="text-center py-2 px-2">Menus Sent</th>
+                </tr>
+              </thead>
+              <tbody>
+                {deliveringThisWeek.map(client => (
+                  <tr key={client.name} className="border-b border-gray-100">
+                    <td className="py-3 pr-4">
+                      <p className="font-medium">{client.displayName || client.name}</p>
+                      <p className="text-xs text-gray-500">
+                        {client.persons}p • {client.mealsPerWeek} meals • {client.deliveryDay || 'No day set'}
+                      </p>
+                    </td>
+                    <td className="text-center py-3 px-2">
+                      <input
+                        type="checkbox"
+                        checked={tasks[client.name]?.menusPlanned || false}
+                        onChange={(e) => updateTask(client.name, 'menusPlanned', e.target.checked)}
+                        className="w-5 h-5 rounded cursor-pointer"
+                        style={{ accentColor: '#27ae60' }}
+                      />
+                    </td>
+                    <td className="text-center py-3 px-2">
+                      <input
+                        type="checkbox"
+                        checked={tasks[client.name]?.menusSent || false}
+                        onChange={(e) => updateTask(client.name, 'menusSent', e.target.checked)}
+                        className="w-5 h-5 rounded cursor-pointer"
+                        style={{ accentColor: '#27ae60' }}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Substitution Requests Section */}
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Repeat size={24} style={{ color: '#f39c12' }} />
+            <h3 className="text-xl font-bold" style={{ color: '#f39c12' }}>Substitution Requests</h3>
+          </div>
+          {substitutionRequests.length > 0 && (
+            <span
+              className="px-3 py-1 rounded text-sm font-medium"
+              style={{ backgroundColor: '#fef3c7', color: '#f39c12' }}
+            >
+              {substitutionRequests.filter(r => tasks[r.clientName]?.substitutionHandled).length}/{substitutionRequests.length}
+            </span>
+          )}
+        </div>
+
+        {substitutionRequests.length === 0 ? (
+          <div className="text-center py-6">
+            <Repeat size={32} className="mx-auto mb-2 text-gray-300" />
+            <p className="text-gray-500 italic">No substitution requests this week</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {substitutionRequests.map((request, idx) => (
+              <div
+                key={idx}
+                className={`border-2 rounded-lg p-4 ${tasks[request.clientName]?.substitutionHandled ? 'bg-green-50 border-green-200' : 'border-amber-200 bg-amber-50'}`}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <h4 className="font-bold">{request.displayName}</h4>
+                      {tasks[request.clientName]?.substitutionHandled && (
+                        <span className="text-xs px-2 py-1 rounded bg-green-100 text-green-700">Handled</span>
+                      )}
+                    </div>
+                    <div className="text-sm space-y-1">
+                      <p><span className="text-gray-500">Instead of:</span> <span className="font-medium">{request.originalDish}</span></p>
+                      <p><span className="text-gray-500">Requested:</span> <span className="font-medium">{request.requestedSubstitution}</span></p>
+                      {request.submittedAt && (
+                        <p className="text-xs text-gray-400">
+                          Submitted: {new Date(request.submittedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        </p>
+                      )}
+                    </div>
                   </div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={tasks[request.clientName]?.substitutionHandled || false}
+                      onChange={(e) => updateTask(request.clientName, 'substitutionHandled', e.target.checked)}
+                      className="w-5 h-5 rounded"
+                      style={{ accentColor: '#27ae60' }}
+                    />
+                    <span className="text-sm">Handled</span>
+                  </label>
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         )}
       </div>
 
       {/* Client Status Sections */}
-      {sections.map(({ key, title, icon: Icon, color }) => (
+      {sections.map(({ key, title, icon: Icon, color, clients: sectionClients }) => (
         <div key={key} className="bg-white rounded-lg shadow-lg p-6">
           <div className="flex items-center gap-2 mb-4">
             <Icon size={24} style={{ color }} />
             <h3 className="text-xl font-bold" style={{ color }}>
-              {title} ({groupedClients[key].length})
+              {title} ({sectionClients.length})
             </h3>
           </div>
-          {groupedClients[key].length === 0 ? (
+          {sectionClients.length === 0 ? (
             <p className="text-gray-500 italic">No clients in this category</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {groupedClients[key].map((client, i) => (
+              {sectionClients.map((client, i) => (
                 <ClientCard key={i} client={client} />
               ))}
             </div>

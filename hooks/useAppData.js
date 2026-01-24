@@ -33,6 +33,7 @@ export function useAppData() {
   const [deliveryLog, setDeliveryLog] = useState([]);
   const [bagReminders, setBagReminders] = useState({});
   const [readyForDelivery, setReadyForDelivery] = useState([]);
+  const [clientPortalData, setClientPortalData] = useState({});
 
   // Load from localStorage
   useEffect(() => {
@@ -50,6 +51,7 @@ export function useAppData() {
         if (parsed.deliveryLog) setDeliveryLog(parsed.deliveryLog);
         if (parsed.bagReminders) setBagReminders(parsed.bagReminders);
         if (parsed.readyForDelivery) setReadyForDelivery(parsed.readyForDelivery);
+        if (parsed.clientPortalData) setClientPortalData(parsed.clientPortalData);
       } catch (e) {
         console.error('Error loading saved data:', e);
       }
@@ -69,10 +71,11 @@ export function useAppData() {
       deliveryLog,
       bagReminders,
       readyForDelivery,
+      clientPortalData,
       lastSaved: new Date().toISOString()
     };
     localStorage.setItem('goldfinchChefData', JSON.stringify(dataToSave));
-  }, [recipes, clients, menuItems, masterIngredients, orderHistory, weeklyTasks, drivers, deliveryLog, bagReminders, readyForDelivery]);
+  }, [recipes, clients, menuItems, masterIngredients, orderHistory, weeklyTasks, drivers, deliveryLog, bagReminders, readyForDelivery, clientPortalData]);
 
   const findSimilarIngredients = (name) => {
     if (!name || name.length < 2) return [];
@@ -188,6 +191,7 @@ export function useAppData() {
     deliveryLog, setDeliveryLog,
     bagReminders, setBagReminders,
     readyForDelivery, setReadyForDelivery,
+    clientPortalData, setClientPortalData,
     // Functions
     findSimilarIngredients,
     findExactMatch,
