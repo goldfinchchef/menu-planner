@@ -99,21 +99,37 @@ export const exportRecipesCSV = (recipes) => {
   downloadCSV(Papa.unparse(rows, { columns: ['Recipe Name', 'Category', 'Instructions', 'Ingredient', 'Portion Size (oz)', 'cost', 'source', 'section'] }), 'recipes.csv');
 };
 
+// Helper to parse boolean from various formats
+const parseBoolean = (val) => {
+  if (val === true || val === 'true' || val === 'yes' || val === 'Yes' || val === 'YES' || val === '1') return true;
+  return false;
+};
+
+// Helper to parse price (removes $ and commas)
+const parsePrice = (val) => {
+  if (!val) return 0;
+  const cleaned = String(val).replace(/[$,]/g, '').trim();
+  return parseFloat(cleaned) || 0;
+};
+
 export const parseClientsCSV = (file, onSuccess, onError) => {
   Papa.parse(file, {
     header: true,
     complete: (results) => {
-      // Check if this is the new subscription format or old format
+      // Check format based on headers
       const headers = results.meta.fields || [];
-      const isNewFormat = headers.includes('subscriptionId') || headers.includes('subscriptionDisplayName');
+      const isMultiRowFormat = headers.includes('subscriptionId') || headers.includes('subscriptionDisplayName');
 
-      if (isNewFormat) {
-        // New subscription/contacts format - group rows by subscription
+      // Check for common column name variations
+      const hasNameCol = headers.includes('Name') || headers.includes('name');
+      const hasDisplayNameCol = headers.includes('Display Name') || headers.includes('displayName');
+
+      if (isMultiRowFormat) {
+        // Multi-row subscription/contacts format - group rows by subscription
         const subscriptionMap = {};
         let currentSubscription = null;
 
         results.data.forEach(row => {
-          // If row has subscription data, start a new subscription
           if (row.subscriptionId || row.subscriptionDisplayName) {
             const subId = row.subscriptionId || Date.now().toString() + Math.random();
             currentSubscription = {
@@ -121,16 +137,16 @@ export const parseClientsCSV = (file, onSuccess, onError) => {
               displayName: row.subscriptionDisplayName || '',
               portions: parseInt(row.portions) || 1,
               mealsPerWeek: parseInt(row.mealsPerWeek) || 0,
-              frequency: row.frequency || 'weekly',
-              status: row.status || 'active',
-              zone: row.zone || '',
+              frequency: (row.frequency || 'weekly').toLowerCase(),
+              status: (row.status || 'active').toLowerCase(),
+              zone: (row.zone || '').toUpperCase(),
               deliveryDay: row.deliveryDay || '',
-              pickup: row.pickup === 'true' || row.pickup === true,
-              planPrice: parseFloat(row.planPrice) || 0,
-              serviceFee: parseFloat(row.serviceFee) || 0,
-              prepayDiscount: row.prepayDiscount === 'true' || row.prepayDiscount === true,
-              newClientFeePaid: row.newClientFeePaid === 'true' || row.newClientFeePaid === true,
-              paysOwnGroceries: row.paysOwnGroceries === 'true' || row.paysOwnGroceries === true,
+              pickup: parseBoolean(row.pickup),
+              planPrice: parsePrice(row.planPrice),
+              serviceFee: parsePrice(row.serviceFee),
+              prepayDiscount: parseBoolean(row.prepayDiscount),
+              newClientFeePaid: parseBoolean(row.newClientFeePaid),
+              paysOwnGroceries: parseBoolean(row.paysOwnGroceries),
               billingNotes: row.billingNotes || '',
               accessCode: row.accessCode || '',
               honeyBookLink: row.honeyBookLink || '',
@@ -139,7 +155,6 @@ export const parseClientsCSV = (file, onSuccess, onError) => {
             subscriptionMap[subId] = currentSubscription;
           }
 
-          // Add contact to current subscription if there's contact data
           if (currentSubscription && (row.contactFullName || row.email || row.address)) {
             currentSubscription.contacts.push({
               fullName: row.contactFullName || '',
@@ -154,33 +169,44 @@ export const parseClientsCSV = (file, onSuccess, onError) => {
         const imported = Object.values(subscriptionMap).filter(sub => sub.displayName || sub.contacts.length > 0);
         onSuccess(imported);
       } else {
-        // Old client format - convert to subscription format
-        const imported = results.data.filter(row => row.name).map(row => ({
-          subscriptionId: Date.now().toString() + Math.random(),
-          displayName: row.displayName || row.name || '',
-          portions: parseInt(row.persons) || parseInt(row.portions) || 1,
-          mealsPerWeek: parseInt(row.mealsPerWeek) || 0,
-          frequency: row.frequency || 'weekly',
-          status: row.status || 'active',
-          zone: row.zone || '',
-          deliveryDay: row.deliveryDay || '',
-          pickup: row.pickup === 'true' || row.pickup === true || false,
-          planPrice: parseFloat(row.planPrice) || 0,
-          serviceFee: parseFloat(row.serviceFee) || 0,
-          prepayDiscount: false,
-          newClientFeePaid: false,
-          paysOwnGroceries: false,
-          billingNotes: row.notes || row.billingNotes || '',
-          accessCode: row.accessCode || '',
-          honeyBookLink: row.honeyBookLink || '',
-          contacts: [{
-            fullName: row.name || '',
-            displayName: '',
-            email: row.email || '',
-            phone: row.phone || '',
-            address: row.address || ''
-          }]
-        }));
+        // Single row per client format (handles multiple column name variations)
+        const imported = results.data
+          .filter(row => row.Name || row.name || row['Display Name'] || row.displayName)
+          .map(row => {
+            const name = row.Name || row.name || '';
+            const displayName = row['Display Name'] || row.displayName || name;
+            const portions = parseInt(row.Portions || row.portions || row.persons) || 1;
+            const meals = parseInt(row.Meals || row.mealsPerWeek || row.meals) || 0;
+            const zone = (row.zone || row.Zone || '').toUpperCase();
+
+            return {
+              subscriptionId: Date.now().toString() + Math.random(),
+              displayName: displayName,
+              name: name, // Keep for backwards compatibility
+              portions: portions,
+              mealsPerWeek: meals,
+              frequency: (row.frequency || row.Frequency || 'weekly').toLowerCase(),
+              status: (row.status || row.Status || 'active').toLowerCase(),
+              zone: zone === 'UNASSIGNED' ? '' : zone,
+              deliveryDay: row.deliveryDay || row.DeliveryDay || '',
+              pickup: parseBoolean(row.pickup || row.Pickup),
+              planPrice: parsePrice(row.planPrice || row.PlanPrice),
+              serviceFee: parsePrice(row.serviceFee || row.ServiceFee),
+              prepayDiscount: parseBoolean(row.prepayDiscount || row.PrepayDiscount),
+              newClientFeePaid: parseBoolean(row.newClientFeePaid || row.NewClientFeePaid),
+              paysOwnGroceries: parseBoolean(row.paysOwnGroceries || row.PaysOwnGroceries),
+              billingNotes: row.billingNotes || row.BillingNotes || row.notes || '',
+              accessCode: row.accessCode || row.AccessCode || '',
+              honeyBookLink: row.honeyBookLink || row.HoneyBookLink || '',
+              contacts: [{
+                fullName: name,
+                displayName: '',
+                email: row.Email || row.email || '',
+                phone: row.Phone || row.phone || '',
+                address: row.Address || row.address || ''
+              }]
+            };
+          });
         onSuccess(imported);
       }
     },
