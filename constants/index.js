@@ -43,34 +43,36 @@ export const DEFAULT_CLIENTS = [
 ];
 
 export const DEFAULT_CONTACT = {
-  name: '',
+  fullName: '',
+  displayName: '',
   email: '',
   phone: '',
   address: ''
 };
 
-export const DEFAULT_NEW_CLIENT = {
-  name: '',
+export const DEFAULT_NEW_SUBSCRIPTION = {
+  subscriptionId: '',
   displayName: '',
-  persons: 1,
-  contacts: [{ ...DEFAULT_CONTACT }],
-  notes: '',
+  portions: 1,
   mealsPerWeek: 0,
   frequency: 'weekly',
   status: 'active',
-  pausedDate: '',
-  honeyBookLink: '',
-  billingNotes: '',
-  deliveryDay: '',
   zone: '',
+  deliveryDay: '',
   pickup: false,
-  // Pricing fields
   planPrice: 0,
   serviceFee: 0,
   prepayDiscount: false,
   newClientFeePaid: false,
-  paysOwnGroceries: false
+  paysOwnGroceries: false,
+  billingNotes: '',
+  accessCode: '',
+  honeyBookLink: '',
+  contacts: [{ ...DEFAULT_CONTACT }]
 };
+
+// Legacy alias for backwards compatibility
+export const DEFAULT_NEW_CLIENT = DEFAULT_NEW_SUBSCRIPTION;
 
 export const DEFAULT_NEW_DRIVER = {
   name: '',
