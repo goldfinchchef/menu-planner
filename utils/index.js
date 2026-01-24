@@ -1,5 +1,8 @@
 import Papa from 'papaparse';
 
+// Re-export week utilities
+export * from './weekUtils';
+
 export const normalizeName = (name) =>
   name.toLowerCase().trim().replace(/s$/, '').replace(/es$/, '').replace(/ies$/, 'y').replace(/[^a-z0-9]/g, '');
 

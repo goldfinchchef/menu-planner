@@ -35,7 +35,12 @@ export default function DeliveriesTab({
   readyForDelivery = [],
   setReadyForDelivery,
   orderHistory = [],
-  setOrderHistory
+  setOrderHistory,
+  selectedWeekId,
+  weeks = {},
+  addDeliveryLogToWeek,
+  removeReadyForDeliveryFromWeek,
+  isReadOnly = false
 }) {
   const [activeView, setActiveView] = useState('plan');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -181,6 +186,8 @@ export default function DeliveriesTab({
   };
 
   const markDeliveryComplete = (clientName, zone, contactIndex = 0, contactName = '', problem = null, problemNote = '', bagsReturned = false) => {
+    if (isReadOnly) return; // Don't allow changes to read-only weeks
+
     const driver = getDriverForZone(zone);
     const newEntry = {
       id: Date.now(),
@@ -195,7 +202,14 @@ export default function DeliveriesTab({
       problemNote,
       bagsReturned
     };
+
+    // Save to global state (backwards compatibility)
     setDeliveryLog([...deliveryLog, newEntry]);
+
+    // Also save to week record if available
+    if (selectedWeekId && addDeliveryLogToWeek) {
+      addDeliveryLogToWeek(selectedWeekId, newEntry);
+    }
 
     // Check if all contacts for this client are delivered
     const client = clients.find(c => c.name === clientName);
@@ -218,6 +232,13 @@ export default function DeliveriesTab({
         setReadyForDelivery(prev =>
           prev.filter(order => !(order.clientName === clientName && order.date === selectedDate))
         );
+
+        // Remove from week record
+        if (selectedWeekId && removeReadyForDeliveryFromWeek) {
+          clientOrders.forEach(order => {
+            removeReadyForDeliveryFromWeek(selectedWeekId, order.id);
+          });
+        }
       }
     }
   };
@@ -389,6 +410,17 @@ export default function DeliveriesTab({
 
   return (
     <div className="space-y-6">
+      {/* Read-only Banner */}
+      {isReadOnly && (
+        <div className="bg-amber-50 border-2 border-amber-200 rounded-lg p-4 flex items-center gap-3">
+          <AlertTriangle size={24} className="text-amber-600" />
+          <div>
+            <p className="font-medium text-amber-800">Viewing Past Week (Read-only)</p>
+            <p className="text-sm text-amber-600">This week is locked and cannot be modified.</p>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-white rounded-lg shadow-lg p-6">
         <div className="flex items-center justify-between flex-wrap gap-4">

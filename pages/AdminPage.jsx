@@ -14,6 +14,7 @@ import RecipesTab from '../tabs/RecipesTab';
 import IngredientsTab from '../tabs/IngredientsTab';
 import ClientsTab from '../tabs/ClientsTab';
 import { normalizeName, similarity, exportIngredientsCSV, exportRecipesCSV, parseIngredientsCSV, parseRecipesCSV, categorizeIngredient } from '../utils';
+import { getWeekIdFromDate, createWeekRecord, lockWeek } from '../utils/weekUtils';
 
 const STORAGE_KEY = 'goldfinchChefData';
 
@@ -32,6 +33,7 @@ function useAdminData() {
   const [recipes, setRecipes] = useState({ protein: [], veg: [], starch: [], sauces: [], breakfast: [], soups: [] });
   const [masterIngredients, setMasterIngredients] = useState([]);
   const [groceryBills, setGroceryBills] = useState([]);
+  const [weeks, setWeeks] = useState({});
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
@@ -53,6 +55,7 @@ function useAdminData() {
           if (parsed.recipes) setRecipes(parsed.recipes);
           if (parsed.masterIngredients) setMasterIngredients(parsed.masterIngredients);
           if (parsed.groceryBills) setGroceryBills(parsed.groceryBills);
+          if (parsed.weeks) setWeeks(parsed.weeks);
         } catch (e) {
           console.error('Error loading saved data:', e);
         }
@@ -132,6 +135,23 @@ function useAdminData() {
     saveData({ groceryBills: newGroceryBills });
   }, [saveData]);
 
+  const updateWeeks = useCallback((newWeeks) => {
+    setWeeks(newWeeks);
+    saveData({ weeks: newWeeks });
+  }, [saveData]);
+
+  // Lock a week and create snapshot
+  const lockWeekWithSnapshot = useCallback((weekId) => {
+    const week = weeks[weekId] || createWeekRecord(weekId);
+    if (week.status === 'locked') return week;
+
+    const lockedWeek = lockWeek(week, menuItems, clients);
+    const newWeeks = { ...weeks, [weekId]: lockedWeek };
+    setWeeks(newWeeks);
+    saveData({ weeks: newWeeks });
+    return lockedWeek;
+  }, [weeks, menuItems, clients, saveData]);
+
   return {
     clients,
     drivers,
@@ -156,7 +176,10 @@ function useAdminData() {
     updateMasterIngredients,
     updateCustomTasks,
     updateClients,
-    updateGroceryBills
+    updateGroceryBills,
+    weeks,
+    updateWeeks,
+    lockWeekWithSnapshot
   };
 }
 
@@ -385,7 +408,7 @@ function StyledMenuCard({ client, date, menuItems }) {
 }
 
 // Menu Approval Section Component
-function MenuApprovalSection({ clients, menuItems, updateMenuItems }) {
+function MenuApprovalSection({ clients, menuItems, updateMenuItems, lockWeekWithSnapshot }) {
   const today = new Date().toISOString().split('T')[0];
 
   // Get unapproved menu items grouped by client and date
@@ -412,12 +435,17 @@ function MenuApprovalSection({ clients, menuItems, updateMenuItems }) {
   };
 
   const approveMenu = (clientName, date) => {
+    // Mark menu items as approved
     const updated = menuItems.map(item =>
       item.clientName === clientName && item.date === date
         ? { ...item, approved: true }
         : item
     );
     updateMenuItems(updated);
+
+    // Lock the week for this date
+    const weekId = getWeekIdFromDate(date);
+    lockWeekWithSnapshot(weekId);
   };
 
   const unapprovedMenus = getUnapprovedMenus();
@@ -530,7 +558,10 @@ export default function AdminPage() {
     updateRecipes,
     updateMasterIngredients,
     updateClients,
-    updateGroceryBills
+    updateGroceryBills,
+    weeks,
+    updateWeeks,
+    lockWeekWithSnapshot
   } = useAdminData();
 
   const [activeSection, setActiveSection] = useState('dashboard');
@@ -1412,6 +1443,7 @@ export default function AdminPage() {
             clients={clients}
             menuItems={menuItems}
             updateMenuItems={updateMenuItems}
+            lockWeekWithSnapshot={lockWeekWithSnapshot}
           />
         )}
 

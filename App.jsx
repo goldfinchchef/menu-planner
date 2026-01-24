@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom';
 import { ChefHat, Settings } from 'lucide-react';
 import Tabs from './components/Tabs';
 import WorkflowStatus from './components/WorkflowStatus';
+import WeekSelector from './components/WeekSelector';
 import { useAppData } from './hooks/useAppData';
+import { getWeekId, getWeekIdFromDate } from './utils/weekUtils';
 import {
   RecipesTab,
   KDSTab,
@@ -51,13 +53,25 @@ export default function App() {
     bagReminders, setBagReminders,
     readyForDelivery, setReadyForDelivery,
     clientPortalData, setClientPortalData,
+    weeks, setWeeks,
+    selectedWeekId, setSelectedWeekId,
     findSimilarIngredients,
     findExactMatch,
     addToMasterIngredients,
     mergeIngredients,
     scanForDuplicates,
     getRecipeCost,
-    getRecipeCounts
+    getRecipeCounts,
+    getOrCreateWeek,
+    getCurrentWeek,
+    lockWeekAndSnapshot,
+    updateWeekData,
+    updateWeekKdsStatus,
+    addReadyForDeliveryToWeek,
+    addDeliveryLogToWeek,
+    removeReadyForDeliveryFromWeek,
+    isWeekReadOnly,
+    getWeekIds
   } = useAppData();
 
   const clientsFileRef = useRef();
@@ -249,6 +263,7 @@ export default function App() {
     if (!window.confirm('Mark all orders complete and move to Ready for Delivery?')) return;
     const ordersByClient = getOrdersByClient();
     const newReadyEntries = [];
+
     Object.entries(ordersByClient).forEach(([clientName, orders]) => {
       orders.forEach(order => {
         const dishes = [order.protein, order.veg, order.starch, ...(order.extras || [])].filter(Boolean);
@@ -268,6 +283,21 @@ export default function App() {
         });
       });
     });
+
+    // Group entries by week and add to respective weeks
+    const entriesByWeek = {};
+    newReadyEntries.forEach(entry => {
+      const weekId = getWeekIdFromDate(entry.date);
+      if (!entriesByWeek[weekId]) entriesByWeek[weekId] = [];
+      entriesByWeek[weekId].push(entry);
+    });
+
+    // Add to week records
+    Object.entries(entriesByWeek).forEach(([weekId, entries]) => {
+      addReadyForDeliveryToWeek(weekId, entries);
+    });
+
+    // Also keep in global state for backwards compatibility
     setReadyForDelivery(prev => [...prev, ...newReadyEntries]);
     setMenuItems([]);
     setCompletedDishes({});
@@ -381,6 +411,46 @@ export default function App() {
   const prepList = getPrepList();
   const historyByClient = getHistoryByClient();
 
+  // Week-related helpers
+  const currentWeek = weeks[selectedWeekId] || null;
+  const isCurrentWeekReadOnly = isWeekReadOnly(selectedWeekId);
+
+  // Get data for selected week (from week record if locked, otherwise from global state)
+  const getWeekMenuItems = () => {
+    if (currentWeek?.status === 'locked' && currentWeek.snapshot?.menu) {
+      // Reconstruct menu items from snapshot
+      const items = [];
+      Object.entries(currentWeek.snapshot.menu).forEach(([clientName, clientItems]) => {
+        clientItems.forEach(item => {
+          items.push({ ...item, clientName, approved: true });
+        });
+      });
+      return items;
+    }
+    // Filter global menuItems to selected week
+    return menuItems.filter(item => getWeekIdFromDate(item.date) === selectedWeekId);
+  };
+
+  const getWeekReadyForDelivery = () => {
+    if (currentWeek?.readyForDelivery?.length > 0) {
+      return currentWeek.readyForDelivery;
+    }
+    // Filter global readyForDelivery to selected week
+    return readyForDelivery.filter(order => getWeekIdFromDate(order.date) === selectedWeekId);
+  };
+
+  const getWeekDeliveryLog = () => {
+    if (currentWeek?.deliveryLog?.length > 0) {
+      return currentWeek.deliveryLog;
+    }
+    // Filter global deliveryLog to selected week
+    return deliveryLog.filter(entry => getWeekIdFromDate(entry.date) === selectedWeekId);
+  };
+
+  const getWeekKdsStatus = () => {
+    return currentWeek?.kdsStatus || {};
+  };
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#f9f9ed' }}>
       <input type="file" ref={clientsFileRef} onChange={importClientsCSV} accept=".csv" className="hidden" />
@@ -410,12 +480,20 @@ export default function App() {
       </nav>
 
       <div className="max-w-6xl mx-auto p-4 space-y-6">
-        {['menu', 'kds', 'deliveries', 'history'].includes(activeTab) && (
+        {['kds', 'deliveries', 'history'].includes(activeTab) && (
+          <WeekSelector
+            selectedWeekId={selectedWeekId}
+            setSelectedWeekId={setSelectedWeekId}
+            weeks={weeks}
+          />
+        )}
+
+        {['kds', 'deliveries', 'history'].includes(activeTab) && (
           <WorkflowStatus
-            menuItems={menuItems}
-            completedDishes={completedDishes}
-            readyForDelivery={readyForDelivery}
-            deliveryLog={deliveryLog}
+            menuItems={getWeekMenuItems()}
+            completedDishes={getWeekKdsStatus()}
+            readyForDelivery={getWeekReadyForDelivery()}
+            deliveryLog={getWeekDeliveryLog()}
             orderHistory={orderHistory}
             selectedDate={menuDate}
             onNavigate={setActiveTab}
@@ -487,14 +565,19 @@ export default function App() {
           <DeliveriesTab
             clients={clients}
             drivers={drivers}
-            deliveryLog={deliveryLog}
+            deliveryLog={getWeekDeliveryLog()}
             setDeliveryLog={setDeliveryLog}
             bagReminders={bagReminders}
             setBagReminders={setBagReminders}
-            readyForDelivery={readyForDelivery}
+            readyForDelivery={getWeekReadyForDelivery()}
             setReadyForDelivery={setReadyForDelivery}
             orderHistory={orderHistory}
             setOrderHistory={setOrderHistory}
+            selectedWeekId={selectedWeekId}
+            weeks={weeks}
+            addDeliveryLogToWeek={addDeliveryLogToWeek}
+            removeReadyForDeliveryFromWeek={removeReadyForDeliveryFromWeek}
+            isReadOnly={isCurrentWeekReadOnly}
           />
         )}
 
