@@ -29,6 +29,7 @@ export default function ClientPortal() {
     getClientDeliveryStatus,
     getClientHistory,
     clientPortalData,
+    blockedDates,
     updateClientPortalData
   } = useClientPortalData();
 
@@ -163,6 +164,7 @@ export default function ClientPortal() {
             client={client}
             selectedDates={selectedDates}
             setSelectedDates={setSelectedDates}
+            blockedDates={blockedDates}
             onSubmit={(notes) => {
               updateClientPortalData(client.name, {
                 selectedDates,
@@ -347,7 +349,7 @@ function PaymentView({ client }) {
 }
 
 // Date Picker View
-function DatePickerView({ client, selectedDates, setSelectedDates, onSubmit }) {
+function DatePickerView({ client, selectedDates, setSelectedDates, blockedDates = [], onSubmit }) {
   const [notes, setNotes] = useState('');
   const [validationError, setValidationError] = useState('');
 
@@ -355,35 +357,36 @@ function DatePickerView({ client, selectedDates, setSelectedDates, onSubmit }) {
   const isBiweekly = client.frequency === 'biweekly';
   const maxDates = 4;
 
-  // Show next 6 weeks of dates for selection
-  const availableDates = [];
-  for (let i = 1; i <= 42; i++) {
-    const date = new Date(today);
-    date.setDate(date.getDate() + i);
-    // Only show weekdays (Mon-Fri)
-    if (date.getDay() !== 0 && date.getDay() !== 6) {
-      availableDates.push({
-        date: date.toISOString().split('T')[0],
-        display: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
-        weekNumber: Math.floor(i / 7)
-      });
-    }
-  }
+  // Map delivery day name to day of week number (0=Sun, 1=Mon, 2=Tue, 4=Thu)
+  const dayNameToNumber = {
+    'Monday': 1,
+    'Tuesday': 2,
+    'Thursday': 4
+  };
+  const clientDeliveryDayNum = dayNameToNumber[client.deliveryDay];
 
-  // Group dates by week for better display
-  const datesByWeek = {};
-  availableDates.forEach(d => {
-    const weekStart = new Date(d.date + 'T12:00:00');
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
-    const weekKey = weekStart.toISOString().split('T')[0];
-    if (!datesByWeek[weekKey]) {
-      datesByWeek[weekKey] = {
-        label: weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        dates: []
-      };
-    }
-    datesByWeek[weekKey].dates.push(d);
-  });
+  // Get next 4 available dates based on client's delivery day
+  const availableDates = [];
+  let daysChecked = 0;
+  const maxDaysToCheck = 120; // Look ahead ~4 months max
+
+  while (availableDates.length < maxDates && daysChecked < maxDaysToCheck) {
+    daysChecked++;
+    const date = new Date(today);
+    date.setDate(date.getDate() + daysChecked);
+    const dateStr = date.toISOString().split('T')[0];
+
+    // Check if this day matches the client's delivery day
+    if (date.getDay() !== clientDeliveryDayNum) continue;
+
+    // Check if this date is blocked by admin
+    if (blockedDates.includes(dateStr)) continue;
+
+    availableDates.push({
+      date: dateStr,
+      display: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+    });
+  }
 
   // Validate biweekly spacing (at least 2 weeks apart)
   const validateBiweeklySpacing = (dates) => {
@@ -450,6 +453,21 @@ function DatePickerView({ client, selectedDates, setSelectedDates, onSubmit }) {
     return false;
   };
 
+  // If no delivery day set, show message
+  if (!client.deliveryDay) {
+    return (
+      <div className="bg-white rounded-lg shadow-lg p-6 text-center">
+        <Calendar size={32} className="mx-auto mb-4 text-gray-400" />
+        <h3 className="text-lg font-bold mb-2" style={{ color: '#3d59ab' }}>
+          Delivery Day Not Set
+        </h3>
+        <p className="text-gray-600">
+          Please contact us to set your preferred delivery day before selecting dates.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white rounded-lg shadow-lg p-6">
       <div className="flex items-center gap-3 mb-4">
@@ -460,7 +478,7 @@ function DatePickerView({ client, selectedDates, setSelectedDates, onSubmit }) {
       </div>
 
       <p className="text-gray-600 mb-2">
-        Choose {maxDates} dates for your upcoming deliveries.
+        Your deliveries are on <strong>{client.deliveryDay}s</strong>. Choose {maxDates} upcoming dates.
       </p>
 
       {isBiweekly && (
@@ -480,37 +498,30 @@ function DatePickerView({ client, selectedDates, setSelectedDates, onSubmit }) {
         Selected: {selectedDates.length} / {maxDates}
       </div>
 
-      <div className="space-y-4 mb-6 max-h-64 overflow-y-auto">
-        {Object.entries(datesByWeek).map(([weekKey, { label, dates }]) => (
-          <div key={weekKey}>
-            <p className="text-xs font-medium text-gray-500 mb-2">Week of {label}</p>
-            <div className="grid grid-cols-3 gap-2">
-              {dates.map(({ date, display }) => {
-                const isSelected = selectedDates.includes(date);
-                const isDisabled = isDateDisabled(date);
+      <div className="space-y-2 mb-6">
+        {availableDates.map(({ date, display }) => {
+          const isSelected = selectedDates.includes(date);
+          const isDisabled = isDateDisabled(date);
 
-                return (
-                  <button
-                    key={date}
-                    onClick={() => toggleDate(date)}
-                    disabled={isDisabled && !isSelected}
-                    className={`p-2 rounded-lg border-2 text-center transition-all text-sm ${
-                      isSelected
-                        ? 'border-blue-500 bg-blue-50'
-                        : isDisabled
-                        ? 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                  >
-                    <p className={`font-medium ${isSelected ? 'text-blue-700' : ''}`}>
-                      {display}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ))}
+          return (
+            <button
+              key={date}
+              onClick={() => toggleDate(date)}
+              disabled={isDisabled && !isSelected}
+              className={`w-full p-3 rounded-lg border-2 text-left transition-all ${
+                isSelected
+                  ? 'border-blue-500 bg-blue-50'
+                  : isDisabled
+                  ? 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
+                  : 'border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              <p className={`font-medium ${isSelected ? 'text-blue-700' : ''}`}>
+                {display}
+              </p>
+            </button>
+          );
+        })}
       </div>
 
       {/* Notes field */}

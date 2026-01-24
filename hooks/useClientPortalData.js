@@ -10,6 +10,7 @@ export function useClientPortalData() {
   const [orderHistory, setOrderHistory] = useState([]);
   const [recipes, setRecipes] = useState({});
   const [clientPortalData, setClientPortalData] = useState({});
+  const [blockedDates, setBlockedDates] = useState([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Load from localStorage
@@ -26,6 +27,7 @@ export function useClientPortalData() {
           if (parsed.orderHistory) setOrderHistory(parsed.orderHistory);
           if (parsed.recipes) setRecipes(parsed.recipes);
           if (parsed.clientPortalData) setClientPortalData(parsed.clientPortalData);
+          if (parsed.blockedDates) setBlockedDates(parsed.blockedDates);
         } catch (e) {
           console.error('Error loading saved data:', e);
         }
@@ -123,6 +125,7 @@ export function useClientPortalData() {
     orderHistory,
     recipes,
     clientPortalData,
+    blockedDates,
     isLoaded,
     getClientById,
     getClientMenuItems,
