@@ -72,22 +72,91 @@ export default function DeliveriesTab({
 
   const ordersForDate = getOrdersForDate(selectedDate);
 
-  // Get unique client names from ready orders and map to client data
+  // Helper to get contacts from a client (handles migration from old single-contact format)
+  const getClientContacts = (client) => {
+    if (client?.contacts && client.contacts.length > 0) {
+      return client.contacts;
+    }
+    // Migrate old single contact format
+    return [{
+      name: client?.name || '',
+      email: client?.email || '',
+      phone: client?.phone || '',
+      address: client?.address || ''
+    }];
+  };
+
+  // Get unique client names from ready orders and expand to delivery stops (one per unique address)
   const getClientsWithReadyOrders = () => {
     const clientNames = [...new Set(ordersForDate.map(o => o.clientName))];
-    return clientNames.map(name => {
+    const deliveryStops = [];
+
+    clientNames.forEach(name => {
       const client = clients.find(c => c.name === name);
+      if (client?.pickup) return; // Exclude pickup clients
+
       const orders = ordersForDate.filter(o => o.clientName === name);
-      return {
-        ...client,
-        name,
-        orders,
-        zone: client?.zone || 'Unassigned',
-        address: client?.address || '',
-        displayName: client?.displayName || name,
-        pickup: client?.pickup || false
-      };
-    }).filter(c => !c.pickup); // Exclude pickup clients from delivery routes
+      const contacts = getClientContacts(client);
+
+      // Group contacts by address (normalize to lowercase for comparison)
+      const contactsWithAddress = contacts.filter(c => c.address);
+      const addressGroups = {};
+
+      contactsWithAddress.forEach((contact, idx) => {
+        const normalizedAddr = contact.address.toLowerCase().trim();
+        if (!addressGroups[normalizedAddr]) {
+          addressGroups[normalizedAddr] = {
+            address: contact.address,
+            contacts: [],
+            originalIndex: idx
+          };
+        }
+        addressGroups[normalizedAddr].contacts.push(contact);
+      });
+
+      const uniqueAddresses = Object.values(addressGroups);
+
+      if (uniqueAddresses.length === 0) {
+        // No addresses - still show as one stop
+        deliveryStops.push({
+          ...client,
+          name,
+          orders,
+          zone: client?.zone || 'Unassigned',
+          address: '',
+          displayName: client?.displayName || name,
+          pickup: false,
+          contactNames: contacts.map(c => c.name).filter(Boolean),
+          contactPhones: contacts.map(c => c.phone).filter(Boolean),
+          contactIndex: 0,
+          totalStops: 1,
+          stopKey: name
+        });
+      } else {
+        // Create a stop for each unique address
+        uniqueAddresses.forEach((group, idx) => {
+          deliveryStops.push({
+            ...client,
+            name,
+            orders,
+            zone: client?.zone || 'Unassigned',
+            address: group.address,
+            displayName: client?.displayName || name,
+            pickup: false,
+            // All contacts at this address
+            contactNames: group.contacts.map(c => c.name).filter(Boolean),
+            contactPhones: group.contacts.map(c => c.phone).filter(Boolean),
+            contactEmails: group.contacts.map(c => c.email).filter(Boolean),
+            contactIndex: idx,
+            totalStops: uniqueAddresses.length,
+            // Unique key for this stop
+            stopKey: uniqueAddresses.length > 1 ? `${name}-${idx}` : name
+          });
+        });
+      }
+    });
+
+    return deliveryStops;
   };
 
   const deliveringClients = getClientsWithReadyOrders();
@@ -103,16 +172,22 @@ export default function DeliveriesTab({
 
   const getDriverForZone = (zone) => drivers.find(d => d.zone === zone);
 
-  const getDeliveryStatus = (date, clientName) => {
-    return deliveryLog.find(entry => entry.date === date && entry.clientName === clientName);
+  const getDeliveryStatus = (date, clientName, contactIndex = 0) => {
+    return deliveryLog.find(entry =>
+      entry.date === date &&
+      entry.clientName === clientName &&
+      (entry.contactIndex === contactIndex || (entry.contactIndex === undefined && contactIndex === 0))
+    );
   };
 
-  const markDeliveryComplete = (clientName, zone, problem = null, problemNote = '', bagsReturned = false) => {
+  const markDeliveryComplete = (clientName, zone, contactIndex = 0, contactName = '', problem = null, problemNote = '', bagsReturned = false) => {
     const driver = getDriverForZone(zone);
     const newEntry = {
       id: Date.now(),
       date: selectedDate,
       clientName,
+      contactIndex,
+      contactName,
       zone,
       driverName: driver?.name || 'Unknown',
       completedAt: new Date().toISOString(),
@@ -122,15 +197,28 @@ export default function DeliveriesTab({
     };
     setDeliveryLog([...deliveryLog, newEntry]);
 
-    // Move orders from readyForDelivery to orderHistory
-    const clientOrders = readyForDelivery.filter(
-      order => order.clientName === clientName && order.date === selectedDate
-    );
-    if (clientOrders.length > 0) {
-      setOrderHistory(prev => [...prev, ...clientOrders]);
-      setReadyForDelivery(prev =>
-        prev.filter(order => !(order.clientName === clientName && order.date === selectedDate))
+    // Check if all contacts for this client are delivered
+    const client = clients.find(c => c.name === clientName);
+    const contacts = getClientContacts(client);
+    const contactsWithAddress = contacts.filter(c => c.address);
+    const totalStops = contactsWithAddress.length || 1;
+
+    // Count completed stops for this client on this date (including the one we just added)
+    const completedStops = deliveryLog.filter(
+      entry => entry.date === selectedDate && entry.clientName === clientName
+    ).length + 1;
+
+    // Only move orders to history when all stops are complete
+    if (completedStops >= totalStops) {
+      const clientOrders = readyForDelivery.filter(
+        order => order.clientName === clientName && order.date === selectedDate
       );
+      if (clientOrders.length > 0) {
+        setOrderHistory(prev => [...prev, ...clientOrders]);
+        setReadyForDelivery(prev =>
+          prev.filter(order => !(order.clientName === clientName && order.date === selectedDate))
+        );
+      }
     }
   };
 
@@ -369,17 +457,21 @@ export default function DeliveriesTab({
                 </div>
                 <div className="space-y-2">
                   {zoneClients.map((client, index) => {
-                    const status = getDeliveryStatus(selectedDate, client.name);
-                    const isDragging = draggedItem?.zone === zone && draggedItem?.clientName === client.name;
-                    const isDragOver = dragOverItem?.zone === zone && dragOverItem?.clientName === client.name;
+                    const stopKey = client.stopKey || client.name;
+                    const status = getDeliveryStatus(selectedDate, client.name, client.contactIndex || 0);
+                    const isDragging = draggedItem?.zone === zone && draggedItem?.clientName === stopKey;
+                    const isDragOver = dragOverItem?.zone === zone && dragOverItem?.clientName === stopKey;
+                    const isMultiStop = client.totalStops > 1;
+                    const contactNames = client.contactNames || [];
+                    const contactPhones = client.contactPhones || [];
                     return (
                       <div
-                        key={client.name}
+                        key={stopKey}
                         draggable
-                        onDragStart={(e) => handleDragStart(e, zone, client.name)}
-                        onDragOver={(e) => handleDragOver(e, zone, client.name)}
+                        onDragStart={(e) => handleDragStart(e, zone, stopKey)}
+                        onDragOver={(e) => handleDragOver(e, zone, stopKey)}
                         onDragLeave={handleDragLeave}
-                        onDrop={(e) => handleDrop(e, zone, client.name)}
+                        onDrop={(e) => handleDrop(e, zone, stopKey)}
                         onDragEnd={handleDragEnd}
                         className={`border-2 rounded-lg p-3 flex items-center gap-3 cursor-move transition-all ${
                           isDragging ? 'opacity-50' : ''
@@ -395,6 +487,16 @@ export default function DeliveriesTab({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <h4 className="font-bold">{client.displayName || client.name}</h4>
+                            {isMultiStop && (
+                              <span className="text-xs px-2 py-1 rounded bg-purple-100 text-purple-700">
+                                Stop {client.contactIndex + 1}/{client.totalStops}
+                              </span>
+                            )}
+                            {contactNames.length > 0 && contactNames.some(n => n && n !== client.name) && (
+                              <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 flex items-center gap-1">
+                                <User size={12} /> {contactNames.filter(Boolean).join(', ')}
+                              </span>
+                            )}
                             {status && (
                               <span className="text-xs px-2 py-1 rounded bg-green-100 text-green-700 flex items-center gap-1">
                                 <Check size={12} /> {formatTime(status.completedAt)}
@@ -425,7 +527,12 @@ export default function DeliveriesTab({
                               {client.address}
                             </a>
                           )}
-                          {client.orders && client.orders.length > 0 && (
+                          {contactPhones.length > 0 && (
+                            <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
+                              <Phone size={12} /> {contactPhones.join(', ')}
+                            </p>
+                          )}
+                          {client.orders && client.orders.length > 0 && client.contactIndex === 0 && (
                             <p className="text-xs text-gray-400 mt-1">
                               {client.orders.map(o => `${o.portions}p: ${o.dishes.join(', ')}`).join(' | ')}
                             </p>
@@ -434,14 +541,14 @@ export default function DeliveriesTab({
                         {!status && (
                           <div className="flex items-center gap-2">
                             <button
-                              onClick={() => markDeliveryComplete(client.name, zone, null, '', true)}
+                              onClick={() => markDeliveryComplete(client.name, zone, client.contactIndex || 0, contactNames.join(', '), null, '', true)}
                               className="px-3 py-1 rounded text-sm text-white flex items-center gap-1"
                               style={{ backgroundColor: '#22c55e' }}
                             >
                               <ShoppingBag size={14} /> + Bags
                             </button>
                             <button
-                              onClick={() => markDeliveryComplete(client.name, zone, null, '', false)}
+                              onClick={() => markDeliveryComplete(client.name, zone, client.contactIndex || 0, contactNames.join(', '), null, '', false)}
                               className="px-3 py-1 rounded text-sm bg-gray-200"
                             >
                               No Bags

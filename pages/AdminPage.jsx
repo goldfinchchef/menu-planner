@@ -560,7 +560,8 @@ export default function AdminPage() {
   // Client management state
   const clientsFileRef = React.useRef();
   const [newClient, setNewClient] = useState({
-    name: '', displayName: '', persons: 1, address: '', email: '', phone: '',
+    name: '', displayName: '', persons: 1,
+    contacts: [{ name: '', email: '', phone: '', address: '' }],
     notes: '', mealsPerWeek: 0, frequency: 'weekly', status: 'active',
     pausedDate: '', honeyBookLink: '', billingNotes: '', deliveryDay: '', zone: '',
     pickup: false, planPrice: 0, serviceFee: 0, prepayDiscount: false,
@@ -1070,7 +1071,8 @@ export default function AdminPage() {
     }
     updateClients([...clients, { ...newClient, id: Date.now() }]);
     setNewClient({
-      name: '', displayName: '', persons: 1, address: '', email: '', phone: '',
+      name: '', displayName: '', persons: 1,
+      contacts: [{ name: '', email: '', phone: '', address: '' }],
       notes: '', mealsPerWeek: 0, frequency: 'weekly', status: 'active',
       pausedDate: '', honeyBookLink: '', billingNotes: '', deliveryDay: '', zone: '',
       pickup: false, planPrice: 0, serviceFee: 0, prepayDiscount: false,

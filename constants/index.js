@@ -42,13 +42,18 @@ export const DEFAULT_CLIENTS = [
   { name: "Scott Inman", displayName: "", persons: 4, address: "3418 Putnam Rd, Falls Church, VA 22042", email: "", phone: "", notes: "", mealsPerWeek: 4, frequency: "weekly", status: "active", pausedDate: "", honeyBookLink: "", billingNotes: "", deliveryDay: "", zone: "", pickup: false }
 ];
 
+export const DEFAULT_CONTACT = {
+  name: '',
+  email: '',
+  phone: '',
+  address: ''
+};
+
 export const DEFAULT_NEW_CLIENT = {
   name: '',
   displayName: '',
   persons: 1,
-  address: '',
-  email: '',
-  phone: '',
+  contacts: [{ ...DEFAULT_CONTACT }],
   notes: '',
   mealsPerWeek: 0,
   frequency: 'weekly',
