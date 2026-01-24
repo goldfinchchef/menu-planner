@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
-import { ChefHat } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ChefHat, Settings } from 'lucide-react';
 import Tabs from './components/Tabs';
 import WorkflowStatus from './components/WorkflowStatus';
 import { useAppData } from './hooks/useAppData';
@@ -12,7 +13,6 @@ import {
   ClientsTab,
   IngredientsTab,
   SubscriptionsTab,
-  DriversTab,
   DeliveriesTab
 } from './tabs';
 import {
@@ -396,6 +396,13 @@ export default function App() {
             <ChefHat size={32} style={{ color: '#ffd700' }} />
             <h1 className="text-2xl font-bold">Goldfinch Chef</h1>
           </div>
+          <Link
+            to="/admin"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"
+          >
+            <Settings size={20} />
+            Admin
+          </Link>
         </div>
       </header>
 
@@ -503,15 +510,6 @@ export default function App() {
             weeklyTasks={weeklyTasks}
             setWeeklyTasks={setWeeklyTasks}
             clientPortalData={clientPortalData}
-          />
-        )}
-
-        {activeTab === 'drivers' && (
-          <DriversTab
-            drivers={drivers}
-            setDrivers={setDrivers}
-            newDriver={newDriver}
-            setNewDriver={setNewDriver}
           />
         )}
 

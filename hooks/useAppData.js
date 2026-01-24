@@ -35,6 +35,8 @@ export function useAppData() {
   const [readyForDelivery, setReadyForDelivery] = useState([]);
   const [clientPortalData, setClientPortalData] = useState({});
   const [blockedDates, setBlockedDates] = useState([]);
+  const [adminSettings, setAdminSettings] = useState({ routeStartAddress: '' });
+  const [customTasks, setCustomTasks] = useState([]);
 
   // Load from localStorage
   useEffect(() => {
@@ -54,6 +56,8 @@ export function useAppData() {
         if (parsed.readyForDelivery) setReadyForDelivery(parsed.readyForDelivery);
         if (parsed.clientPortalData) setClientPortalData(parsed.clientPortalData);
         if (parsed.blockedDates) setBlockedDates(parsed.blockedDates);
+        if (parsed.adminSettings) setAdminSettings(parsed.adminSettings);
+        if (parsed.customTasks) setCustomTasks(parsed.customTasks);
       } catch (e) {
         console.error('Error loading saved data:', e);
       }
@@ -75,10 +79,12 @@ export function useAppData() {
       readyForDelivery,
       clientPortalData,
       blockedDates,
+      adminSettings,
+      customTasks,
       lastSaved: new Date().toISOString()
     };
     localStorage.setItem('goldfinchChefData', JSON.stringify(dataToSave));
-  }, [recipes, clients, menuItems, masterIngredients, orderHistory, weeklyTasks, drivers, deliveryLog, bagReminders, readyForDelivery, clientPortalData, blockedDates]);
+  }, [recipes, clients, menuItems, masterIngredients, orderHistory, weeklyTasks, drivers, deliveryLog, bagReminders, readyForDelivery, clientPortalData, blockedDates, adminSettings, customTasks]);
 
   const findSimilarIngredients = (name) => {
     if (!name || name.length < 2) return [];
@@ -196,6 +202,8 @@ export function useAppData() {
     readyForDelivery, setReadyForDelivery,
     clientPortalData, setClientPortalData,
     blockedDates, setBlockedDates,
+    adminSettings, setAdminSettings,
+    customTasks, setCustomTasks,
     // Functions
     findSimilarIngredients,
     findExactMatch,

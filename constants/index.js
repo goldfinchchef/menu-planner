@@ -27,7 +27,6 @@ export const TABS = [
   { id: 'history', label: 'History', icon: Clock },
   { id: 'clients', label: 'Clients', icon: Users },
   { id: 'subscriptions', label: 'Subscriptions', icon: RefreshCw },
-  { id: 'drivers', label: 'Drivers', icon: Car },
   { id: 'deliveries', label: 'Deliveries', icon: Truck },
   { id: 'ingredients', label: 'Ingredients', icon: DollarSign }
 ];
