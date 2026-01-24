@@ -84,7 +84,15 @@ export default function App() {
     if (!file) return;
     parseClientsCSV(
       file,
-      (imported) => { setClients(imported); alert(`Imported ${imported.length} clients!`); },
+      (imported) => {
+        if (imported.length === 0) {
+          alert('No subscriptions found in CSV. Please check the file format.');
+          return;
+        }
+        const totalContacts = imported.reduce((sum, sub) => sum + (sub.contacts?.length || 0), 0);
+        setClients(imported);
+        alert(`Import successful!\n\n${imported.length} subscription(s) imported\n${totalContacts} contact(s) total`);
+      },
       (err) => alert('Error parsing CSV: ' + err.message)
     );
     e.target.value = '';
@@ -95,7 +103,14 @@ export default function App() {
     if (!file) return;
     parseIngredientsCSV(
       file,
-      (imported) => { setMasterIngredients(imported); alert(`Imported ${imported.length} ingredients!`); },
+      (imported) => {
+        if (imported.length === 0) {
+          alert('No ingredients found in CSV. Please check the file format.');
+          return;
+        }
+        setMasterIngredients(imported);
+        alert(`Import successful!\n\n${imported.length} ingredient(s) imported`);
+      },
       (err) => alert('Error parsing CSV: ' + err.message)
     );
     e.target.value = '';
@@ -107,9 +122,14 @@ export default function App() {
     parseRecipesCSV(
       file,
       (newRecipes, ingredientsToAdd) => {
+        const recipeCount = Object.values(newRecipes).flat().length;
+        if (recipeCount === 0) {
+          alert('No recipes found in CSV. Please check the file format.');
+          return;
+        }
         setRecipes(newRecipes);
         ingredientsToAdd.forEach(ing => addToMasterIngredients(ing));
-        alert(`Imported ${Object.values(newRecipes).flat().length} recipes!`);
+        alert(`Import successful!\n\n${recipeCount} recipe(s) imported\n${ingredientsToAdd.length} ingredient(s) added to master list`);
       },
       (err) => alert('Error parsing CSV: ' + err.message)
     );

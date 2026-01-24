@@ -103,17 +103,86 @@ export const parseClientsCSV = (file, onSuccess, onError) => {
   Papa.parse(file, {
     header: true,
     complete: (results) => {
-      const imported = results.data.filter(row => row.name).map(row => ({
-        name: row.name || '',
-        persons: parseInt(row.persons) || 1,
-        address: row.address || '',
-        email: row.email || '',
-        phone: row.phone || '',
-        notes: row.notes || '',
-        mealsPerWeek: parseInt(row.mealsPerWeek) || 0,
-        status: row.status || 'Active'
-      }));
-      onSuccess(imported);
+      // Check if this is the new subscription format or old format
+      const headers = results.meta.fields || [];
+      const isNewFormat = headers.includes('subscriptionId') || headers.includes('subscriptionDisplayName');
+
+      if (isNewFormat) {
+        // New subscription/contacts format - group rows by subscription
+        const subscriptionMap = {};
+        let currentSubscription = null;
+
+        results.data.forEach(row => {
+          // If row has subscription data, start a new subscription
+          if (row.subscriptionId || row.subscriptionDisplayName) {
+            const subId = row.subscriptionId || Date.now().toString() + Math.random();
+            currentSubscription = {
+              subscriptionId: subId,
+              displayName: row.subscriptionDisplayName || '',
+              portions: parseInt(row.portions) || 1,
+              mealsPerWeek: parseInt(row.mealsPerWeek) || 0,
+              frequency: row.frequency || 'weekly',
+              status: row.status || 'active',
+              zone: row.zone || '',
+              deliveryDay: row.deliveryDay || '',
+              pickup: row.pickup === 'true' || row.pickup === true,
+              planPrice: parseFloat(row.planPrice) || 0,
+              serviceFee: parseFloat(row.serviceFee) || 0,
+              prepayDiscount: row.prepayDiscount === 'true' || row.prepayDiscount === true,
+              newClientFeePaid: row.newClientFeePaid === 'true' || row.newClientFeePaid === true,
+              paysOwnGroceries: row.paysOwnGroceries === 'true' || row.paysOwnGroceries === true,
+              billingNotes: row.billingNotes || '',
+              accessCode: row.accessCode || '',
+              honeyBookLink: row.honeyBookLink || '',
+              contacts: []
+            };
+            subscriptionMap[subId] = currentSubscription;
+          }
+
+          // Add contact to current subscription if there's contact data
+          if (currentSubscription && (row.contactFullName || row.email || row.address)) {
+            currentSubscription.contacts.push({
+              fullName: row.contactFullName || '',
+              displayName: row.contactDisplayName || '',
+              email: row.email || '',
+              phone: row.phone || '',
+              address: row.address || ''
+            });
+          }
+        });
+
+        const imported = Object.values(subscriptionMap).filter(sub => sub.displayName || sub.contacts.length > 0);
+        onSuccess(imported);
+      } else {
+        // Old client format - convert to subscription format
+        const imported = results.data.filter(row => row.name).map(row => ({
+          subscriptionId: Date.now().toString() + Math.random(),
+          displayName: row.displayName || row.name || '',
+          portions: parseInt(row.persons) || parseInt(row.portions) || 1,
+          mealsPerWeek: parseInt(row.mealsPerWeek) || 0,
+          frequency: row.frequency || 'weekly',
+          status: row.status || 'active',
+          zone: row.zone || '',
+          deliveryDay: row.deliveryDay || '',
+          pickup: row.pickup === 'true' || row.pickup === true || false,
+          planPrice: parseFloat(row.planPrice) || 0,
+          serviceFee: parseFloat(row.serviceFee) || 0,
+          prepayDiscount: false,
+          newClientFeePaid: false,
+          paysOwnGroceries: false,
+          billingNotes: row.notes || row.billingNotes || '',
+          accessCode: row.accessCode || '',
+          honeyBookLink: row.honeyBookLink || '',
+          contacts: [{
+            fullName: row.name || '',
+            displayName: '',
+            email: row.email || '',
+            phone: row.phone || '',
+            address: row.address || ''
+          }]
+        }));
+        onSuccess(imported);
+      }
     },
     error: onError
   });
