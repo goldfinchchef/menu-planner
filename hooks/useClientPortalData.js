@@ -85,6 +85,7 @@ export function useClientPortalData() {
   const getClientMenuItems = useCallback((clientName, date) => {
     return menuItems.filter(item =>
       item.clientName === clientName &&
+      item.approved === true &&
       (!date || item.date === date)
     );
   }, [menuItems]);

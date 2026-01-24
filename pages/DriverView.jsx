@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Truck, MapPin, Camera, AlertTriangle, Check, ChevronLeft,
   ChevronRight, List, LogOut, Package, ShoppingBag, Home, User
@@ -12,6 +13,7 @@ const HANDOFF_TYPES = {
 };
 
 export default function DriverView() {
+  const [searchParams] = useSearchParams();
   const {
     clients,
     readyForDelivery,
@@ -21,13 +23,29 @@ export default function DriverView() {
     updateDeliveryLog,
     updateReadyForDelivery,
     updateOrderHistory,
-    authenticateDriver
+    authenticateDriver,
+    getDriverByName
   } = useDriverData();
 
   // Auth state
   const [accessCode, setAccessCode] = useState('');
   const [driver, setDriver] = useState(null);
   const [authError, setAuthError] = useState('');
+  const [isAdminPreview, setIsAdminPreview] = useState(false);
+
+  // Auto-login from admin preview
+  useEffect(() => {
+    if (isLoaded && !driver) {
+      const adminDriver = searchParams.get('admin_driver');
+      if (adminDriver) {
+        const foundDriver = getDriverByName(adminDriver);
+        if (foundDriver) {
+          setDriver(foundDriver);
+          setIsAdminPreview(true);
+        }
+      }
+    }
+  }, [isLoaded, searchParams, driver, getDriverByName]);
 
   // Delivery state
   const [currentStopIndex, setCurrentStopIndex] = useState(0);

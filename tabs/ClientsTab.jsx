@@ -209,7 +209,7 @@ export default function ClientsTab({
               type="checkbox"
               id="pickup"
               checked={newClient.pickup || false}
-              onChange={(e) => setNewClient({ ...newClient, pickup: e.target.checked })}
+              onChange={(e) => setNewClient({ ...newClient, pickup: e.target.checked, serviceFee: e.target.checked ? 0 : newClient.serviceFee })}
               className="w-5 h-5 rounded border-2"
               style={{ accentColor: '#3d59ab' }}
             />
@@ -218,6 +218,76 @@ export default function ClientsTab({
             </label>
           </div>
         </div>
+
+        {/* Pricing Section */}
+        <div className="mt-6 pt-6 border-t-2" style={{ borderColor: '#ebb582' }}>
+          <h3 className="text-lg font-bold mb-4" style={{ color: '#3d59ab' }}>Pricing</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <FormField label="Plan Price ($)">
+              <input
+                type="number"
+                step="0.01"
+                value={newClient.planPrice || 0}
+                onChange={(e) => setNewClient({ ...newClient, planPrice: parseFloat(e.target.value) || 0 })}
+                placeholder="0.00"
+                className={inputStyle}
+                style={borderStyle}
+              />
+            </FormField>
+            <FormField label="Service Fee ($)">
+              <input
+                type="number"
+                step="0.01"
+                value={newClient.pickup ? 0 : (newClient.serviceFee || 0)}
+                onChange={(e) => setNewClient({ ...newClient, serviceFee: parseFloat(e.target.value) || 0 })}
+                placeholder="0.00"
+                className={inputStyle}
+                style={borderStyle}
+                disabled={newClient.pickup}
+              />
+            </FormField>
+            <div className="flex items-center gap-2 pt-6">
+              <input
+                type="checkbox"
+                id="prepayDiscount"
+                checked={newClient.prepayDiscount || false}
+                onChange={(e) => setNewClient({ ...newClient, prepayDiscount: e.target.checked })}
+                className="w-5 h-5 rounded border-2"
+                style={{ accentColor: '#3d59ab' }}
+              />
+              <label htmlFor="prepayDiscount" className="text-sm font-medium" style={{ color: '#423d3c' }}>
+                Pre-pay Discount (10% off)
+              </label>
+            </div>
+            <div className="flex items-center gap-2 pt-6">
+              <input
+                type="checkbox"
+                id="newClientFeePaid"
+                checked={newClient.newClientFeePaid || false}
+                onChange={(e) => setNewClient({ ...newClient, newClientFeePaid: e.target.checked })}
+                className="w-5 h-5 rounded border-2"
+                style={{ accentColor: '#3d59ab' }}
+              />
+              <label htmlFor="newClientFeePaid" className="text-sm font-medium" style={{ color: '#423d3c' }}>
+                New Client Fee Paid
+              </label>
+            </div>
+            <div className="flex items-center gap-2 pt-2">
+              <input
+                type="checkbox"
+                id="paysOwnGroceries"
+                checked={newClient.paysOwnGroceries || false}
+                onChange={(e) => setNewClient({ ...newClient, paysOwnGroceries: e.target.checked })}
+                className="w-5 h-5 rounded border-2"
+                style={{ accentColor: '#3d59ab' }}
+              />
+              <label htmlFor="paysOwnGroceries" className="text-sm font-medium" style={{ color: '#423d3c' }}>
+                Pays Own Groceries
+              </label>
+            </div>
+          </div>
+        </div>
+
         <button
           onClick={addClient}
           className="mt-4 px-6 py-2 rounded-lg text-white"
@@ -355,7 +425,7 @@ export default function ClientsTab({
                         type="checkbox"
                         id={`pickup-edit-${i}`}
                         checked={editingClient.pickup || false}
-                        onChange={(e) => setEditingClient({ ...editingClient, pickup: e.target.checked })}
+                        onChange={(e) => setEditingClient({ ...editingClient, pickup: e.target.checked, serviceFee: e.target.checked ? 0 : editingClient.serviceFee })}
                         className="w-5 h-5 rounded border-2"
                         style={{ accentColor: '#3d59ab' }}
                       />
@@ -364,6 +434,74 @@ export default function ClientsTab({
                       </label>
                     </div>
                   </div>
+
+                  {/* Pricing Section for Edit */}
+                  <div className="mt-4 pt-4 border-t-2" style={{ borderColor: '#ebb582' }}>
+                    <h4 className="text-md font-bold mb-3" style={{ color: '#3d59ab' }}>Pricing</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <FormField label="Plan Price ($)">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={editingClient.planPrice || 0}
+                          onChange={(e) => setEditingClient({ ...editingClient, planPrice: parseFloat(e.target.value) || 0 })}
+                          className={inputStyle}
+                          style={borderStyle}
+                        />
+                      </FormField>
+                      <FormField label="Service Fee ($)">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={editingClient.pickup ? 0 : (editingClient.serviceFee || 0)}
+                          onChange={(e) => setEditingClient({ ...editingClient, serviceFee: parseFloat(e.target.value) || 0 })}
+                          className={inputStyle}
+                          style={borderStyle}
+                          disabled={editingClient.pickup}
+                        />
+                      </FormField>
+                      <div className="flex items-center gap-2 pt-6">
+                        <input
+                          type="checkbox"
+                          id={`prepayDiscount-edit-${i}`}
+                          checked={editingClient.prepayDiscount || false}
+                          onChange={(e) => setEditingClient({ ...editingClient, prepayDiscount: e.target.checked })}
+                          className="w-5 h-5 rounded border-2"
+                          style={{ accentColor: '#3d59ab' }}
+                        />
+                        <label htmlFor={`prepayDiscount-edit-${i}`} className="text-sm font-medium" style={{ color: '#423d3c' }}>
+                          Pre-pay (10% off)
+                        </label>
+                      </div>
+                      <div className="flex items-center gap-2 pt-6">
+                        <input
+                          type="checkbox"
+                          id={`newClientFeePaid-edit-${i}`}
+                          checked={editingClient.newClientFeePaid || false}
+                          onChange={(e) => setEditingClient({ ...editingClient, newClientFeePaid: e.target.checked })}
+                          className="w-5 h-5 rounded border-2"
+                          style={{ accentColor: '#3d59ab' }}
+                        />
+                        <label htmlFor={`newClientFeePaid-edit-${i}`} className="text-sm font-medium" style={{ color: '#423d3c' }}>
+                          New Client Fee Paid
+                        </label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id={`paysOwnGroceries-edit-${i}`}
+                          checked={editingClient.paysOwnGroceries || false}
+                          onChange={(e) => setEditingClient({ ...editingClient, paysOwnGroceries: e.target.checked })}
+                          className="w-5 h-5 rounded border-2"
+                          style={{ accentColor: '#3d59ab' }}
+                        />
+                        <label htmlFor={`paysOwnGroceries-edit-${i}`} className="text-sm font-medium" style={{ color: '#423d3c' }}>
+                          Pays Own Groceries
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="flex gap-2 mt-4">
                     <button
                       onClick={saveEditing}

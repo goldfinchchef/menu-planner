@@ -37,6 +37,7 @@ export function useAppData() {
   const [blockedDates, setBlockedDates] = useState([]);
   const [adminSettings, setAdminSettings] = useState({ routeStartAddress: '' });
   const [customTasks, setCustomTasks] = useState([]);
+  const [groceryBills, setGroceryBills] = useState([]);
 
   // Load from localStorage
   useEffect(() => {
@@ -58,6 +59,7 @@ export function useAppData() {
         if (parsed.blockedDates) setBlockedDates(parsed.blockedDates);
         if (parsed.adminSettings) setAdminSettings(parsed.adminSettings);
         if (parsed.customTasks) setCustomTasks(parsed.customTasks);
+        if (parsed.groceryBills) setGroceryBills(parsed.groceryBills);
       } catch (e) {
         console.error('Error loading saved data:', e);
       }
@@ -81,10 +83,11 @@ export function useAppData() {
       blockedDates,
       adminSettings,
       customTasks,
+      groceryBills,
       lastSaved: new Date().toISOString()
     };
     localStorage.setItem('goldfinchChefData', JSON.stringify(dataToSave));
-  }, [recipes, clients, menuItems, masterIngredients, orderHistory, weeklyTasks, drivers, deliveryLog, bagReminders, readyForDelivery, clientPortalData, blockedDates, adminSettings, customTasks]);
+  }, [recipes, clients, menuItems, masterIngredients, orderHistory, weeklyTasks, drivers, deliveryLog, bagReminders, readyForDelivery, clientPortalData, blockedDates, adminSettings, customTasks, groceryBills]);
 
   const findSimilarIngredients = (name) => {
     if (!name || name.length < 2) return [];
@@ -204,6 +207,7 @@ export function useAppData() {
     blockedDates, setBlockedDates,
     adminSettings, setAdminSettings,
     customTasks, setCustomTasks,
+    groceryBills, setGroceryBills,
     // Functions
     findSimilarIngredients,
     findExactMatch,

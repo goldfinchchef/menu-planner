@@ -78,6 +78,10 @@ export function useDriverData() {
     return drivers.find(d => d.accessCode === accessCode);
   }, [drivers]);
 
+  const getDriverByName = useCallback((name) => {
+    return drivers.find(d => d.name === name);
+  }, [drivers]);
+
   return {
     drivers,
     clients,
@@ -88,6 +92,7 @@ export function useDriverData() {
     updateDeliveryLog,
     updateReadyForDelivery,
     updateOrderHistory,
-    authenticateDriver
+    authenticateDriver,
+    getDriverByName
   };
 }

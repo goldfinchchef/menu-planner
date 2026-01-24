@@ -20,15 +20,12 @@ export const DAYS = ['Monday', 'Tuesday', 'Thursday'];
 export const RECIPE_CATEGORIES = ['protein', 'veg', 'starch', 'sauces', 'breakfast', 'soups'];
 
 export const TABS = [
-  { id: 'menu', label: 'Menu', icon: ChefHat },
   { id: 'recipes', label: 'Recipes', icon: Book },
   { id: 'kds', label: 'KDS', icon: Monitor },
   { id: 'prep', label: 'Shop', icon: List },
   { id: 'history', label: 'History', icon: Clock },
   { id: 'clients', label: 'Clients', icon: Users },
-  { id: 'subscriptions', label: 'Subscriptions', icon: RefreshCw },
-  { id: 'deliveries', label: 'Deliveries', icon: Truck },
-  { id: 'ingredients', label: 'Ingredients', icon: DollarSign }
+  { id: 'deliveries', label: 'Deliveries', icon: Truck }
 ];
 
 export const DEFAULT_RECIPES = {
@@ -61,7 +58,13 @@ export const DEFAULT_NEW_CLIENT = {
   billingNotes: '',
   deliveryDay: '',
   zone: '',
-  pickup: false
+  pickup: false,
+  // Pricing fields
+  planPrice: 0,
+  serviceFee: 0,
+  prepayDiscount: false,
+  newClientFeePaid: false,
+  paysOwnGroceries: false
 };
 
 export const DEFAULT_NEW_DRIVER = {

@@ -5,14 +5,11 @@ import Tabs from './components/Tabs';
 import WorkflowStatus from './components/WorkflowStatus';
 import { useAppData } from './hooks/useAppData';
 import {
-  MenuTab,
   RecipesTab,
   KDSTab,
   PrepTab,
   HistoryTab,
   ClientsTab,
-  IngredientsTab,
-  SubscriptionsTab,
   DeliveriesTab
 } from './tabs';
 import {
@@ -29,7 +26,7 @@ import { DEFAULT_NEW_CLIENT, DEFAULT_NEW_RECIPE, DEFAULT_NEW_MENU_ITEM, DEFAULT_
 import Papa from 'papaparse';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('menu');
+  const [activeTab, setActiveTab] = useState('recipes');
   const {
     recipes, setRecipes,
     menuItems, setMenuItems,
@@ -425,24 +422,6 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'menu' && (
-          <MenuTab
-            menuDate={menuDate}
-            setMenuDate={setMenuDate}
-            clients={clients}
-            selectedClients={selectedClients}
-            setSelectedClients={setSelectedClients}
-            recipes={recipes}
-            newMenuItem={newMenuItem}
-            setNewMenuItem={setNewMenuItem}
-            menuItems={menuItems}
-            addMenuItem={addMenuItem}
-            clearMenu={clearMenu}
-            deleteMenuItem={deleteMenuItem}
-            getOrdersByClient={getOrdersByClient}
-          />
-        )}
-
         {activeTab === 'recipes' && (
           <RecipesTab
             recipes={recipes}
@@ -504,15 +483,6 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'subscriptions' && (
-          <SubscriptionsTab
-            clients={clients}
-            weeklyTasks={weeklyTasks}
-            setWeeklyTasks={setWeeklyTasks}
-            clientPortalData={clientPortalData}
-          />
-        )}
-
         {activeTab === 'deliveries' && (
           <DeliveriesTab
             clients={clients}
@@ -528,27 +498,6 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'ingredients' && (
-          <IngredientsTab
-            masterIngredients={masterIngredients}
-            newIngredient={newIngredient}
-            setNewIngredient={setNewIngredient}
-            editingIngredientId={editingIngredientId}
-            editingIngredientData={editingIngredientData}
-            setEditingIngredientData={setEditingIngredientData}
-            duplicateWarnings={duplicateWarnings}
-            setDuplicateWarnings={setDuplicateWarnings}
-            scanForDuplicates={scanForDuplicates}
-            mergeIngredients={mergeIngredients}
-            addMasterIngredient={addMasterIngredient}
-            deleteMasterIngredient={deleteMasterIngredient}
-            startEditingMasterIngredient={startEditingMasterIngredient}
-            saveEditingMasterIngredient={saveEditingMasterIngredient}
-            cancelEditingMasterIngredient={cancelEditingMasterIngredient}
-            ingredientsFileRef={ingredientsFileRef}
-            exportIngredientsCSV={() => exportIngredientsCSV(masterIngredients)}
-          />
-        )}
       </div>
     </div>
   );
