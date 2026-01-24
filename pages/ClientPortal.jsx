@@ -540,6 +540,238 @@ function DatePickerView({ client, selectedDates, setSelectedDates, onSubmit }) {
   );
 }
 
+// Styled Menu Card Component - Goldfinch Canva Style
+function StyledMenuCard({ client, date, menuItems, readyOrders }) {
+  const displayDate = new Date(date + 'T12:00:00').toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric'
+  }).toUpperCase();
+
+  // Extract all meals from menu items
+  const extractMeals = () => {
+    const meals = [];
+
+    menuItems.forEach(item => {
+      const meal = {
+        protein: item.protein,
+        sides: [item.veg, item.starch].filter(Boolean)
+      };
+      if (meal.protein || meal.sides.length > 0) {
+        meals.push(meal);
+      }
+      // Add extras as separate items
+      if (item.extras) {
+        item.extras.forEach(extra => {
+          meals.push({ protein: extra, sides: [], isExtra: true });
+        });
+      }
+    });
+
+    // Also check ready orders
+    readyOrders.forEach(order => {
+      if (order.dishes) {
+        order.dishes.forEach((dish, idx) => {
+          // First dish is protein, rest could be sides
+          if (idx === 0 || order.dishes.length === 1) {
+            meals.push({ protein: dish, sides: order.dishes.slice(1), isExtra: false });
+          }
+        });
+      }
+    });
+
+    return meals;
+  };
+
+  const meals = extractMeals();
+  const displayName = client.displayName || client.name;
+
+  // Calculate renewal date (4 weeks from delivery date)
+  const deliveryDate = new Date(date + 'T12:00:00');
+  const renewalDate = new Date(deliveryDate);
+  renewalDate.setDate(renewalDate.getDate() + 28);
+  const renewalFormatted = renewalDate.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric'
+  }).toUpperCase();
+
+  return (
+    <div className="overflow-hidden shadow-lg" style={{ backgroundColor: '#fff' }}>
+      {/* Header with pattern background */}
+      <div
+        className="relative px-4 pt-6 pb-8"
+        style={{
+          backgroundColor: '#f9f9ed',
+          backgroundImage: 'url(/pattern4.png)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center'
+        }}
+      >
+        {/* Goldfinch Services text */}
+        <p
+          className="text-center mb-2"
+          style={{
+            fontFamily: '"Glacial Indifference", sans-serif',
+            fontSize: '12px',
+            letterSpacing: '0.3em',
+            color: '#5a5a5a'
+          }}
+        >
+          GOLDFINCH CHEF SERVICES
+        </p>
+
+        {/* Client name in Poller One with underline */}
+        <h2
+          className="text-center mb-3"
+          style={{
+            color: '#3d59ab',
+            fontFamily: '"Poller One", cursive',
+            fontSize: '1.5rem',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+            textDecoration: 'underline',
+            textDecorationColor: '#3d59ab',
+            textUnderlineOffset: '4px'
+          }}
+        >
+          {displayName}'s Menu
+        </h2>
+
+        {/* Script tagline in Beth Ellen */}
+        <p
+          className="text-center mb-4"
+          style={{
+            color: '#5a5a5a',
+            fontFamily: '"Beth Ellen", cursive',
+            fontSize: '1.4rem'
+          }}
+        >
+          here's what to expect on your plate!
+        </p>
+
+        {/* Goldfinch bird positioned left of date */}
+        <div className="flex items-center justify-center gap-3">
+          <img
+            src="/goldfinch5.png"
+            alt="Goldfinch"
+            className="w-12 h-12 object-contain"
+          />
+          {/* Date */}
+          <p
+            style={{
+              fontFamily: '"Glacial Indifference", sans-serif',
+              fontSize: '14px',
+              letterSpacing: '0.2em',
+              color: '#5a5a5a'
+            }}
+          >
+            {displayDate}
+          </p>
+        </div>
+      </div>
+
+      {/* Meals section with tan/caramel background */}
+      <div
+        className="px-6 py-8"
+        style={{ backgroundColor: '#d9a87a' }}
+      >
+        <div className="space-y-8">
+          {meals.map((meal, idx) => (
+            <div key={idx} className="text-center">
+              {/* Protein/Main - larger */}
+              {meal.protein && (
+                <h3
+                  style={{
+                    color: '#ffffff',
+                    fontFamily: '"Glacial Indifference", sans-serif',
+                    fontSize: '1.1rem',
+                    fontWeight: 'bold',
+                    letterSpacing: '0.15em',
+                    textTransform: 'uppercase',
+                    marginBottom: meal.sides.length > 0 ? '0.5rem' : 0
+                  }}
+                >
+                  {meal.protein}
+                </h3>
+              )}
+
+              {/* Sides - smaller */}
+              {meal.sides.length > 0 && (
+                <p
+                  style={{
+                    color: '#f5e6d3',
+                    fontFamily: '"Glacial Indifference", sans-serif',
+                    fontSize: '0.85rem',
+                    letterSpacing: '0.1em',
+                    textTransform: 'uppercase'
+                  }}
+                >
+                  {meal.sides.join(', ')}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Footer section */}
+      <div
+        className="relative px-6 py-6"
+        style={{
+          backgroundColor: '#f9f9ed',
+          fontFamily: '"Glacial Indifference", sans-serif'
+        }}
+      >
+        {/* GET READY heading */}
+        <h4
+          className="mb-3"
+          style={{
+            color: '#3d59ab',
+            fontFamily: '"Poller One", cursive',
+            fontSize: '1.1rem',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em'
+          }}
+        >
+          Get Ready!
+        </h4>
+
+        {/* Reminder text */}
+        <p
+          className="mb-4 pr-20"
+          style={{
+            color: '#5a5a5a',
+            fontSize: '0.9rem',
+            lineHeight: '1.5'
+          }}
+        >
+          Remember to put out bags, containers, and ice packs. And get excited – great food is on the way!
+        </p>
+
+        {/* Stemflower positioned right */}
+        <img
+          src="/stemflower.png"
+          alt=""
+          className="absolute right-4 bottom-4 h-20 object-contain"
+        />
+
+        {/* Renewal date */}
+        <p
+          style={{
+            color: '#3d59ab',
+            fontSize: '0.75rem',
+            letterSpacing: '0.15em',
+            textTransform: 'uppercase',
+            fontWeight: 'bold'
+          }}
+        >
+          Your subscription renews: {renewalFormatted}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // Menu Ready View
 function MenuReadyView({ client, getClientMenuItems, getClientReadyOrders, today, clientPortalData, updateClientPortalData }) {
   const upcomingMenuItems = getClientMenuItems(client.name).filter(
@@ -576,41 +808,17 @@ function MenuReadyView({ client, getClientMenuItems, getClientReadyOrders, today
   });
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {sortedDates.map(date => {
         const { menuItems, readyOrders } = byDate[date];
-        const displayDate = new Date(date + 'T12:00:00').toLocaleDateString('en-US', {
-          weekday: 'long',
-          month: 'long',
-          day: 'numeric'
-        });
-        const isToday = date === today;
-
         return (
-          <div key={date} className="bg-white rounded-lg shadow-lg overflow-hidden">
-            <div className="p-4 border-b" style={{ backgroundColor: isToday ? '#3d59ab' : '#f9f9ed' }}>
-              <div className="flex items-center gap-2">
-                <Calendar size={20} style={{ color: isToday ? '#ffd700' : '#3d59ab' }} />
-                <h3 className={`font-bold ${isToday ? 'text-white' : ''}`} style={{ color: isToday ? undefined : '#3d59ab' }}>
-                  {displayDate}
-                </h3>
-                {isToday && (
-                  <span className="px-2 py-1 rounded text-xs font-medium" style={{ backgroundColor: '#ffd700', color: '#423d3c' }}>
-                    TODAY
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="p-4">
-              {/* Show dishes from menu items or ready orders */}
-              {menuItems.length > 0 && menuItems.map((item, idx) => (
-                <MenuItemCard key={idx} item={item} />
-              ))}
-              {readyOrders.length > 0 && readyOrders.map((order, idx) => (
-                <ReadyOrderCard key={idx} order={order} />
-              ))}
-            </div>
-          </div>
+          <StyledMenuCard
+            key={date}
+            client={client}
+            date={date}
+            menuItems={menuItems}
+            readyOrders={readyOrders}
+          />
         );
       })}
 
