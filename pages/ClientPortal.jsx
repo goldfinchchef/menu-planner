@@ -144,6 +144,21 @@ export default function ClientPortal() {
           <p className="text-gray-600 mt-1">
             {getStatusMessage(portalStatus)}
           </p>
+
+          {/* HoneyBook Invoice Button - show on most views */}
+          {client.honeyBookLink && portalStatus !== STATUS.NEEDS_PAYMENT && portalStatus !== STATUS.OVERDUE && (
+            <a
+              href={client.honeyBookLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 mt-4 px-5 py-2 rounded-lg text-white font-medium text-sm"
+              style={{ backgroundColor: '#d9a87a' }}
+            >
+              <CreditCard size={18} />
+              View & Pay Invoice
+              <ExternalLink size={14} />
+            </a>
+          )}
         </div>
 
         {/* Status-specific content */}
@@ -840,7 +855,32 @@ function MenuReadyView({ client, getClientMenuItems, getClientReadyOrders, today
           clientName={client.name}
           clientPortalData={clientPortalData}
           updateClientPortalData={updateClientPortalData}
+          deliveryDate={sortedDates[0]}
         />
+      )}
+
+      {/* HoneyBook Invoice Link */}
+      {client.honeyBookLink && (
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <div className="flex items-center gap-3 mb-3">
+            <CreditCard size={24} style={{ color: '#d9a87a' }} />
+            <h4 className="font-bold" style={{ color: '#3d59ab' }}>Billing</h4>
+          </div>
+          <p className="text-gray-600 mb-4">
+            View your invoice and manage payments through our secure billing portal.
+          </p>
+          <a
+            href={client.honeyBookLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-lg text-white font-medium"
+            style={{ backgroundColor: '#d9a87a' }}
+          >
+            <CreditCard size={20} />
+            View & Pay Invoice
+            <ExternalLink size={16} />
+          </a>
+        </div>
       )}
     </div>
   );
@@ -879,32 +919,52 @@ function ReadyOrderCard({ order }) {
   );
 }
 
-// Helper to get next Saturday 11:59pm deadline
-function getNextSaturdayDeadline() {
-  const now = new Date();
-  const dayOfWeek = now.getDay();
-  const daysUntilSaturday = (6 - dayOfWeek + 7) % 7 || 7;
-  const saturday = new Date(now);
-  saturday.setDate(now.getDate() + daysUntilSaturday);
+// Helper to get Saturday 11:59pm before the delivery week
+function getSubstitutionDeadline(deliveryDate) {
+  // If no delivery date, use next Saturday
+  if (!deliveryDate) {
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const daysUntilSaturday = (6 - dayOfWeek + 7) % 7 || 7;
+    const saturday = new Date(now);
+    saturday.setDate(now.getDate() + daysUntilSaturday);
+    saturday.setHours(23, 59, 59, 999);
+    return saturday;
+  }
+
+  // Get Saturday before the delivery date
+  const delivery = new Date(deliveryDate + 'T12:00:00');
+  const dayOfWeek = delivery.getDay();
+  // Go back to the previous Saturday (or same day if it's Saturday)
+  const daysBack = dayOfWeek === 0 ? 1 : (dayOfWeek === 6 ? 0 : dayOfWeek + 1);
+  const saturday = new Date(delivery);
+  saturday.setDate(delivery.getDate() - daysBack);
   saturday.setHours(23, 59, 59, 999);
   return saturday;
 }
 
-function isBeforeDeadline() {
-  return new Date() < getNextSaturdayDeadline();
+function isBeforeDeadline(deliveryDate) {
+  return new Date() < getSubstitutionDeadline(deliveryDate);
 }
 
-// Substitution Request Form
-function SubstitutionRequestForm({ dishes, clientName, clientPortalData, updateClientPortalData }) {
+// Substitution Request Form - supports multiple requests (one per dish)
+function SubstitutionRequestForm({ dishes, clientName, clientPortalData, updateClientPortalData, deliveryDate }) {
   const [selectedDish, setSelectedDish] = useState('');
   const [substitution, setSubstitution] = useState('');
-  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [justSubmitted, setJustSubmitted] = useState(null);
 
-  const deadline = getNextSaturdayDeadline();
-  const canSubmit = isBeforeDeadline();
+  const deadline = getSubstitutionDeadline(deliveryDate);
+  const canSubmit = isBeforeDeadline(deliveryDate);
 
-  // Check for existing substitution request
-  const existingRequest = clientPortalData[clientName]?.substitutionRequest;
+  // Get existing substitution requests (now an array)
+  const existingRequests = clientPortalData[clientName]?.substitutionRequests || [];
+  // Also support legacy single request format
+  const legacyRequest = clientPortalData[clientName]?.substitutionRequest;
+  const allRequests = legacyRequest ? [...existingRequests, legacyRequest] : existingRequests;
+
+  // Get dishes that already have requests
+  const requestedDishes = allRequests.map(r => r.originalDish);
+  const availableDishes = dishes.filter(d => !requestedDishes.includes(d));
 
   const formatDeadline = (date) => {
     return date.toLocaleDateString('en-US', {
@@ -921,44 +981,27 @@ function SubstitutionRequestForm({ dishes, clientName, clientPortalData, updateC
       return;
     }
 
-    updateClientPortalData(clientName, {
-      substitutionRequest: {
-        originalDish: selectedDish,
-        requestedSubstitution: substitution.trim(),
-        submittedAt: new Date().toISOString(),
-        deadline: deadline.toISOString()
-      }
-    });
-    setIsSubmitted(true);
-  };
-
-  // Show confirmation if just submitted or has existing request
-  if (isSubmitted || existingRequest) {
-    const request = existingRequest || {
+    const newRequest = {
+      clientId: clientName,
+      date: deliveryDate || new Date().toISOString().split('T')[0],
       originalDish: selectedDish,
-      requestedSubstitution: substitution
+      requestedSubstitution: substitution.trim(),
+      submittedAt: new Date().toISOString()
     };
 
-    return (
-      <div className="bg-white rounded-lg shadow-lg p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: '#dcfce7' }}>
-            <Check size={20} className="text-green-600" />
-          </div>
-          <h4 className="font-bold" style={{ color: '#3d59ab' }}>Substitution Request Received</h4>
-        </div>
-        <div className="p-4 rounded-lg" style={{ backgroundColor: '#f9f9ed' }}>
-          <p className="text-sm text-gray-600 mb-1">Instead of:</p>
-          <p className="font-medium mb-3">{request.originalDish}</p>
-          <p className="text-sm text-gray-600 mb-1">You requested:</p>
-          <p className="font-medium">{request.requestedSubstitution}</p>
-        </div>
-        <p className="text-sm text-gray-500 mt-4">
-          We'll do our best to accommodate your request. If we can't, we'll reach out to you.
-        </p>
-      </div>
-    );
-  }
+    // Add to existing requests array
+    const updatedRequests = [...existingRequests, newRequest];
+
+    updateClientPortalData(clientName, {
+      substitutionRequests: updatedRequests,
+      // Also update legacy field for backwards compatibility with Admin view
+      substitutionRequest: newRequest
+    });
+
+    setJustSubmitted(newRequest);
+    setSelectedDish('');
+    setSubstitution('');
+  };
 
   return (
     <div className="bg-white rounded-lg shadow-lg p-6">
@@ -967,15 +1010,53 @@ function SubstitutionRequestForm({ dishes, clientName, clientPortalData, updateC
         <h4 className="font-bold" style={{ color: '#3d59ab' }}>Request a Substitution</h4>
       </div>
 
+      {/* Show existing requests */}
+      {allRequests.length > 0 && (
+        <div className="mb-6 space-y-3">
+          <p className="text-sm font-medium text-gray-600">Your submitted requests:</p>
+          {allRequests.map((request, idx) => (
+            <div key={idx} className="p-3 rounded-lg" style={{ backgroundColor: '#dcfce7' }}>
+              <div className="flex items-center gap-2 mb-1">
+                <Check size={16} className="text-green-600" />
+                <span className="text-sm font-medium text-green-700">Request received</span>
+              </div>
+              <p className="text-sm">
+                <span className="text-gray-500">Instead of</span>{' '}
+                <span className="font-medium">{request.originalDish}</span>
+                <span className="text-gray-500">, you requested:</span>{' '}
+                <span className="font-medium">{request.requestedSubstitution}</span>
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Show just-submitted confirmation */}
+      {justSubmitted && (
+        <div className="mb-6 p-4 rounded-lg border-2 border-green-200" style={{ backgroundColor: '#f0fdf4' }}>
+          <div className="flex items-center gap-2 mb-2">
+            <Check size={20} className="text-green-600" />
+            <span className="font-bold text-green-700">Substitution request submitted!</span>
+          </div>
+          <p className="text-sm text-gray-600">
+            We'll review it before your next delivery.
+          </p>
+        </div>
+      )}
+
       {!canSubmit ? (
         <div className="text-center py-4">
           <AlertTriangle size={32} className="mx-auto mb-2 text-amber-500" />
           <p className="text-gray-600">
-            The deadline for substitution requests has passed.
+            The substitution deadline has passed for this delivery.
           </p>
           <p className="text-sm text-gray-500 mt-2">
             Requests must be submitted by Saturday at 11:59 PM.
           </p>
+        </div>
+      ) : availableDishes.length === 0 ? (
+        <div className="text-center py-4 text-gray-500">
+          <p>You've already submitted requests for all dishes.</p>
         </div>
       ) : (
         <form onSubmit={handleSubmit}>
@@ -990,7 +1071,7 @@ function SubstitutionRequestForm({ dishes, clientName, clientPortalData, updateC
               style={{ borderColor: '#ebb582' }}
             >
               <option value="">Select a dish...</option>
-              {dishes.map((dish, idx) => (
+              {availableDishes.map((dish, idx) => (
                 <option key={idx} value={dish}>{dish}</option>
               ))}
             </select>
@@ -998,7 +1079,7 @@ function SubstitutionRequestForm({ dishes, clientName, clientPortalData, updateC
 
           <div className="mb-4">
             <label className="block text-sm font-medium mb-2">
-              What would you like instead?
+              What would you prefer instead?
             </label>
             <textarea
               value={substitution}
