@@ -721,6 +721,23 @@ export default function AdminPage() {
       });
     }
 
+    // Clients who pay their own groceries and have deliveries this week
+    const ownGroceryClients = clients.filter(c => c.paysOwnGroceries && c.status === 'active');
+    const ownGroceryDeliveries = ownGroceryClients.filter(client => {
+      return pendingDeliveries.some(d => d.clientName === client.name);
+    });
+    if (ownGroceryDeliveries.length > 0) {
+      tasks.push({
+        id: 'own-groceries',
+        category: 'Grocery Costs',
+        title: `Add grocery costs for ${ownGroceryDeliveries.length} client${ownGroceryDeliveries.length > 1 ? 's' : ''}`,
+        details: ownGroceryDeliveries.map(c => c.displayName || c.name),
+        icon: DollarSign,
+        color: '#059669',
+        action: 'groceries'
+      });
+    }
+
     return tasks;
   };
 
@@ -1870,14 +1887,22 @@ export default function AdminPage() {
                   {autoTasks.map(task => (
                     <div
                       key={task.id}
-                      className="border-l-4 p-4 rounded-r-lg"
+                      className={`border-l-4 p-4 rounded-r-lg ${task.action ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
                       style={{ borderColor: task.color, backgroundColor: '#f9f9ed' }}
+                      onClick={() => task.action && setActiveSection(task.action)}
                     >
-                      <div className="flex items-center gap-3 mb-2">
-                        <task.icon size={20} style={{ color: task.color }} />
-                        <span className="text-xs font-medium px-2 py-1 rounded" style={{ backgroundColor: task.color + '20', color: task.color }}>
-                          {task.category}
-                        </span>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <task.icon size={20} style={{ color: task.color }} />
+                          <span className="text-xs font-medium px-2 py-1 rounded" style={{ backgroundColor: task.color + '20', color: task.color }}>
+                            {task.category}
+                          </span>
+                        </div>
+                        {task.action && (
+                          <span className="text-xs px-2 py-1 rounded bg-gray-200 text-gray-600">
+                            Click to add →
+                          </span>
+                        )}
                       </div>
                       <h4 className="font-bold mb-2">{task.title}</h4>
                       <ul className="text-sm text-gray-600 space-y-1">
