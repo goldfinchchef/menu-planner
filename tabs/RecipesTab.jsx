@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Upload, Download, Save, X, Edit2, Check, Trash2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Upload, Download, Save, X, Edit2, Check, Trash2, AlertCircle, RefreshCw, AlertTriangle } from 'lucide-react';
 import { STORE_SECTIONS, RECIPE_CATEGORIES } from '../constants';
 
 export default function RecipesTab({
@@ -31,6 +31,26 @@ export default function RecipesTab({
 
   const recipeCounts = getRecipeCounts();
   const uniqueVendors = getUniqueVendors ? getUniqueVendors() : [];
+
+  // Check if a recipe is incomplete (missing costs or instructions)
+  const isRecipeIncomplete = (recipe) => {
+    const missingInstructions = !recipe.instructions || recipe.instructions.trim() === '';
+    const missingCosts = recipe.ingredients?.some(ing => !ing.cost || ing.cost === '' || parseFloat(ing.cost) === 0);
+    return missingInstructions || missingCosts;
+  };
+
+  // Count incomplete recipes
+  const getIncompleteCount = () => {
+    let count = 0;
+    Object.values(recipes).forEach(categoryRecipes => {
+      categoryRecipes.forEach(recipe => {
+        if (isRecipeIncomplete(recipe)) count++;
+      });
+    });
+    return count;
+  };
+
+  const incompleteCount = getIncompleteCount();
 
   const addIngredient = () => setNewRecipe({
     ...newRecipe,
@@ -146,14 +166,19 @@ export default function RecipesTab({
         <div className="flex justify-between items-center mb-4">
           <div>
             <h2 className="text-2xl font-bold" style={{ color: '#3d59ab' }}>Recipes</h2>
-            <p className="text-sm text-gray-600">
-              Total: {recipeCounts.total} |
-              Protein: {recipeCounts.protein || 0} |
-              Veg: {recipeCounts.veg || 0} |
-              Starch: {recipeCounts.starch || 0} |
-              Sauces: {recipeCounts.sauces || 0} |
-              Breakfast: {recipeCounts.breakfast || 0} |
-              Soups: {recipeCounts.soups || 0}
+            <p className="text-sm">
+              {incompleteCount > 0 ? (
+                <span className="text-amber-600 font-medium">
+                  <AlertTriangle size={14} className="inline mr-1" />
+                  {incompleteCount} recipe{incompleteCount !== 1 ? 's' : ''} incomplete
+                </span>
+              ) : (
+                <span className="text-green-600 font-medium">
+                  <Check size={14} className="inline mr-1" />
+                  All recipes complete
+                </span>
+              )}
+              <span className="text-gray-500 ml-2">({recipeCounts.total} total)</span>
             </p>
           </div>
           <div className="flex gap-2">
@@ -447,6 +472,9 @@ export default function RecipesTab({
                       <div className="flex justify-between items-start p-3 rounded-lg" style={{ backgroundColor: '#f9f9ed' }}>
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
+                            {isRecipeIncomplete(recipe) && (
+                              <AlertTriangle size={16} className="text-amber-500" title="Missing costs or instructions" />
+                            )}
                             <p className="font-medium">{recipe.name}</p>
                             {cost > 0 && (
                               <span className="text-xs px-2 py-1 rounded bg-green-100 text-green-700">
