@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   ChefHat, Home, Calendar, Truck, AlertTriangle, RefreshCw,
-  Plus, Trash2, Edit2, Check, X, Settings, ClipboardList,
+  Plus, Trash2, Edit2, Edit3, Check, X, Settings, ClipboardList,
   LayoutDashboard, Users, MapPin, ChevronLeft, ChevronRight,
   Package, CreditCard, FileText, ShoppingBag, Eye, Utensils,
   ExternalLink, Copy, DollarSign, TrendingUp, Receipt
@@ -237,15 +237,6 @@ function StyledMenuCard({ client, date, menuItems }) {
 
   const displayName = client.displayName || client.name;
 
-  // Calculate renewal date (4 weeks from delivery date)
-  const deliveryDate = new Date(date + 'T12:00:00');
-  const renewalDate = new Date(deliveryDate);
-  renewalDate.setDate(renewalDate.getDate() + 28);
-  const renewalFormatted = renewalDate.toLocaleDateString('en-US', {
-    month: 'long',
-    day: 'numeric'
-  }).toUpperCase();
-
   return (
     <div className="overflow-hidden shadow-lg" style={{ backgroundColor: '#fff' }}>
       {/* Header with pattern background */}
@@ -275,7 +266,7 @@ function StyledMenuCard({ client, date, menuItems }) {
           style={{
             color: '#3d59ab',
             fontFamily: '"Poller One", cursive',
-            fontSize: '1.5rem',
+            fontSize: '18px',
             textTransform: 'uppercase',
             letterSpacing: '0.05em',
             textDecoration: 'underline',
@@ -291,7 +282,7 @@ function StyledMenuCard({ client, date, menuItems }) {
           style={{
             color: '#5a5a5a',
             fontFamily: '"Beth Ellen", cursive',
-            fontSize: '1.4rem'
+            fontSize: '12px'
           }}
         >
           here's what to expect on your plate!
@@ -392,25 +383,123 @@ function StyledMenuCard({ client, date, menuItems }) {
           alt=""
           className="absolute right-4 bottom-4 h-20 object-contain"
         />
-        <p
-          style={{
-            color: '#3d59ab',
-            fontSize: '0.75rem',
-            letterSpacing: '0.15em',
-            textTransform: 'uppercase',
-            fontWeight: 'bold'
-          }}
-        >
-          Your subscription renews: {renewalFormatted}
-        </p>
       </div>
     </div>
   );
 }
 
 // Menu Approval Section Component
-function MenuApprovalSection({ clients, menuItems, updateMenuItems, lockWeekWithSnapshot }) {
+function MenuApprovalSection({ clients, menuItems, updateMenuItems, lockWeekWithSnapshot, weeklyTasks = {} }) {
+  const navigate = useNavigate();
   const today = new Date().toISOString().split('T')[0];
+
+  // Get the Monday of current week as the week identifier
+  const getWeekStart = () => {
+    const d = new Date();
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    d.setDate(diff);
+    return d.toISOString().split('T')[0];
+  };
+
+  const weekStart = getWeekStart();
+  const tasks = weeklyTasks[weekStart] || {};
+
+  // Check if a client's weekly tasks are complete
+  const areClientTasksComplete = (clientName) => {
+    const clientTasks = tasks[clientName] || {};
+    return clientTasks.menusPlanned && clientTasks.menusSent;
+  };
+
+  // Get task status for display
+  const getTaskStatus = (clientName) => {
+    const clientTasks = tasks[clientName] || {};
+    return {
+      menusPlanned: !!clientTasks.menusPlanned,
+      menusSent: !!clientTasks.menusSent,
+      complete: clientTasks.menusPlanned && clientTasks.menusSent
+    };
+  };
+
+  // Get client payment/subscription status
+  // Returns: { status, daysOverdue, hasDates, canApprove, warning, blocked }
+  const getClientPaymentStatus = (clientName) => {
+    const client = clients.find(c => c.name === clientName);
+    if (!client) {
+      return { status: 'unknown', daysOverdue: 0, hasDates: false, canApprove: false, warning: null, blocked: true };
+    }
+
+    const hasDates = client.deliveryDates && client.deliveryDates.length > 0;
+
+    // Check if explicitly paused
+    if (client.status === 'paused') {
+      return {
+        status: 'paused',
+        daysOverdue: 0,
+        hasDates,
+        canApprove: false,
+        warning: null,
+        blocked: true,
+        message: 'Subscription paused — cannot send menu'
+      };
+    }
+
+    // Calculate days overdue from billDueDate
+    let daysOverdue = 0;
+    if (client.billDueDate) {
+      const dueDate = new Date(client.billDueDate + 'T12:00:00');
+      const now = new Date();
+      const diffTime = now - dueDate;
+      daysOverdue = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    }
+
+    // 8+ days overdue = Paused (blocked)
+    if (daysOverdue >= 8) {
+      return {
+        status: 'paused',
+        daysOverdue,
+        hasDates,
+        canApprove: false,
+        warning: null,
+        blocked: true,
+        message: 'Subscription paused — cannot send menu'
+      };
+    }
+
+    // 1-7 days overdue = Grace Period (warning but allowed)
+    if (daysOverdue >= 1) {
+      return {
+        status: 'grace',
+        daysOverdue,
+        hasDates,
+        canApprove: true,
+        warning: `Invoice overdue (${daysOverdue} day${daysOverdue > 1 ? 's' : ''})`,
+        blocked: false
+      };
+    }
+
+    // Active but no dates set (warning but allowed)
+    if (!hasDates) {
+      return {
+        status: 'active',
+        daysOverdue: 0,
+        hasDates: false,
+        canApprove: true,
+        warning: 'Delivery dates not set',
+        blocked: false
+      };
+    }
+
+    // Active with dates set (all good)
+    return {
+      status: 'active',
+      daysOverdue: 0,
+      hasDates: true,
+      canApprove: true,
+      warning: null,
+      blocked: false
+    };
+  };
 
   // Get unapproved menu items grouped by date, then by client
   const getUnapprovedMenus = () => {
@@ -440,18 +529,93 @@ function MenuApprovalSection({ clients, menuItems, updateMenuItems, lockWeekWith
       }));
   };
 
-  // Approve all menus and lock the week
+  // Approve a single client's menu
+  const approveClientMenu = (clientName, date) => {
+    const weekId = getWeekIdFromDate(date);
+
+    const updated = menuItems.map(item => {
+      if (item.clientName === clientName && item.date === date && !item.approved) {
+        return { ...item, approved: true };
+      }
+      return item;
+    });
+
+    updateMenuItems(updated);
+    lockWeekWithSnapshot(weekId);
+  };
+
+  // Approve all menus (only those with complete tasks AND valid payment status)
   const approveAndPushAll = () => {
-    if (!window.confirm('Approve all menus and push to client portals?\n\nThis will lock the week and menus will appear in KDS for cooking.')) {
+    const readyClients = [];
+    const taskIncompleteClients = [];
+    const pausedClients = [];
+    const warningClients = [];
+
+    unapprovedMenus.forEach(({ menus }) => {
+      menus.forEach(({ clientName }) => {
+        const paymentStatus = getClientPaymentStatus(clientName);
+        const tasksComplete = areClientTasksComplete(clientName);
+
+        if (paymentStatus.blocked) {
+          pausedClients.push(clientName);
+        } else if (!tasksComplete) {
+          taskIncompleteClients.push(clientName);
+        } else {
+          readyClients.push(clientName);
+          if (paymentStatus.warning) {
+            warningClients.push({ clientName, warning: paymentStatus.warning });
+          }
+        }
+      });
+    });
+
+    if (readyClients.length === 0) {
+      let errorMsg = 'No menus ready to approve.';
+      if (pausedClients.length > 0) {
+        errorMsg += `\n\n${pausedClients.length} client(s) have paused subscriptions.`;
+      }
+      if (taskIncompleteClients.length > 0) {
+        errorMsg += `\n\n${taskIncompleteClients.length} client(s) have incomplete tasks.`;
+      }
+      alert(errorMsg);
       return;
     }
 
-    // Get unique week IDs from unapproved menus
+    let message = `Approve ${readyClients.length} menu(s) and push to client portals?\n\nThis will lock the week and menus will appear in KDS for cooking.`;
+
+    if (warningClients.length > 0) {
+      message += `\n\n⚠️ Warnings for ${warningClients.length} client(s):`;
+      warningClients.slice(0, 3).forEach(({ clientName, warning }) => {
+        message += `\n• ${clientName}: ${warning}`;
+      });
+      if (warningClients.length > 3) {
+        message += `\n• ...and ${warningClients.length - 3} more`;
+      }
+    }
+
+    if (taskIncompleteClients.length > 0 || pausedClients.length > 0) {
+      message += '\n\nWill NOT be approved:';
+      if (taskIncompleteClients.length > 0) {
+        message += `\n• ${taskIncompleteClients.length} with incomplete tasks`;
+      }
+      if (pausedClients.length > 0) {
+        message += `\n• ${pausedClients.length} with paused subscriptions`;
+      }
+    }
+
+    if (!window.confirm(message)) {
+      return;
+    }
+
+    // Get unique week IDs and approve only ready clients (tasks complete AND not blocked)
     const weekIds = new Set();
     const updated = menuItems.map(item => {
       if (!item.approved && item.date >= today) {
-        weekIds.add(getWeekIdFromDate(item.date));
-        return { ...item, approved: true };
+        const paymentStatus = getClientPaymentStatus(item.clientName);
+        if (areClientTasksComplete(item.clientName) && paymentStatus.canApprove) {
+          weekIds.add(getWeekIdFromDate(item.date));
+          return { ...item, approved: true };
+        }
       }
       return item;
     });
@@ -463,11 +627,41 @@ function MenuApprovalSection({ clients, menuItems, updateMenuItems, lockWeekWith
       lockWeekWithSnapshot(weekId);
     });
 
-    alert('All menus approved and pushed to client portals!');
+    alert(`${readyClients.length} menu(s) approved and pushed to client portals!`);
+  };
+
+  // Send a client's menu back for editing (removes from approval queue)
+  const sendBackForEdit = (clientName, date) => {
+    if (!window.confirm(`Send ${clientName}'s menu back for editing?\n\nThis will remove it from the approval queue. You can recreate it in Menu Planner.`)) {
+      return;
+    }
+
+    // Remove menu items for this client on this date
+    const updated = menuItems.filter(item =>
+      !(item.clientName === clientName && item.date === date && !item.approved)
+    );
+
+    updateMenuItems(updated);
+
+    // Navigate to menu planner
+    navigate('/?tab=menu');
   };
 
   const unapprovedMenus = getUnapprovedMenus();
   const totalMenus = unapprovedMenus.reduce((sum, d) => sum + d.menus.length, 0);
+
+  // Count ready menus (tasks complete AND payment allows approval)
+  const readyMenus = unapprovedMenus.reduce((sum, d) =>
+    sum + d.menus.filter(m => {
+      const paymentStatus = getClientPaymentStatus(m.clientName);
+      return areClientTasksComplete(m.clientName) && paymentStatus.canApprove;
+    }).length, 0
+  );
+
+  // Count blocked menus (paused clients)
+  const blockedMenus = unapprovedMenus.reduce((sum, d) =>
+    sum + d.menus.filter(m => getClientPaymentStatus(m.clientName).blocked).length, 0
+  );
 
   return (
     <div className="space-y-6">
@@ -484,11 +678,15 @@ function MenuApprovalSection({ clients, menuItems, updateMenuItems, lockWeekWith
           {totalMenus > 0 && (
             <button
               onClick={approveAndPushAll}
-              className="flex items-center gap-2 px-6 py-3 rounded-lg text-white font-medium hover:opacity-90 transition-opacity"
+              disabled={readyMenus === 0}
+              className={`flex items-center gap-2 px-6 py-3 rounded-lg text-white font-medium transition-opacity ${
+                readyMenus > 0 ? 'hover:opacity-90' : 'opacity-50 cursor-not-allowed'
+              }`}
               style={{ backgroundColor: '#10b981' }}
+              title={readyMenus === 0 ? 'Complete weekly tasks to enable approval' : ''}
             >
               <Check size={20} />
-              Approve & Push All ({totalMenus})
+              Approve & Push Ready ({readyMenus}/{totalMenus})
             </button>
           )}
         </div>
@@ -535,14 +733,105 @@ function MenuApprovalSection({ clients, menuItems, updateMenuItems, lockWeekWith
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {menus.map(({ clientName, items }) => {
               const client = clients.find(c => c.name === clientName) || { name: clientName };
+              const taskStatus = getTaskStatus(clientName);
+              const paymentStatus = getClientPaymentStatus(clientName);
+              const canApprove = taskStatus.complete && paymentStatus.canApprove;
+              const isPaused = paymentStatus.blocked;
 
               return (
-                <div key={`${clientName}-${date}`} className="bg-white rounded-lg shadow-lg overflow-hidden">
+                <div
+                  key={`${clientName}-${date}`}
+                  className={`bg-white rounded-lg shadow-lg overflow-hidden ${isPaused ? 'opacity-60' : ''}`}
+                >
                   <StyledMenuCard
                     client={client}
                     date={date}
                     menuItems={items}
                   />
+
+                  {/* Payment/Subscription Status - show if warning or blocked */}
+                  {(paymentStatus.warning || paymentStatus.blocked) && (
+                    <div
+                      className="px-3 py-2 border-t"
+                      style={{
+                        borderColor: '#ebb582',
+                        backgroundColor: isPaused ? '#fef2f2' : paymentStatus.status === 'grace' ? '#fef3c7' : '#fffbeb'
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle size={14} className={isPaused ? 'text-red-600' : 'text-amber-600'} />
+                        <span className={`text-xs font-medium ${isPaused ? 'text-red-700' : 'text-amber-700'}`}>
+                          {paymentStatus.message || paymentStatus.warning}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Task Status */}
+                  <div className="px-3 py-2 border-t" style={{ borderColor: '#ebb582', backgroundColor: taskStatus.complete ? '#f0fdf4' : '#fef3c7' }}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium" style={{ color: taskStatus.complete ? '#15803d' : '#92400e' }}>
+                        Weekly Tasks
+                      </span>
+                      {!taskStatus.complete && (
+                        <Link
+                          to="/admin?section=subscriptions"
+                          className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                        >
+                          Complete Tasks
+                          <ExternalLink size={10} />
+                        </Link>
+                      )}
+                    </div>
+                    <div className="flex gap-3 mt-1">
+                      <span className={`text-xs flex items-center gap-1 ${taskStatus.menusPlanned ? 'text-green-600' : 'text-gray-400'}`}>
+                        {taskStatus.menusPlanned ? <Check size={12} /> : <X size={12} />}
+                        Menu Planned
+                      </span>
+                      <span className={`text-xs flex items-center gap-1 ${taskStatus.menusSent ? 'text-green-600' : 'text-gray-400'}`}>
+                        {taskStatus.menusSent ? <Check size={12} /> : <X size={12} />}
+                        Menu Sent
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Approve / Edit buttons */}
+                  <div className="p-3 border-t flex justify-between gap-2" style={{ borderColor: '#ebb582' }}>
+                    <button
+                      onClick={() => sendBackForEdit(clientName, date)}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border-2 hover:bg-red-50 transition-colors"
+                      style={{ borderColor: '#dc2626', color: '#dc2626' }}
+                    >
+                      <Edit3 size={16} />
+                      Edit
+                    </button>
+                    {isPaused ? (
+                      <span className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-500">
+                        <X size={16} />
+                        Blocked
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => canApprove && approveClientMenu(clientName, date)}
+                        disabled={!canApprove}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                          canApprove
+                            ? 'bg-green-500 text-white hover:bg-green-600'
+                            : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                        }`}
+                        title={
+                          isPaused
+                            ? 'Subscription paused'
+                            : !taskStatus.complete
+                            ? 'Complete weekly tasks first'
+                            : 'Approve and push to client portal'
+                        }
+                      >
+                        <Check size={16} />
+                        Approve
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -551,7 +840,7 @@ function MenuApprovalSection({ clients, menuItems, updateMenuItems, lockWeekWith
       ))}
 
       {/* Bottom approve button for convenience */}
-      {totalMenus > 0 && (
+      {totalMenus > 0 && readyMenus > 0 && (
         <div className="sticky bottom-4 flex justify-center">
           <button
             onClick={approveAndPushAll}
@@ -559,7 +848,7 @@ function MenuApprovalSection({ clients, menuItems, updateMenuItems, lockWeekWith
             style={{ backgroundColor: '#10b981' }}
           >
             <Check size={24} />
-            Approve & Push All Menus ({totalMenus})
+            Approve & Push Ready Menus ({readyMenus}/{totalMenus})
           </button>
         </div>
       )}
@@ -1580,6 +1869,7 @@ export default function AdminPage() {
             menuItems={menuItems}
             updateMenuItems={updateMenuItems}
             lockWeekWithSnapshot={lockWeekWithSnapshot}
+            weeklyTasks={weeklyTasks}
           />
         )}
 

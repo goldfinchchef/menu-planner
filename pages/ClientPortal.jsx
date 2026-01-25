@@ -1115,7 +1115,7 @@ function StyledMenuCard({ client, date, menuItems, readyOrders }) {
           style={{
             color: '#3d59ab',
             fontFamily: '"Poller One", cursive',
-            fontSize: '1.5rem',
+            fontSize: '18px',
             textTransform: 'uppercase',
             letterSpacing: '0.05em',
             textDecoration: 'underline',
@@ -1132,7 +1132,7 @@ function StyledMenuCard({ client, date, menuItems, readyOrders }) {
           style={{
             color: '#5a5a5a',
             fontFamily: '"Beth Ellen", cursive',
-            fontSize: '1rem'
+            fontSize: '12px'
           }}
         >
           here's what to expect on your plate!
