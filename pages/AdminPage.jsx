@@ -13,7 +13,7 @@ import MenuTab from '../tabs/MenuTab';
 import RecipesTab from '../tabs/RecipesTab';
 import IngredientsTab from '../tabs/IngredientsTab';
 import ClientsTab from '../tabs/ClientsTab';
-import { normalizeName, similarity, exportIngredientsCSV, exportRecipesCSV, parseIngredientsCSV, parseRecipesCSV, categorizeIngredient } from '../utils';
+import { normalizeName, similarity, exportIngredientsCSV, exportRecipesCSV, parseIngredientsCSV, parseRecipesCSV, parseClientsCSV, categorizeIngredient } from '../utils';
 import { getWeekIdFromDate, createWeekRecord, lockWeek } from '../utils/weekUtils';
 
 const STORAGE_KEY = 'goldfinchChefData';
@@ -2356,41 +2356,21 @@ export default function AdminPage() {
         accept=".csv"
         style={{ display: 'none' }}
         onChange={(e) => {
-          // Handle CSV import for clients
           const file = e.target.files?.[0];
           if (!file) return;
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            try {
-              const text = event.target?.result;
-              const lines = text.split('\n').filter(line => line.trim());
-              if (lines.length < 2) return;
-              const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
-              const imported = [];
-              for (let i = 1; i < lines.length; i++) {
-                const values = lines[i].match(/("([^"]*)"|[^,]*)/g)?.map(v => v.replace(/^"|"$/g, '').trim()) || [];
-                const client = {};
-                headers.forEach((h, idx) => {
-                  const val = values[idx] || '';
-                  if (['persons', 'mealsPerWeek', 'planPrice', 'serviceFee'].includes(h)) {
-                    client[h] = parseFloat(val) || 0;
-                  } else if (['pickup', 'prepayDiscount', 'newClientFeePaid', 'paysOwnGroceries'].includes(h)) {
-                    client[h] = val.toLowerCase() === 'true';
-                  } else {
-                    client[h] = val;
-                  }
-                });
-                if (client.name) imported.push({ ...client, id: Date.now() + i });
+          parseClientsCSV(
+            file,
+            (imported) => {
+              if (imported.length === 0) {
+                alert('No subscriptions found in CSV. Please check the file format.\n\nExpected columns: Name, Display Name, Address, Email, Phone, Portions, Meals, etc.');
+                return;
               }
-              if (imported.length > 0) {
-                updateClients([...clients, ...imported]);
-                alert(`Imported ${imported.length} clients!`);
-              }
-            } catch (err) {
-              alert('Error importing CSV: ' + err.message);
-            }
-          };
-          reader.readAsText(file);
+              const totalContacts = imported.reduce((sum, sub) => sum + (sub.contacts?.length || 0), 0);
+              updateClients(imported);
+              alert(`Import successful!\n\n${imported.length} subscription(s) imported\n${totalContacts} contact(s) total`);
+            },
+            (err) => alert('Error parsing CSV: ' + (err.message || err))
+          );
           e.target.value = '';
         }}
       />
