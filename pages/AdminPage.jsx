@@ -2170,6 +2170,27 @@ export default function AdminPage() {
       });
     }
 
+    // Clients who pick their own dishes (chefChoice = false) with pending picks
+    const dishPickerClients = clients.filter(c => c.chefChoice === false && c.status === 'active');
+    const clientsWithPicks = dishPickerClients.filter(client => {
+      const portalData = clientPortalData[client.name];
+      const hasPicks = portalData?.ingredientPicks || (portalData?.dateIngredientPicks && Object.keys(portalData.dateIngredientPicks).length > 0);
+      // Check if client already has a menu this week
+      const hasMenu = menuItems.some(item => item.clientName === (client.displayName || client.name));
+      return hasPicks && !hasMenu;
+    });
+
+    if (clientsWithPicks.length > 0) {
+      tasks.push({
+        id: 'client-dish-picks',
+        category: 'Client Dish Picks',
+        title: `${clientsWithPicks.length} client${clientsWithPicks.length > 1 ? 's' : ''} submitted dish picks`,
+        details: clientsWithPicks.map(c => c.displayName || c.name),
+        icon: Users,
+        color: '#8b5cf6'
+      });
+    }
+
     return tasks;
   };
 
