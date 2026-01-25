@@ -205,7 +205,7 @@ export default function MenuTab({
 }) {
   const [previewClient, setPreviewClient] = useState(null);
   const [editingClientMenu, setEditingClientMenu] = useState(null);
-  const [showMenuBuilder, setShowMenuBuilder] = useState(false);
+  const [showMenuBuilder, setShowMenuBuilder] = useState(true);
 
   // Get active clients only
   const activeClients = (allClients || clients || []).filter(c => c.status === 'active');
@@ -351,7 +351,7 @@ export default function MenuTab({
         />
       )}
 
-      {/* Delivering This Week Summary */}
+      {/* 1. Delivering This Week Summary */}
       <div className="bg-white rounded-lg shadow-lg p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -386,19 +386,125 @@ export default function MenuTab({
         )}
       </div>
 
-      {/* Client List with Status */}
+      {/* 2. Build Menu Section */}
       <div className="bg-white rounded-lg shadow-lg p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xl font-bold" style={{ color: '#3d59ab' }}>All Clients</h3>
+          <h2 className="text-2xl font-bold" style={{ color: '#3d59ab' }}>Build Menu</h2>
           <button
             onClick={() => setShowMenuBuilder(!showMenuBuilder)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg border-2"
-            style={{ borderColor: '#ebb582', color: '#423d3c' }}
+            className="flex items-center gap-2 px-3 py-1 rounded-lg text-sm text-gray-600 hover:bg-gray-100"
           >
-            {showMenuBuilder ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-            {showMenuBuilder ? 'Hide Menu Builder' : 'Build Menu'}
+            {showMenuBuilder ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            {showMenuBuilder ? 'Collapse' : 'Expand'}
           </button>
         </div>
+
+        {showMenuBuilder && (
+          <>
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2" style={{ color: '#423d3c' }}>Menu Date</label>
+              <input
+                type="date"
+                value={menuDate}
+                onChange={(e) => setMenuDate(e.target.value)}
+                className="p-2 border-2 rounded-lg"
+                style={{ borderColor: '#ebb582' }}
+              />
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2" style={{ color: '#423d3c' }}>Select Clients</label>
+              <div className="flex flex-wrap gap-2">
+                {activeClients.map((client, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setSelectedClients(prev =>
+                      prev.includes(client.name)
+                        ? prev.filter(c => c !== client.name)
+                        : [...prev, client.name]
+                    )}
+                    className={`px-3 py-1 rounded-full border-2 transition-colors ${
+                      selectedClients.includes(client.name) ? 'text-white' : 'bg-white'
+                    }`}
+                    style={selectedClients.includes(client.name)
+                      ? { backgroundColor: '#3d59ab', borderColor: '#3d59ab' }
+                      : { borderColor: '#ebb582', color: '#423d3c' }}
+                  >
+                    {client.displayName || client.name} ({client.portions || client.persons || 1}p)
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              {['protein', 'veg', 'starch'].map(type => (
+                <div key={type}>
+                  <label className="block text-sm font-medium mb-2 capitalize" style={{ color: '#423d3c' }}>
+                    {type === 'veg' ? 'Vegetable' : type}
+                  </label>
+                  <select
+                    value={newMenuItem[type]}
+                    onChange={(e) => setNewMenuItem({ ...newMenuItem, [type]: e.target.value })}
+                    className="w-full p-2 border-2 rounded-lg"
+                    style={{ borderColor: '#ebb582' }}
+                  >
+                    <option value="">Select...</option>
+                    {(recipes[type] || []).map((r, i) => (
+                      <option key={i} value={r.name}>{r.name}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+
+            {extraCategories.length > 0 && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2" style={{ color: '#423d3c' }}>
+                  Extras (Sauces, Breakfast, Soups)
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {extraCategories.map((recipe, i) => (
+                    <button
+                      key={i}
+                      onClick={() => toggleExtra(recipe.name)}
+                      className={`px-3 py-1 rounded-full border-2 transition-colors text-sm ${
+                        newMenuItem.extras.includes(recipe.name) ? 'text-white' : 'bg-white'
+                      }`}
+                      style={newMenuItem.extras.includes(recipe.name)
+                        ? { backgroundColor: '#ebb582', borderColor: '#ebb582' }
+                        : { borderColor: '#ebb582', color: '#423d3c' }}
+                    >
+                      {recipe.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={addMenuItem}
+                className="flex items-center gap-2 px-6 py-2 rounded-lg hover:opacity-90"
+                style={{ backgroundColor: '#ffd700', color: '#423d3c' }}
+              >
+                <Plus size={20} />Add to Menu
+              </button>
+              {menuItems.length > 0 && (
+                <button
+                  onClick={clearMenu}
+                  className="flex items-center gap-2 px-6 py-2 rounded-lg bg-red-100 text-red-700"
+                >
+                  <Trash2 size={20} />Clear All
+                </button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* 3. All Clients with Status */}
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <h3 className="text-xl font-bold mb-4" style={{ color: '#3d59ab' }}>All Clients</h3>
 
         <div className="space-y-2">
           {activeClients.map((client, i) => {
@@ -469,111 +575,6 @@ export default function MenuTab({
           })}
         </div>
       </div>
-
-      {/* Menu Builder (Collapsible) */}
-      {showMenuBuilder && (
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-2xl font-bold mb-4" style={{ color: '#3d59ab' }}>Build Menu</h2>
-
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2" style={{ color: '#423d3c' }}>Menu Date</label>
-            <input
-              type="date"
-              value={menuDate}
-              onChange={(e) => setMenuDate(e.target.value)}
-              className="p-2 border-2 rounded-lg"
-              style={{ borderColor: '#ebb582' }}
-            />
-          </div>
-
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2" style={{ color: '#423d3c' }}>Select Clients</label>
-            <div className="flex flex-wrap gap-2">
-              {activeClients.map((client, i) => (
-                <button
-                  key={i}
-                  onClick={() => setSelectedClients(prev =>
-                    prev.includes(client.name)
-                      ? prev.filter(c => c !== client.name)
-                      : [...prev, client.name]
-                  )}
-                  className={`px-3 py-1 rounded-full border-2 transition-colors ${
-                    selectedClients.includes(client.name) ? 'text-white' : 'bg-white'
-                  }`}
-                  style={selectedClients.includes(client.name)
-                    ? { backgroundColor: '#3d59ab', borderColor: '#3d59ab' }
-                    : { borderColor: '#ebb582', color: '#423d3c' }}
-                >
-                  {client.displayName || client.name} ({client.portions || client.persons || 1}p)
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            {['protein', 'veg', 'starch'].map(type => (
-              <div key={type}>
-                <label className="block text-sm font-medium mb-2 capitalize" style={{ color: '#423d3c' }}>
-                  {type === 'veg' ? 'Vegetable' : type}
-                </label>
-                <select
-                  value={newMenuItem[type]}
-                  onChange={(e) => setNewMenuItem({ ...newMenuItem, [type]: e.target.value })}
-                  className="w-full p-2 border-2 rounded-lg"
-                  style={{ borderColor: '#ebb582' }}
-                >
-                  <option value="">Select...</option>
-                  {(recipes[type] || []).map((r, i) => (
-                    <option key={i} value={r.name}>{r.name}</option>
-                  ))}
-                </select>
-              </div>
-            ))}
-          </div>
-
-          {extraCategories.length > 0 && (
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-2" style={{ color: '#423d3c' }}>
-                Extras (Sauces, Breakfast, Soups)
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {extraCategories.map((recipe, i) => (
-                  <button
-                    key={i}
-                    onClick={() => toggleExtra(recipe.name)}
-                    className={`px-3 py-1 rounded-full border-2 transition-colors text-sm ${
-                      newMenuItem.extras.includes(recipe.name) ? 'text-white' : 'bg-white'
-                    }`}
-                    style={newMenuItem.extras.includes(recipe.name)
-                      ? { backgroundColor: '#ebb582', borderColor: '#ebb582' }
-                      : { borderColor: '#ebb582', color: '#423d3c' }}
-                  >
-                    {recipe.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="flex gap-2">
-            <button
-              onClick={addMenuItem}
-              className="flex items-center gap-2 px-6 py-2 rounded-lg hover:opacity-90"
-              style={{ backgroundColor: '#ffd700', color: '#423d3c' }}
-            >
-              <Plus size={20} />Add to Menu
-            </button>
-            {menuItems.length > 0 && (
-              <button
-                onClick={clearMenu}
-                className="flex items-center gap-2 px-6 py-2 rounded-lg bg-red-100 text-red-700"
-              >
-                <Trash2 size={20} />Clear All
-              </button>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Ingredient Pairing for Client Picks */}
       {ingredientPickerClients.length > 0 && (
