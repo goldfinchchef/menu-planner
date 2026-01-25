@@ -11,7 +11,7 @@ import { useClientPortalData } from '../hooks/useClientPortalData';
 // Client status types
 const STATUS = {
   PICK_DATES: 'pick_dates',
-  PICK_INGREDIENTS: 'pick_ingredients', // For clients with chefChoice = false
+  PICK_INGREDIENTS: 'pick_ingredients', // For clients with chefChoice = false (they pick dishes)
   NEEDS_PAYMENT: 'needs_payment',
   MENU_READY: 'menu_ready',
   DELIVERY_DAY: 'delivery_day',
@@ -127,7 +127,7 @@ export default function ClientPortal() {
     }
 
     // For chefChoice = false clients, show MENU_READY status so they see
-    // SubscriptionInfoCard with per-date ingredient picking
+    // SubscriptionInfoCard with per-date dish picking
     if (client.chefChoice === false) {
       const hasDates = (client.deliveryDates?.length > 0) || (portalInfo.selectedDates?.length > 0);
       if (hasDates) {
@@ -247,7 +247,7 @@ export default function ClientPortal() {
           />
         )}
 
-        {/* PRIORITY 3.5: Ingredient selection for non-Chef Choice clients */}
+        {/* PRIORITY 3.5: Dish selection for non-Chef Choice clients */}
         {portalStatus === STATUS.PICK_INGREDIENTS && (
           <IngredientPickerView
             client={client}
@@ -356,11 +356,11 @@ function getStatusMessage(status, client) {
     case STATUS.PICK_DATES:
       return "Let's schedule your upcoming deliveries.";
     case STATUS.PICK_INGREDIENTS:
-      return "Pick your proteins, veggies, and starches for this week!";
+      return "Pick your protein, veggie, and starch dishes for this week!";
     case STATUS.MENU_READY:
       // Show different message for chefChoice=false clients
       if (client?.chefChoice === false) {
-        return "Pick your ingredients for each delivery below!";
+        return "Pick your dishes for each delivery below!";
       }
       return "Your menu is ready! Here's what's coming.";
     case STATUS.DELIVERY_DAY:
@@ -396,7 +396,7 @@ function SubscriptionInfoCard({ client, onEditDates, clientPortalData = {}, reci
   const saturdayDeadline = getThisWeekSaturdayDeadline();
   const canEdit = deliveryDates.some(d => canEditDeliveryDate(d));
 
-  // Check if client has chefChoice = false (they pick their own ingredients)
+  // Check if client has chefChoice = false (they pick their own dishes)
   const isClientPicker = client.chefChoice === false;
 
   // Get picks for a specific date
@@ -509,7 +509,7 @@ function SubscriptionInfoCard({ client, onEditDates, clientPortalData = {}, reci
                     </div>
                   </div>
 
-                  {/* Per-date ingredient picking for chefChoice=false clients */}
+                  {/* Per-date dish picking for chefChoice=false clients */}
                   {isClientPicker && !isPast && (
                     <div className="mt-2 pt-2 border-t border-gray-100">
                       {hasSubmittedPicks ? (
@@ -539,7 +539,7 @@ function SubscriptionInfoCard({ client, onEditDates, clientPortalData = {}, reci
                             className="text-xs px-3 py-1 rounded-lg text-white font-medium"
                             style={{ backgroundColor: '#3d59ab' }}
                           >
-                            Pick Menu
+                            Pick Dishes
                           </button>
                           <span className="text-xs text-gray-500">
                             by {deadline.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
@@ -561,9 +561,9 @@ function SubscriptionInfoCard({ client, onEditDates, clientPortalData = {}, reci
         </div>
       )}
 
-      {/* Date Ingredient Picker Modal */}
+      {/* Date Dish Picker Modal */}
       {pickingDate && (
-        <DateIngredientPickerModal
+        <DateDishPickerModal
           client={client}
           dateStr={pickingDate}
           recipes={recipes}
@@ -576,8 +576,8 @@ function SubscriptionInfoCard({ client, onEditDates, clientPortalData = {}, reci
   );
 }
 
-// Modal for picking ingredients for a specific delivery date
-function DateIngredientPickerModal({ client, dateStr, recipes, existingPicks, onSave, onClose }) {
+// Modal for picking dishes for a specific delivery date
+function DateDishPickerModal({ client, dateStr, recipes, existingPicks, onSave, onClose }) {
   const mealsPerWeek = client.mealsPerWeek || 3;
 
   // Initialize with existing picks or empty arrays
@@ -626,7 +626,7 @@ function DateIngredientPickerModal({ client, dateStr, recipes, existingPicks, on
         <div className="p-4 border-b flex items-center justify-between" style={{ backgroundColor: '#f9f9ed' }}>
           <div>
             <h3 className="text-lg font-bold" style={{ color: '#3d59ab' }}>
-              Pick Your Menu
+              Pick Your Dishes
             </h3>
             <p className="text-sm text-gray-600">{formatDate(dateStr)}</p>
           </div>
@@ -637,7 +637,7 @@ function DateIngredientPickerModal({ client, dateStr, recipes, existingPicks, on
 
         <div className="p-4">
           <p className="text-gray-600 mb-4">
-            Select {mealsPerWeek} proteins, veggies, and starches. Chef Paula will pair them into delicious meals!
+            Select {mealsPerWeek} protein, veggie, and starch dishes. Chef Paula will pair them into delicious meals!
           </p>
 
           {/* Proteins */}
@@ -1372,7 +1372,7 @@ function DatePickerView({ client, selectedDates, setSelectedDates, blockedDates 
   );
 }
 
-// Ingredient Picker View - for clients with chefChoice = false
+// Dish Picker View - for clients with chefChoice = false
 function IngredientPickerView({ client, recipes, clientPortalData, onSubmit }) {
   const mealsPerWeek = client.mealsPerWeek || 3;
   const numPicks = mealsPerWeek; // 3 or 4 of each category
@@ -1448,12 +1448,12 @@ function IngredientPickerView({ client, recipes, clientPortalData, onSubmit }) {
       <div className="flex items-center gap-3 mb-4">
         <Utensils size={24} style={{ color: '#3d59ab' }} />
         <h3 className="text-xl font-bold" style={{ color: '#3d59ab' }}>
-          Pick Your Ingredients
+          Pick Your Dishes
         </h3>
       </div>
 
       <p className="text-gray-600 mb-4">
-        Select {numPicks} proteins, {numPicks} veggies, and {numPicks} starches for your meals this week.
+        Select {numPicks} protein dishes, {numPicks} veggie dishes, and {numPicks} starch dishes for your meals this week.
         Chef Paula will pair them into delicious meals!
       </p>
 
