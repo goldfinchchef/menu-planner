@@ -128,7 +128,8 @@ export default function ClientPortal() {
 
     // For chefChoice = false clients, show MENU_READY status so they see
     // SubscriptionInfoCard with per-date dish picking
-    if (client.chefChoice === false) {
+    // Handle both boolean false and string "false"
+    if (client.chefChoice === false || client.chefChoice === 'false') {
       const hasDates = (client.deliveryDates?.length > 0) || (portalInfo.selectedDates?.length > 0);
       if (hasDates) {
         return STATUS.MENU_READY;
@@ -359,7 +360,7 @@ function getStatusMessage(status, client) {
       return "Pick your protein, veggie, and starch dishes for this week!";
     case STATUS.MENU_READY:
       // Show different message for chefChoice=false clients
-      if (client?.chefChoice === false) {
+      if (client?.chefChoice === false || client?.chefChoice === 'false') {
         return "Pick your dishes for each delivery below!";
       }
       return "Your menu is ready! Here's what's coming.";
@@ -397,7 +398,8 @@ function SubscriptionInfoCard({ client, onEditDates, clientPortalData = {}, reci
   const canEdit = deliveryDates.some(d => canEditDeliveryDate(d));
 
   // Check if client has chefChoice = false (they pick their own dishes)
-  const isClientPicker = client.chefChoice === false;
+  // Handle both boolean false and string "false"
+  const isClientPicker = client.chefChoice === false || client.chefChoice === 'false';
 
   // Get picks for a specific date
   const getDatePicks = (dateStr) => {
@@ -470,7 +472,7 @@ function SubscriptionInfoCard({ client, onEditDates, clientPortalData = {}, reci
       </div>
 
       {/* Upcoming delivery dates */}
-      {deliveryDates.length > 0 && (
+      {deliveryDates.length > 0 ? (
         <div>
           <p className="text-sm font-medium text-gray-600 mb-2 flex items-center gap-2">
             <Calendar size={14} />
@@ -559,7 +561,13 @@ function SubscriptionInfoCard({ client, onEditDates, clientPortalData = {}, reci
             </p>
           )}
         </div>
-      )}
+      ) : isClientPicker ? (
+        <div className="p-4 rounded-lg bg-amber-50 border border-amber-200">
+          <p className="text-sm text-amber-700">
+            No delivery dates scheduled yet. Contact us to set up your deliveries, then you can pick your dishes!
+          </p>
+        </div>
+      ) : null}
 
       {/* Date Dish Picker Modal */}
       {pickingDate && (
@@ -639,6 +647,15 @@ function DateDishPickerModal({ client, dateStr, recipes, existingPicks, onSave, 
           <p className="text-gray-600 mb-4">
             Select {mealsPerWeek} protein, veggie, and starch dishes. Chef Paula will pair them into delicious meals!
           </p>
+
+          {/* Show message if no recipes available */}
+          {proteinOptions.length === 0 && vegOptions.length === 0 && starchOptions.length === 0 && (
+            <div className="p-4 rounded-lg bg-amber-50 border border-amber-200 mb-4">
+              <p className="text-sm text-amber-700">
+                Dish options are not available yet. Please contact us or check back later.
+              </p>
+            </div>
+          )}
 
           {/* Proteins */}
           <div className="mb-4">
