@@ -51,30 +51,63 @@ export function useAppData() {
 
   // Load from localStorage
   useEffect(() => {
-    const savedData = localStorage.getItem('goldfinchChefData');
-    if (savedData) {
-      try {
-        const parsed = JSON.parse(savedData);
-        if (parsed.recipes) setRecipes(parsed.recipes);
-        if (parsed.clients) setClients(parsed.clients);
-        if (parsed.menuItems) setMenuItems(parsed.menuItems);
-        if (parsed.masterIngredients) setMasterIngredients(parsed.masterIngredients);
-        if (parsed.orderHistory) setOrderHistory(parsed.orderHistory);
-        if (parsed.weeklyTasks) setWeeklyTasks(parsed.weeklyTasks);
-        if (parsed.drivers) setDrivers(parsed.drivers);
-        if (parsed.deliveryLog) setDeliveryLog(parsed.deliveryLog);
-        if (parsed.bagReminders) setBagReminders(parsed.bagReminders);
-        if (parsed.readyForDelivery) setReadyForDelivery(parsed.readyForDelivery);
-        if (parsed.clientPortalData) setClientPortalData(parsed.clientPortalData);
-        if (parsed.blockedDates) setBlockedDates(parsed.blockedDates);
-        if (parsed.adminSettings) setAdminSettings(parsed.adminSettings);
-        if (parsed.customTasks) setCustomTasks(parsed.customTasks);
-        if (parsed.groceryBills) setGroceryBills(parsed.groceryBills);
-        if (parsed.weeks) setWeeks(parsed.weeks);
-      } catch (e) {
-        console.error('Error loading saved data:', e);
+    const loadData = () => {
+      const savedData = localStorage.getItem('goldfinchChefData');
+      if (savedData) {
+        try {
+          const parsed = JSON.parse(savedData);
+          if (parsed.recipes) setRecipes(parsed.recipes);
+          if (parsed.clients) setClients(parsed.clients);
+          if (parsed.menuItems) setMenuItems(parsed.menuItems);
+          if (parsed.masterIngredients) setMasterIngredients(parsed.masterIngredients);
+          if (parsed.orderHistory) setOrderHistory(parsed.orderHistory);
+          if (parsed.weeklyTasks) setWeeklyTasks(parsed.weeklyTasks);
+          if (parsed.drivers) setDrivers(parsed.drivers);
+          if (parsed.deliveryLog) setDeliveryLog(parsed.deliveryLog);
+          if (parsed.bagReminders) setBagReminders(parsed.bagReminders);
+          if (parsed.readyForDelivery) setReadyForDelivery(parsed.readyForDelivery);
+          if (parsed.clientPortalData) setClientPortalData(parsed.clientPortalData);
+          if (parsed.blockedDates) setBlockedDates(parsed.blockedDates);
+          if (parsed.adminSettings) setAdminSettings(parsed.adminSettings);
+          if (parsed.customTasks) setCustomTasks(parsed.customTasks);
+          if (parsed.groceryBills) setGroceryBills(parsed.groceryBills);
+          if (parsed.weeks) setWeeks(parsed.weeks);
+        } catch (e) {
+          console.error('Error loading saved data:', e);
+        }
       }
-    }
+    };
+
+    loadData();
+
+    // Listen for storage changes from other tabs/windows
+    const handleStorageChange = (e) => {
+      if (e.key === 'goldfinchChefData') {
+        loadData();
+      }
+    };
+
+    // Listen for custom event from same-tab updates (Admin page)
+    const handleDataUpdate = () => {
+      loadData();
+    };
+
+    // Reload data when tab becomes visible (user switches back from Admin)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadData();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('goldfinchDataUpdated', handleDataUpdate);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('goldfinchDataUpdated', handleDataUpdate);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   // Save to localStorage

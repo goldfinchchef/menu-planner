@@ -84,6 +84,9 @@ function useAdminData() {
     }
     const merged = { ...existing, ...updates, lastSaved: new Date().toISOString() };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+
+    // Dispatch custom event to notify other components in the same tab
+    window.dispatchEvent(new CustomEvent('goldfinchDataUpdated'));
   }, []);
 
   const updateDrivers = useCallback((newDrivers) => {
