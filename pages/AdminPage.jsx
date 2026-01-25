@@ -112,12 +112,20 @@ function useAdminData() {
   const updateMenuItems = useCallback((newMenuItemsOrFn) => {
     // Handle both direct values and functional updates
     if (typeof newMenuItemsOrFn === 'function') {
-      setMenuItems(prev => {
-        const updated = newMenuItemsOrFn(prev);
-        // Save after computing the new value
-        setTimeout(() => saveData({ menuItems: updated }), 0);
-        return updated;
-      });
+      // Get current value from localStorage to compute update
+      const savedData = localStorage.getItem(STORAGE_KEY);
+      let currentItems = [];
+      if (savedData) {
+        try {
+          const parsed = JSON.parse(savedData);
+          currentItems = parsed.menuItems || [];
+        } catch (e) {
+          console.error('Error parsing saved data:', e);
+        }
+      }
+      const updated = newMenuItemsOrFn(currentItems);
+      setMenuItems(updated);
+      saveData({ menuItems: updated });
     } else {
       setMenuItems(newMenuItemsOrFn);
       saveData({ menuItems: newMenuItemsOrFn });
