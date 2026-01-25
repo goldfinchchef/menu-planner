@@ -8,12 +8,9 @@ import { useAppData } from './hooks/useAppData';
 import { getWeekId, getWeekIdFromDate } from './utils/weekUtils';
 import {
   RecipesTab,
-  MenuTab,
   KDSTab,
   PrepTab,
-  ClientsTab,
-  DeliveriesTab,
-  IngredientsTab
+  DeliveriesTab
 } from './tabs';
 import {
   categorizeIngredient,
@@ -30,7 +27,7 @@ import Papa from 'papaparse';
 
 export default function App() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('menu');
+  const [activeTab, setActiveTab] = useState('kds');
   const {
     recipes, setRecipes,
     menuItems, setMenuItems,
@@ -569,33 +566,6 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'menu' && (
-          <MenuTab
-            menuDate={menuDate}
-            setMenuDate={setMenuDate}
-            clients={clients}
-            allClients={clients}
-            selectedClients={selectedClients}
-            setSelectedClients={setSelectedClients}
-            recipes={recipes}
-            newMenuItem={newMenuItem}
-            setNewMenuItem={setNewMenuItem}
-            menuItems={menuItems}
-            setMenuItems={setMenuItems}
-            addMenuItem={addMenuItem}
-            clearMenu={clearMenu}
-            deleteMenuItem={deleteMenuItem}
-            getOrdersByClient={getOrdersByClient}
-            clientPortalData={clientPortalData}
-            weeklyTasks={weeklyTasks}
-            weeks={weeks}
-            selectedWeekId={selectedWeekId}
-            setSelectedWeekId={setSelectedWeekId}
-            lockWeekAndSnapshot={lockWeekAndSnapshot}
-            unlockWeekById={unlockWeekById}
-          />
-        )}
-
         {activeTab === 'kds' && (
           <KDSTab
             menuItems={getApprovedMenuItems()}
@@ -611,43 +581,6 @@ export default function App() {
 
         {activeTab === 'prep' && (
           <PrepTab prepList={prepList} exportPrepList={exportPrepList} />
-        )}
-
-        {activeTab === 'ingredients' && (
-          <IngredientsTab
-            masterIngredients={masterIngredients}
-            newIngredient={newIngredient}
-            setNewIngredient={setNewIngredient}
-            editingIngredientId={editingIngredientId}
-            editingIngredientData={editingIngredientData}
-            setEditingIngredientData={setEditingIngredientData}
-            duplicateWarnings={duplicateWarnings}
-            setDuplicateWarnings={setDuplicateWarnings}
-            scanForDuplicates={scanForDuplicates}
-            mergeIngredients={mergeIngredients}
-            addMasterIngredient={addMasterIngredient}
-            deleteMasterIngredient={deleteMasterIngredient}
-            startEditingMasterIngredient={startEditingMasterIngredient}
-            saveEditingMasterIngredient={saveEditingMasterIngredient}
-            cancelEditingMasterIngredient={cancelEditingMasterIngredient}
-            ingredientsFileRef={ingredientsFileRef}
-            exportIngredientsCSV={() => exportIngredientsCSV(masterIngredients)}
-          />
-        )}
-
-        {activeTab === 'clients' && (
-          <ClientsTab
-            clients={clients}
-            setClients={setClients}
-            newClient={newClient}
-            setNewClient={setNewClient}
-            addClient={addClient}
-            deleteClient={deleteClient}
-            clientsFileRef={clientsFileRef}
-            exportClientsCSV={() => exportClientsCSV(clients)}
-            deliveryLog={deliveryLog}
-            orderHistory={orderHistory}
-          />
         )}
 
         {activeTab === 'deliveries' && (

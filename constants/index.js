@@ -20,13 +20,10 @@ export const DAYS = ['Monday', 'Tuesday', 'Thursday'];
 export const RECIPE_CATEGORIES = ['protein', 'veg', 'starch', 'sauces', 'breakfast', 'soups'];
 
 export const TABS = [
-  { id: 'menu', label: 'Menu', icon: Utensils },
-  { id: 'recipes', label: 'Recipes', icon: Book },
   { id: 'kds', label: 'KDS', icon: Monitor },
-  { id: 'prep', label: 'Shop', icon: List },
-  { id: 'clients', label: 'Clients', icon: Users },
+  { id: 'recipes', label: 'Recipes', icon: Book },
   { id: 'deliveries', label: 'Deliveries', icon: Truck },
-  { id: 'ingredients', label: 'Ingredients', icon: ShoppingCart }
+  { id: 'prep', label: 'Shop', icon: ShoppingCart }
 ];
 
 export const DEFAULT_RECIPES = {
