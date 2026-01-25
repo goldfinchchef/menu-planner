@@ -259,31 +259,61 @@ export default function App() {
     return grouped;
   };
 
-  // KDS functions - only show approved menus
+  // KDS functions - only show approved menus for selected week
   const getApprovedMenuItems = () => {
     return menuItems.filter(item => item.approved);
   };
 
+  // Get approved menu items filtered to selected week
+  const getWeekApprovedMenuItems = () => {
+    const weekItems = getWeekMenuItems();
+    return weekItems.filter(item => item.approved);
+  };
+
+  // Get production day from delivery date (Thursday = Thursday production, else Mon/Tue production)
+  const getProductionDay = (dateStr) => {
+    if (!dateStr) return 'monTue';
+    const date = new Date(dateStr + 'T12:00:00');
+    const dayOfWeek = date.getDay();
+    // Thursday = 4
+    return dayOfWeek === 4 ? 'thursday' : 'monTue';
+  };
+
   const getKDSView = () => {
-    const kds = {};
-    const approvedItems = getApprovedMenuItems();
+    // Returns { monTue: { protein: {...}, veg: {...}, ... }, thursday: { protein: {...}, ... } }
+    const kds = {
+      monTue: { protein: {}, veg: {}, starch: {}, extras: {} },
+      thursday: { protein: {}, veg: {}, starch: {}, extras: {} }
+    };
+
+    const approvedItems = getWeekApprovedMenuItems();
+
     approvedItems.forEach(item => {
+      const productionDay = getProductionDay(item.date);
+
       ['protein', 'veg', 'starch'].forEach(type => {
         if (item[type]) {
-          if (!kds[item[type]]) kds[item[type]] = { totalPortions: 0, category: type, clients: [] };
-          kds[item[type]].totalPortions += item.portions;
-          kds[item[type]].clients.push({ name: item.clientName, portions: item.portions });
+          if (!kds[productionDay][type][item[type]]) {
+            kds[productionDay][type][item[type]] = { totalPortions: 0, category: type, clients: [] };
+          }
+          kds[productionDay][type][item[type]].totalPortions += item.portions;
+          kds[productionDay][type][item[type]].clients.push({ name: item.clientName, portions: item.portions, date: item.date });
         }
       });
+
       if (item.extras) {
         item.extras.forEach(extra => {
-          const category = recipes.sauces.find(r => r.name === extra) ? 'sauces' : recipes.breakfast.find(r => r.name === extra) ? 'breakfast' : 'soups';
-          if (!kds[extra]) kds[extra] = { totalPortions: 0, category, clients: [] };
-          kds[extra].totalPortions += item.portions;
-          kds[extra].clients.push({ name: item.clientName, portions: item.portions });
+          const category = recipes.sauces?.find(r => r.name === extra) ? 'sauces'
+            : recipes.breakfast?.find(r => r.name === extra) ? 'breakfast' : 'soups';
+          if (!kds[productionDay].extras[extra]) {
+            kds[productionDay].extras[extra] = { totalPortions: 0, category, clients: [] };
+          }
+          kds[productionDay].extras[extra].totalPortions += item.portions;
+          kds[productionDay].extras[extra].clients.push({ name: item.clientName, portions: item.portions, date: item.date });
         });
       }
     });
+
     return kds;
   };
 
@@ -293,8 +323,18 @@ export default function App() {
 
   const allDishesComplete = () => {
     const kds = getKDSView();
-    const dishNames = Object.keys(kds);
-    return dishNames.length > 0 && dishNames.every(name => completedDishes[name]);
+    const allDishNames = [];
+
+    // Collect all dish names from both production days
+    ['monTue', 'thursday'].forEach(prodDay => {
+      ['protein', 'veg', 'starch', 'extras'].forEach(category => {
+        Object.keys(kds[prodDay][category]).forEach(dishName => {
+          allDishNames.push(dishName);
+        });
+      });
+    });
+
+    return allDishNames.length > 0 && allDishNames.every(name => completedDishes[name]);
   };
 
   const completeAllOrders = () => {
@@ -344,15 +384,17 @@ export default function App() {
   };
 
   // Shopping list - grouped by shopping day based on client delivery days
-  // Monday + Tuesday deliveries → Sunday shopping list
+  // Monday deliveries → Sunday shopping list
+  // Tuesday deliveries → Tuesday shopping list
   // Thursday deliveries → Thursday shopping list
   const getShoppingListsByDay = () => {
     const shoppingLists = {
-      Sunday: {},    // For Monday + Tuesday deliveries
+      Sunday: {},    // For Monday deliveries
+      Tuesday: {},   // For Tuesday deliveries
       Thursday: {}   // For Thursday deliveries
     };
 
-    const approvedItems = getApprovedMenuItems();
+    const approvedItems = getWeekApprovedMenuItems();
 
     approvedItems.forEach(item => {
       // Find the client to get their delivery day
@@ -360,11 +402,12 @@ export default function App() {
       const deliveryDay = client?.deliveryDay || '';
 
       // Determine shopping day based on delivery day
-      let shopDay = 'Sunday'; // Default
-      if (deliveryDay === 'Thursday') {
+      let shopDay = 'Sunday'; // Default for Monday
+      if (deliveryDay === 'Tuesday') {
+        shopDay = 'Tuesday';
+      } else if (deliveryDay === 'Thursday') {
         shopDay = 'Thursday';
       }
-      // Monday and Tuesday deliveries both go to Sunday shopping
 
       // Get all dishes from this menu item
       const dishes = [item.protein, item.veg, item.starch, ...(item.extras || [])].filter(Boolean);
@@ -408,6 +451,7 @@ export default function App() {
 
     return {
       Sunday: sortIngredients(shoppingLists.Sunday),
+      Tuesday: sortIngredients(shoppingLists.Tuesday),
       Thursday: sortIngredients(shoppingLists.Thursday)
     };
   };
@@ -415,7 +459,7 @@ export default function App() {
   // Legacy prep list (all items combined) - kept for backwards compatibility
   const getPrepList = () => {
     const lists = getShoppingListsByDay();
-    return [...lists.Sunday, ...lists.Thursday];
+    return [...lists.Sunday, ...lists.Tuesday, ...lists.Thursday];
   };
 
   const exportPrepList = () => {
@@ -495,6 +539,25 @@ export default function App() {
   // Week-related helpers
   const currentWeek = weeks[selectedWeekId] || null;
   const isCurrentWeekReadOnly = isWeekReadOnly(selectedWeekId);
+
+  // Save driver routes to main storage (so driver portal can access them)
+  const saveDriverRoutes = (routes) => {
+    const savedData = localStorage.getItem('goldfinchChefData');
+    let existing = {};
+    if (savedData) {
+      try {
+        existing = JSON.parse(savedData);
+      } catch (e) {
+        console.error('Error parsing saved data:', e);
+      }
+    }
+    const merged = {
+      ...existing,
+      savedRoutes: routes,
+      lastSaved: new Date().toISOString()
+    };
+    localStorage.setItem('goldfinchChefData', JSON.stringify(merged));
+  };
 
   // Get data for selected week (from week record if locked, otherwise from global state)
   const getWeekMenuItems = () => {
@@ -651,6 +714,8 @@ export default function App() {
             removeReadyForDeliveryFromWeek={removeReadyForDeliveryFromWeek}
             isReadOnly={isCurrentWeekReadOnly}
             menuItems={getWeekMenuItems()}
+            clientPortalData={clientPortalData}
+            saveDriverRoutes={saveDriverRoutes}
           />
         )}
 

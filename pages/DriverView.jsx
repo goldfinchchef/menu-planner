@@ -30,6 +30,8 @@ export default function DriverView() {
     deliveryLog,
     orderHistory,
     menuItems,
+    savedRoutes,
+    clientPortalData,
     isLoaded,
     updateDeliveryLog,
     updateReadyForDelivery,
@@ -68,10 +70,12 @@ export default function DriverView() {
   const [selectedProblem, setSelectedProblem] = useState('');
   const [problemNote, setProblemNote] = useState('');
   const [showAllStops, setShowAllStops] = useState(false);
+  const [showAllReady, setShowAllReady] = useState(false); // View all ready orders across dates
   const [completedStops, setCompletedStops] = useState([]);
   const [isComplete, setIsComplete] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null); // null = today
+  const [activeOrder, setActiveOrder] = useState(null); // For delivering orders from any date
 
   const fileInputRef = useRef(null);
   const today = new Date().toISOString().split('T')[0];
@@ -106,22 +110,40 @@ export default function DriverView() {
     return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][date.getDay()];
   };
 
-  // Get upcoming delivery dates for this driver's zone (next 7 days)
+  // Check if a client has a delivery scheduled for a specific date
+  const isClientScheduledForDate = (client, dateStr) => {
+    if (!client || client.status !== 'active' || client.pickup) return false;
+
+    const dayName = getDayName(dateStr);
+
+    // Check 1: Regular delivery day matches
+    if (client.deliveryDay === dayName) return true;
+
+    // Check 2: Admin-set specific delivery dates
+    if (client.deliveryDates?.includes(dateStr)) return true;
+
+    // Check 3: Client-set delivery dates from portal
+    const portalData = clientPortalData[client.name];
+    if (portalData?.selectedDates?.includes(dateStr)) return true;
+
+    return false;
+  };
+
+  // Get upcoming delivery dates for this driver's zone (next 14 days)
   const getUpcomingDeliveryDates = () => {
     if (!driver) return [];
     const dates = [];
     const startDate = new Date(today);
 
-    // Get next 7 days
-    for (let i = 0; i < 7; i++) {
+    // Get next 14 days
+    for (let i = 0; i < 14; i++) {
       const checkDate = new Date(startDate);
       checkDate.setDate(startDate.getDate() + i);
       const dateStr = checkDate.toISOString().split('T')[0];
-      const dayName = getDayName(dateStr);
 
       // Check if any clients in this zone have deliveries on this day
       const hasDeliveries = clients.some(
-        c => c.status === 'active' && c.zone === driver.zone && c.deliveryDay === dayName && !c.pickup
+        c => c.zone === driver.zone && isClientScheduledForDate(c, dateStr)
       );
 
       if (hasDeliveries) {
@@ -132,16 +154,42 @@ export default function DriverView() {
     return dates;
   };
 
+  // Get ALL ready orders for this driver's zone (regardless of date)
+  const getAllReadyOrders = () => {
+    if (!driver) return [];
+
+    return readyForDelivery
+      .filter(order => {
+        const client = clients.find(c => c.name === order.clientName);
+        return client && client.zone === driver.zone && !client.pickup;
+      })
+      .map(order => {
+        const client = clients.find(c => c.name === order.clientName);
+        const isDelivered = deliveryLog.some(
+          e => e.clientName === order.clientName && e.date === order.date
+        );
+        return {
+          ...order,
+          displayName: client?.displayName || order.clientName,
+          address: client?.address || '',
+          zone: client?.zone,
+          isDelivered
+        };
+      })
+      .filter(order => !order.isDelivered)
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+  };
+
   const upcomingDates = getUpcomingDeliveryDates();
+  const allReadyOrders = getAllReadyOrders();
 
   // Get ALL scheduled stops for this driver's zone on a specific date
   const getDriverStops = (date) => {
     if (!driver) return [];
-    const dayName = getDayName(date);
 
-    // Get all scheduled clients for this day/zone
-    return clients
-      .filter(c => c.status === 'active' && c.zone === driver.zone && c.deliveryDay === dayName && !c.pickup)
+    // Get all scheduled clients for this day/zone (checking all date sources)
+    const stops = clients
+      .filter(c => c.zone === driver.zone && isClientScheduledForDate(c, date))
       .map(client => {
         const status = getClientStatus(client.name, date);
         const orders = readyForDelivery.filter(o => o.clientName === client.name && o.date === date);
@@ -152,12 +200,43 @@ export default function DriverView() {
           address: client.address || '',
           orders,
           zone: client.zone,
+          date,
           status: status.key,
           statusInfo: status,
           isReady: status.key === 'ready',
           isDelivered: status.key === 'delivered'
         };
       });
+
+    // Check if there's a saved route for this date/zone
+    const routeKey = `${date}-${driver.zone}`;
+    const savedRoute = savedRoutes?.[routeKey];
+
+    if (savedRoute?.stops?.length > 0) {
+      // Sort stops according to saved route order
+      const orderedStops = [];
+      const addedClients = new Set();
+
+      // First, add stops in saved route order
+      savedRoute.stops.forEach(savedStop => {
+        const stop = stops.find(s => s.clientName === savedStop.clientName);
+        if (stop && !addedClients.has(stop.clientName)) {
+          orderedStops.push(stop);
+          addedClients.add(stop.clientName);
+        }
+      });
+
+      // Then add any remaining stops that weren't in the saved route
+      stops.forEach(stop => {
+        if (!addedClients.has(stop.clientName)) {
+          orderedStops.push(stop);
+        }
+      });
+
+      return orderedStops;
+    }
+
+    return stops;
   };
 
   // Get only READY stops (for the active delivery flow)
@@ -238,7 +317,12 @@ export default function DriverView() {
   };
 
   const handleCompleteDelivery = (problem = null, note = '') => {
-    if (!currentStop) return;
+    // Use activeOrder if set (from All Ready view), otherwise use currentStop
+    const stopToComplete = activeOrder || currentStop;
+    if (!stopToComplete) return;
+
+    // Get the delivery date from the order/stop
+    const deliveryDate = stopToComplete.date || today;
 
     // Validate porch drop requires photo
     if (handoffType === HANDOFF_TYPES.PORCH && !photo && !problem) {
@@ -254,8 +338,8 @@ export default function DriverView() {
 
     const newEntry = {
       id: Date.now(),
-      date: today,
-      clientName: currentStop.clientName,
+      date: deliveryDate,
+      clientName: stopToComplete.clientName,
       zone: driver.zone,
       driverName: driver.name,
       completedAt: new Date().toISOString(),
@@ -272,25 +356,32 @@ export default function DriverView() {
 
     // Move orders to history
     const clientOrders = readyForDelivery.filter(
-      order => order.clientName === currentStop.clientName && order.date === today
+      order => order.clientName === stopToComplete.clientName && order.date === deliveryDate
     );
     if (clientOrders.length > 0) {
       updateOrderHistory([...orderHistory, ...clientOrders]);
       updateReadyForDelivery(
         readyForDelivery.filter(
-          order => !(order.clientName === currentStop.clientName && order.date === today)
+          order => !(order.clientName === stopToComplete.clientName && order.date === deliveryDate)
         )
       );
     }
 
     // Mark as completed and advance
-    setCompletedStops([...completedStops, currentStop.clientName]);
-    resetDeliveryForm();
-    setShowProblemModal(false);
+    if (activeOrder) {
+      // If completing from All Ready view, go back to that view
+      setActiveOrder(null);
+      resetDeliveryForm();
+      setShowProblemModal(false);
+    } else {
+      setCompletedStops([...completedStops, stopToComplete.clientName]);
+      resetDeliveryForm();
+      setShowProblemModal(false);
 
-    // Check if this was the last stop
-    if (remainingStops.length <= 1) {
-      setIsComplete(true);
+      // Check if this was the last stop
+      if (remainingReadyStops.length <= 1) {
+        setIsComplete(true);
+      }
     }
   };
 
@@ -518,6 +609,321 @@ export default function DriverView() {
     );
   }
 
+  // All Ready Orders view (orders ready across all dates)
+  if (showAllReady && !activeOrder) {
+    const formatDate = (dateStr) => {
+      const date = new Date(dateStr + 'T12:00:00');
+      const dayName = getDayName(dateStr);
+      const month = date.toLocaleString('en-US', { month: 'short' });
+      const day = date.getDate();
+      const isToday = dateStr === today;
+      return isToday ? `Today (${dayName})` : `${dayName}, ${month} ${day}`;
+    };
+
+    return (
+      <div className="min-h-screen p-4" style={{ backgroundColor: '#f9f9ed' }}>
+        <div className="max-w-lg mx-auto">
+          {/* Header */}
+          <div className="bg-white rounded-lg shadow p-4 mb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-xl font-bold" style={{ color: '#3d59ab' }}>
+                  All Ready Orders
+                </h1>
+                <p className="text-sm text-gray-500">
+                  {allReadyOrders.length} order{allReadyOrders.length !== 1 ? 's' : ''} ready for delivery
+                </p>
+              </div>
+              <button
+                onClick={() => setShowAllReady(false)}
+                className="px-4 py-2 rounded-lg bg-gray-200"
+              >
+                Back
+              </button>
+            </div>
+          </div>
+
+          {/* Group orders by date */}
+          {allReadyOrders.length > 0 ? (
+            <div className="space-y-4">
+              {/* Group by date */}
+              {Object.entries(
+                allReadyOrders.reduce((groups, order) => {
+                  const date = order.date;
+                  if (!groups[date]) groups[date] = [];
+                  groups[date].push(order);
+                  return groups;
+                }, {})
+              ).map(([date, orders]) => (
+                <div key={date}>
+                  <h3 className="text-sm font-bold mb-2 px-2" style={{ color: '#3d59ab' }}>
+                    {formatDate(date)}
+                  </h3>
+                  <div className="space-y-2">
+                    {orders.map((order, idx) => (
+                      <div
+                        key={`${order.clientName}-${order.date}-${idx}`}
+                        className="bg-white rounded-lg shadow p-4 border-l-4"
+                        style={{ borderLeftColor: '#f59e0b' }}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <h4 className="font-bold">{order.displayName}</h4>
+                            <p className="text-sm text-gray-600">{order.address}</p>
+                            <p className="text-sm text-gray-500 mt-1">
+                              {order.portions}p: {order.dishes?.join(', ')}
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            {order.address && (
+                              <button
+                                onClick={() => openMaps(order.address)}
+                                className="p-2 rounded-lg text-white"
+                                style={{ backgroundColor: '#27ae60' }}
+                              >
+                                <MapPin size={20} />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setActiveOrder({
+                                clientName: order.clientName,
+                                displayName: order.displayName,
+                                address: order.address,
+                                date: order.date,
+                                orders: [order]
+                              })}
+                              className="p-2 rounded-lg text-white"
+                              style={{ backgroundColor: '#f59e0b' }}
+                              title="Deliver Now"
+                            >
+                              <Truck size={20} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-white rounded-lg shadow-lg p-8 text-center">
+              <Package size={48} className="mx-auto mb-4 text-gray-300" />
+              <p className="text-gray-500">No ready orders at this time</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Active order delivery (from All Ready view)
+  if (activeOrder) {
+    return (
+      <div className="min-h-screen p-4" style={{ backgroundColor: '#f9f9ed' }}>
+        <div className="max-w-lg mx-auto">
+          {/* Header with back button */}
+          <div className="bg-white rounded-lg shadow p-4 mb-4">
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => {
+                  setActiveOrder(null);
+                  resetDeliveryForm();
+                }}
+                className="flex items-center gap-2 text-gray-600"
+              >
+                <ChevronLeft size={20} />
+                Back
+              </button>
+              <p className="text-sm text-gray-500">
+                Delivering for {new Date(activeOrder.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </p>
+            </div>
+          </div>
+
+          {/* Stop card */}
+          <div className="bg-white rounded-lg shadow-lg p-6 mb-4">
+            <h2 className="text-2xl font-bold mb-1" style={{ color: '#3d59ab' }}>
+              {activeOrder.displayName}
+            </h2>
+            <p className="text-gray-600 flex items-center gap-2">
+              <MapPin size={16} />
+              {activeOrder.address || 'No address'}
+            </p>
+            {activeOrder.orders?.[0] && (
+              <div className="mt-3 p-3 rounded-lg" style={{ backgroundColor: '#f9f9ed' }}>
+                <p className="text-sm font-medium">
+                  {activeOrder.orders[0].portions} portions: {activeOrder.orders[0].dishes?.join(', ')}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Handoff type */}
+          <div className="bg-white rounded-lg shadow p-4 mb-4">
+            <p className="font-medium mb-3" style={{ color: '#3d59ab' }}>Handoff Type</p>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => setHandoffType(HANDOFF_TYPES.HAND)}
+                className={`py-3 rounded-lg border-2 font-medium flex items-center justify-center gap-2 ${
+                  handoffType === HANDOFF_TYPES.HAND
+                    ? 'text-white'
+                    : 'bg-white'
+                }`}
+                style={{
+                  borderColor: '#3d59ab',
+                  backgroundColor: handoffType === HANDOFF_TYPES.HAND ? '#3d59ab' : 'white',
+                  color: handoffType === HANDOFF_TYPES.HAND ? 'white' : '#3d59ab'
+                }}
+              >
+                <User size={18} />
+                Hand to Client
+              </button>
+              <button
+                onClick={() => setHandoffType(HANDOFF_TYPES.PORCH)}
+                className={`py-3 rounded-lg border-2 font-medium flex items-center justify-center gap-2 ${
+                  handoffType === HANDOFF_TYPES.PORCH
+                    ? 'text-white'
+                    : 'bg-white'
+                }`}
+                style={{
+                  borderColor: '#3d59ab',
+                  backgroundColor: handoffType === HANDOFF_TYPES.PORCH ? '#3d59ab' : 'white',
+                  color: handoffType === HANDOFF_TYPES.PORCH ? 'white' : '#3d59ab'
+                }}
+              >
+                <Home size={18} />
+                Porch Drop
+              </button>
+            </div>
+          </div>
+
+          {/* Photo (for porch drops) */}
+          {handoffType === HANDOFF_TYPES.PORCH && (
+            <div className="bg-white rounded-lg shadow p-4 mb-4">
+              <p className="font-medium mb-3" style={{ color: '#3d59ab' }}>Photo Proof (Required)</p>
+              {photoPreview ? (
+                <div className="relative">
+                  <img src={photoPreview} alt="Delivery" className="w-full rounded-lg" />
+                  <button
+                    onClick={() => { setPhoto(null); setPhotoPreview(null); }}
+                    className="absolute top-2 right-2 p-2 rounded-full bg-red-500 text-white"
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full py-8 border-2 border-dashed rounded-lg flex flex-col items-center justify-center gap-2"
+                  style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
+                >
+                  <Camera size={32} />
+                  <span>Take Photo</span>
+                </button>
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                ref={fileInputRef}
+                onChange={handlePhotoChange}
+                className="hidden"
+              />
+            </div>
+          )}
+
+          {/* Bags returned */}
+          <div className="bg-white rounded-lg shadow p-4 mb-4">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={bagsReturned}
+                onChange={(e) => setBagsReturned(e.target.checked)}
+                className="w-5 h-5 rounded"
+              />
+              <span className="font-medium">Bags Returned</span>
+            </label>
+          </div>
+
+          {/* Action buttons */}
+          <div className="space-y-3">
+            <button
+              onClick={() => handleCompleteDelivery()}
+              className="w-full py-4 rounded-lg text-white font-bold text-lg flex items-center justify-center gap-2"
+              style={{ backgroundColor: '#22c55e' }}
+            >
+              <Check size={24} />
+              Complete Delivery
+            </button>
+            <button
+              onClick={() => setShowProblemModal(true)}
+              className="w-full py-3 rounded-lg border-2 font-medium flex items-center justify-center gap-2"
+              style={{ borderColor: '#dc2626', color: '#dc2626' }}
+            >
+              <AlertTriangle size={18} />
+              Report Problem
+            </button>
+          </div>
+        </div>
+
+        {/* Problem Modal */}
+        {showProblemModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+              <h3 className="text-xl font-bold mb-4" style={{ color: '#3d59ab' }}>
+                Report Problem
+              </h3>
+              <div className="space-y-3 mb-4">
+                {DELIVERY_PROBLEMS.map(problem => (
+                  <button
+                    key={problem}
+                    onClick={() => setSelectedProblem(problem)}
+                    className={`w-full py-3 px-4 rounded-lg text-left border-2 ${
+                      selectedProblem === problem
+                        ? 'border-red-500 bg-red-50'
+                        : 'border-gray-200'
+                    }`}
+                  >
+                    {problem}
+                  </button>
+                ))}
+              </div>
+              {selectedProblem === 'Other' && (
+                <textarea
+                  value={problemNote}
+                  onChange={(e) => setProblemNote(e.target.value)}
+                  placeholder="Describe the problem..."
+                  className="w-full p-3 border-2 rounded-lg mb-4"
+                  rows={3}
+                />
+              )}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowProblemModal(false);
+                    setSelectedProblem('');
+                    setProblemNote('');
+                  }}
+                  className="flex-1 py-3 rounded-lg bg-gray-200 font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleProblemSubmit}
+                  className="flex-1 py-3 rounded-lg text-white font-medium"
+                  style={{ backgroundColor: '#dc2626' }}
+                >
+                  Submit Problem
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // Summary screen
   if (isComplete) {
     const summary = getSummary();
@@ -584,19 +990,20 @@ export default function DriverView() {
     );
   }
 
-  // No READY stops available (but might have scheduled stops)
-  if (remainingReadyStops.length === 0 && !isComplete) {
+  // No READY stops for today (but might have ready orders for other dates)
+  if (remainingReadyStops.length === 0 && !isComplete && !showAllReady) {
     const scheduledCount = allStops.filter(s => !s.isDelivered).length;
     const inKdsCount = allStops.filter(s => s.status === 'kds').length;
+    const readyOtherDates = allReadyOrders.length;
 
     return (
       <div className="min-h-screen p-4" style={{ backgroundColor: '#f9f9ed' }}>
         <div className="max-w-lg mx-auto">
-          <Header driver={driver} onLogout={handleLogout} onViewAll={() => setShowAllStops(true)} />
+          <Header driver={driver} onLogout={handleLogout} onViewAll={() => setShowAllStops(true)} onViewReady={() => setShowAllReady(true)} readyCount={readyOtherDates} />
           <div className="bg-white rounded-lg shadow-lg p-8 text-center">
             <Package size={48} className="mx-auto mb-4 text-gray-300" />
             <h2 className="text-xl font-bold mb-2" style={{ color: '#3d59ab' }}>
-              No Deliveries Ready
+              No Deliveries Ready Today
             </h2>
             {scheduledCount > 0 ? (
               <>
@@ -616,6 +1023,24 @@ export default function DriverView() {
                 No deliveries scheduled for Zone {driver.zone} today.
               </p>
             )}
+
+            {/* Show ready orders for other dates */}
+            {readyOtherDates > 0 && (
+              <div className="mt-4 p-4 rounded-lg" style={{ backgroundColor: '#fef3c7' }}>
+                <p className="text-amber-800 font-medium">
+                  <Truck size={16} className="inline mr-1" />
+                  {readyOtherDates} order{readyOtherDates !== 1 ? 's' : ''} ready for upcoming dates
+                </p>
+                <button
+                  onClick={() => setShowAllReady(true)}
+                  className="mt-2 px-4 py-2 rounded-lg text-white text-sm"
+                  style={{ backgroundColor: '#f59e0b' }}
+                >
+                  View Ready Orders
+                </button>
+              </div>
+            )}
+
             <button
               onClick={() => setShowAllStops(true)}
               className="mt-4 px-4 py-2 rounded-lg border-2"
@@ -633,7 +1058,7 @@ export default function DriverView() {
   return (
     <div className="min-h-screen p-4" style={{ backgroundColor: '#f9f9ed' }}>
       <div className="max-w-lg mx-auto">
-        <Header driver={driver} onLogout={handleLogout} onViewAll={() => setShowAllStops(true)} />
+        <Header driver={driver} onLogout={handleLogout} onViewAll={() => setShowAllStops(true)} onViewReady={() => setShowAllReady(true)} readyCount={allReadyOrders.length} />
 
         {/* Progress indicator */}
         <div className="bg-white rounded-lg shadow p-3 mb-4">
@@ -886,7 +1311,7 @@ export default function DriverView() {
 }
 
 // Header component
-function Header({ driver, onLogout, onViewAll }) {
+function Header({ driver, onLogout, onViewAll, onViewReady, readyCount = 0 }) {
   return (
     <div className="bg-white rounded-lg shadow p-4 mb-4">
       <div className="flex items-center justify-between">
@@ -901,6 +1326,20 @@ function Header({ driver, onLogout, onViewAll }) {
           </div>
         </div>
         <div className="flex gap-2">
+          {onViewReady && readyCount > 0 && (
+            <button
+              onClick={onViewReady}
+              className="relative p-2 rounded-lg"
+              style={{ backgroundColor: '#fef3c7' }}
+              title="View All Ready Orders"
+            >
+              <Package size={20} style={{ color: '#f59e0b' }} />
+              <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full text-xs text-white flex items-center justify-center"
+                style={{ backgroundColor: '#f59e0b' }}>
+                {readyCount}
+              </span>
+            </button>
+          )}
           <button
             onClick={onViewAll}
             className="p-2 rounded-lg bg-gray-100"

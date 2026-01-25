@@ -204,11 +204,32 @@ export default function MenuTab({
   unlockWeekById
 }) {
   const [previewClient, setPreviewClient] = useState(null);
-  const [editingClientMenu, setEditingClientMenu] = useState(null);
+  const [editingClientName, setEditingClientName] = useState(null);
   const [showMenuBuilder, setShowMenuBuilder] = useState(true);
+
+  // Check if current week is locked
+  const currentWeek = weeks?.[selectedWeekId];
+  const isWeekLocked = currentWeek?.status === 'locked';
 
   // Get active clients only
   const activeClients = (allClients || clients || []).filter(c => c.status === 'active');
+
+  // Helper to get week ID from a date string (matches the format used elsewhere)
+  const getWeekIdFromDate = (dateStr) => {
+    if (!dateStr) return null;
+    const date = new Date(dateStr + 'T12:00:00');
+    const day = date.getDay();
+    const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(date);
+    monday.setDate(diff);
+    return monday.toISOString().split('T')[0];
+  };
+
+  // Filter menu items to only show items for the selected week
+  const weekMenuItems = menuItems.filter(item => {
+    const itemWeekId = getWeekIdFromDate(item.date);
+    return itemWeekId === selectedWeekId;
+  });
 
   // Get week start date (Monday)
   const getWeekStart = () => {
@@ -222,10 +243,10 @@ export default function MenuTab({
   const weekStart = getWeekStart();
   const tasks = weeklyTasks[weekStart] || {};
 
-  // Get client status (approved, warning, no menu)
+  // Get client status (approved, warning, no menu) - filtered to selected week
   const getClientStatus = (client) => {
     const clientName = client.displayName || client.name;
-    const clientMenuItems = menuItems.filter(item => item.clientName === clientName);
+    const clientMenuItems = weekMenuItems.filter(item => item.clientName === clientName);
     const hasMenu = clientMenuItems.length > 0;
     const allApproved = hasMenu && clientMenuItems.every(item => item.approved);
 
@@ -259,15 +280,25 @@ export default function MenuTab({
     return { status: 'pending', icon: Circle, color: 'text-blue-600', bg: 'bg-blue-50', warning };
   };
 
-  // Get clients delivering this week
+  // Get clients delivering this week - filtered to selected week
   const getDeliveringThisWeek = () => {
     return activeClients.filter(c => {
-      const hasMenuItems = menuItems.some(item => {
+      const hasMenuItems = weekMenuItems.some(item => {
         const clientName = c.displayName || c.name;
         return item.clientName === clientName;
       });
       return hasMenuItems;
     });
+  };
+
+  // Get orders grouped by client - filtered to selected week
+  const getWeekOrdersByClient = () => {
+    const grouped = {};
+    weekMenuItems.forEach(item => {
+      if (!grouped[item.clientName]) grouped[item.clientName] = [];
+      grouped[item.clientName].push(item);
+    });
+    return grouped;
   };
 
   // Approve menu for a client
@@ -308,9 +339,52 @@ export default function MenuTab({
     }
   };
 
-  // Get menu items for a specific client
+  // Start editing a client's menu
+  const startEditingMenu = (clientName, orders) => {
+    const isApproved = orders.every(o => o.approved);
+
+    // Check if approved and week is locked
+    if (isApproved && isWeekLocked) {
+      alert('This menu is approved and the week is locked. Unlock the week first to make edits.');
+      return;
+    }
+
+    // Find the client to get their actual name (not display name)
+    const client = activeClients.find(c => (c.displayName || c.name) === clientName) ||
+                   activeClients.find(c => c.name === clientName);
+    const actualClientName = client?.name || clientName;
+
+    // Pre-fill the menu builder with current selections
+    // Combine dishes from all orders for this client
+    const firstOrder = orders[0];
+    const allExtras = orders.flatMap(o => o.extras || []);
+    const uniqueExtras = [...new Set(allExtras)];
+
+    setNewMenuItem({
+      protein: firstOrder?.protein || '',
+      veg: firstOrder?.veg || '',
+      starch: firstOrder?.starch || '',
+      extras: uniqueExtras
+    });
+    setMenuDate(firstOrder?.date || menuDate);
+    setSelectedClients([actualClientName]);
+    setEditingClientName(clientName);
+    setShowMenuBuilder(true);
+
+    // Remove old menu items for this client (they'll be re-added when saved)
+    setMenuItems(prev => prev.filter(item => item.clientName !== clientName));
+  };
+
+  // Cancel editing
+  const cancelEditing = () => {
+    setEditingClientName(null);
+    setNewMenuItem({ protein: '', veg: '', starch: '', extras: [] });
+    setSelectedClients([]);
+  };
+
+  // Get menu items for a specific client - filtered to selected week
   const getClientMenuItems = (clientName) => {
-    return menuItems.filter(item => item.clientName === clientName);
+    return weekMenuItems.filter(item => item.clientName === clientName);
   };
 
   // Toggle extra dish selection
@@ -324,7 +398,7 @@ export default function MenuTab({
   };
 
   const extraCategories = [...(recipes.sauces || []), ...(recipes.breakfast || []), ...(recipes.soups || [])];
-  const ordersByClient = getOrdersByClient();
+  const weekOrdersByClient = getWeekOrdersByClient();
   const deliveringThisWeek = getDeliveringThisWeek();
 
   // Count status summary
@@ -352,7 +426,7 @@ export default function MenuTab({
       <div className="bg-white rounded-lg shadow-lg p-6">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-2xl font-bold" style={{ color: '#3d59ab' }}>Delivering This Week</h2>
-          {menuItems.filter(item => !item.approved).length > 0 && (
+          {weekMenuItems.filter(item => !item.approved).length > 0 && (
             <button
               onClick={approveAllReady}
               className="px-4 py-2 rounded-lg text-white font-medium text-sm"
@@ -367,8 +441,8 @@ export default function MenuTab({
           <div className="flex flex-wrap gap-x-1 gap-y-1 text-sm">
             {activeClients.map((client, i) => {
               const clientName = client.displayName || client.name;
-              const hasMenu = menuItems.some(item => item.clientName === clientName);
-              const isApproved = hasMenu && menuItems.filter(item => item.clientName === clientName).every(item => item.approved);
+              const hasMenu = weekMenuItems.some(item => item.clientName === clientName);
+              const isApproved = hasMenu && weekMenuItems.filter(item => item.clientName === clientName).every(item => item.approved);
 
               return (
                 <span key={i} className="inline-flex items-center">
@@ -392,13 +466,13 @@ export default function MenuTab({
       </div>
 
       {/* 2. Current Orders - Shows styled menu cards for approval */}
-      {menuItems.length > 0 && (
+      {weekMenuItems.length > 0 && (
         <div className="bg-white rounded-lg shadow-lg p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold" style={{ color: '#3d59ab' }}>
-              Current Orders ({Object.keys(ordersByClient).length} clients)
+              Current Orders ({Object.keys(weekOrdersByClient).length} clients)
             </h2>
-            {menuItems.some(item => !item.approved) && (
+            {weekMenuItems.some(item => !item.approved) && (
               <button
                 onClick={approveAllReady}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm"
@@ -410,7 +484,7 @@ export default function MenuTab({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {Object.entries(ordersByClient).map(([clientName, orders]) => {
+            {Object.entries(weekOrdersByClient).map(([clientName, orders]) => {
               const allApproved = orders.every(o => o.approved);
               const client = activeClients.find(c => (c.displayName || c.name) === clientName) ||
                              activeClients.find(c => c.name === clientName) ||
@@ -447,6 +521,17 @@ export default function MenuTab({
                         </button>
                       )}
                       <button
+                        onClick={() => startEditingMenu(clientName, orders)}
+                        className={`flex items-center gap-1 px-3 py-1.5 rounded text-sm ${
+                          allApproved && isWeekLocked
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                        }`}
+                        title={allApproved && isWeekLocked ? 'Unlock week to edit approved menu' : 'Edit menu'}
+                      >
+                        <Edit2 size={14} /> Edit
+                      </button>
+                      <button
                         onClick={() => denyClientMenu(clientName)}
                         className="flex items-center gap-1 px-3 py-1.5 rounded text-sm bg-red-100 text-red-700"
                       >
@@ -462,16 +547,35 @@ export default function MenuTab({
       )}
 
       {/* 3. Build Menu Section */}
-      <div className="bg-white rounded-lg shadow-lg p-6">
+      <div className={`bg-white rounded-lg shadow-lg p-6 ${editingClientName ? 'ring-2 ring-blue-500' : ''}`}>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold" style={{ color: '#3d59ab' }}>Build Menu</h2>
-          <button
-            onClick={() => setShowMenuBuilder(!showMenuBuilder)}
-            className="flex items-center gap-2 px-3 py-1 rounded-lg text-sm text-gray-600 hover:bg-gray-100"
-          >
-            {showMenuBuilder ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            {showMenuBuilder ? 'Collapse' : 'Expand'}
-          </button>
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-bold" style={{ color: '#3d59ab' }}>
+              {editingClientName ? `Editing: ${editingClientName}` : 'Build Menu'}
+            </h2>
+            {editingClientName && (
+              <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">
+                Editing Mode
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {editingClientName && (
+              <button
+                onClick={cancelEditing}
+                className="flex items-center gap-1 px-3 py-1 rounded-lg text-sm bg-gray-200 text-gray-700 hover:bg-gray-300"
+              >
+                <X size={14} /> Cancel Edit
+              </button>
+            )}
+            <button
+              onClick={() => setShowMenuBuilder(!showMenuBuilder)}
+              className="flex items-center gap-2 px-3 py-1 rounded-lg text-sm text-gray-600 hover:bg-gray-100"
+            >
+              {showMenuBuilder ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              {showMenuBuilder ? 'Collapse' : 'Expand'}
+            </button>
+          </div>
         </div>
 
         {showMenuBuilder && (
@@ -559,13 +663,34 @@ export default function MenuTab({
 
             <div className="flex gap-2">
               <button
-                onClick={addMenuItem}
+                onClick={() => {
+                  addMenuItem();
+                  if (editingClientName) {
+                    setEditingClientName(null);
+                  }
+                }}
                 className="flex items-center gap-2 px-6 py-2 rounded-lg hover:opacity-90"
-                style={{ backgroundColor: '#ffd700', color: '#423d3c' }}
+                style={{ backgroundColor: editingClientName ? '#3d59ab' : '#ffd700', color: editingClientName ? '#fff' : '#423d3c' }}
               >
-                <Plus size={20} />Add to Menu
+                {editingClientName ? (
+                  <>
+                    <Check size={20} />Save Changes
+                  </>
+                ) : (
+                  <>
+                    <Plus size={20} />Add to Menu
+                  </>
+                )}
               </button>
-              {menuItems.length > 0 && (
+              {editingClientName && (
+                <button
+                  onClick={cancelEditing}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-200 text-gray-700"
+                >
+                  <X size={16} />Cancel
+                </button>
+              )}
+              {!editingClientName && menuItems.length > 0 && (
                 <button
                   onClick={clearMenu}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-100 text-red-700 text-sm"
@@ -611,8 +736,9 @@ export default function MenuTab({
               </button>
               <button
                 onClick={() => {
-                  setSelectedClients([previewClient.name]);
-                  setShowMenuBuilder(true);
+                  const clientName = previewClient.displayName || previewClient.name;
+                  const orders = getClientMenuItems(clientName);
+                  startEditingMenu(clientName, orders);
                   setPreviewClient(null);
                 }}
                 className="px-4 py-2 rounded-lg border-2 flex items-center gap-2"

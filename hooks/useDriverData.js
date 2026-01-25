@@ -9,6 +9,8 @@ export function useDriverData() {
   const [deliveryLog, setDeliveryLog] = useState([]);
   const [orderHistory, setOrderHistory] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
+  const [savedRoutes, setSavedRoutes] = useState({});
+  const [clientPortalData, setClientPortalData] = useState({});
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Load from localStorage
@@ -24,6 +26,8 @@ export function useDriverData() {
           if (parsed.deliveryLog) setDeliveryLog(parsed.deliveryLog);
           if (parsed.orderHistory) setOrderHistory(parsed.orderHistory);
           if (parsed.menuItems) setMenuItems(parsed.menuItems);
+          if (parsed.savedRoutes) setSavedRoutes(parsed.savedRoutes);
+          if (parsed.clientPortalData) setClientPortalData(parsed.clientPortalData);
         } catch (e) {
           console.error('Error loading saved data:', e);
         }
@@ -91,6 +95,8 @@ export function useDriverData() {
     deliveryLog,
     orderHistory,
     menuItems,
+    savedRoutes,
+    clientPortalData,
     isLoaded,
     updateDeliveryLog,
     updateReadyForDelivery,

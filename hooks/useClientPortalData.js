@@ -75,11 +75,23 @@ export function useClientPortalData() {
     saveData({ clientPortalData: updated });
   }, [clientPortalData, saveData]);
 
+  // Convert name to URL-friendly slug (e.g., "Tim Brown" -> "tim-brown")
+  const toUrlSlug = (name) => {
+    if (!name) return '';
+    return name.toLowerCase().replace(/\s+/g, '-');
+  };
+
   const getClientById = useCallback((clientId) => {
-    return clients.find(c =>
-      c.id === clientId ||
-      c.name.toLowerCase().replace(/\s+/g, '-') === clientId.toLowerCase()
-    );
+    const slugId = clientId?.toLowerCase() || '';
+    return clients.find(c => {
+      // Match by explicit id
+      if (c.id === clientId) return true;
+      // Match by displayName slug (preferred)
+      if (c.displayName && toUrlSlug(c.displayName) === slugId) return true;
+      // Fallback: match by name slug
+      if (toUrlSlug(c.name) === slugId) return true;
+      return false;
+    });
   }, [clients]);
 
   const getClientMenuItems = useCallback((clientName, date) => {

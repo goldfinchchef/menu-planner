@@ -60,8 +60,9 @@ export default function DeliveriesTab({
   addDeliveryLogToWeek,
   removeReadyForDeliveryFromWeek,
   isReadOnly = false,
-  startingAddress = '',
-  menuItems = []
+  menuItems = [],
+  clientPortalData = {},
+  saveDriverRoutes
 }) {
   // Saved routes state (persisted to localStorage and pushed to driver portal)
   const [savedRoutes, setSavedRoutes] = useState(() => {
@@ -108,6 +109,20 @@ export default function DeliveriesTab({
   const [logDriverFilter, setLogDriverFilter] = useState('');
   const [logZoneFilter, setLogZoneFilter] = useState('');
   const [logProblemsOnly, setLogProblemsOnly] = useState(false);
+
+  // Starting address for routes (persisted to localStorage)
+  const [startingAddress, setStartingAddress] = useState(() => {
+    try {
+      return localStorage.getItem('goldfinchStartingAddress') || '';
+    } catch {
+      return '';
+    }
+  });
+
+  const updateStartingAddress = (value) => {
+    setStartingAddress(value);
+    localStorage.setItem('goldfinchStartingAddress', value);
+  };
 
   // Time windows
   const timeWindows = [];
@@ -1094,17 +1109,46 @@ export default function DeliveriesTab({
           return { status: 'none', label: 'No Menu', color: '#9ca3af', bgColor: '#f9fafb' };
         };
 
-        // Get ALL scheduled clients for a day (based on deliveryDay)
+        // Get ALL scheduled clients for a specific date
+        // Checks: 1) client.deliveryDay matches day name, 2) admin-set deliveryDates, 3) client-set selectedDates
         const getScheduledClientsForDay = (dayName, date) => {
-          return clients
-            .filter(c => c.status === 'active' && c.deliveryDay === dayName && !c.pickup)
-            .map(client => {
+          const scheduledClients = [];
+          const addedClients = new Set();
+
+          clients.forEach(client => {
+            if (client.status !== 'active' || client.pickup) return;
+            if (addedClients.has(client.name)) return;
+
+            let isScheduled = false;
+
+            // Check 1: Regular delivery day matches
+            if (client.deliveryDay === dayName) {
+              isScheduled = true;
+            }
+
+            // Check 2: Admin-set specific delivery dates
+            if (!isScheduled && client.deliveryDates?.length > 0) {
+              if (client.deliveryDates.includes(date)) {
+                isScheduled = true;
+              }
+            }
+
+            // Check 3: Client-set delivery dates from portal
+            const portalData = clientPortalData[client.name];
+            if (!isScheduled && portalData?.selectedDates?.length > 0) {
+              if (portalData.selectedDates.includes(date)) {
+                isScheduled = true;
+              }
+            }
+
+            if (isScheduled) {
+              addedClients.add(client.name);
               const contacts = client.contacts || [];
               const firstAddr = contacts.find(ct => ct.address)?.address || client.address || '';
               const statusInfo = getClientStatus(client.name, date);
               const readyOrders = readyForDelivery.filter(o => o.clientName === client.name && o.date === date);
 
-              return {
+              scheduledClients.push({
                 clientName: client.name,
                 displayName: client.displayName || client.name,
                 zone: client.zone || 'Unassigned',
@@ -1113,8 +1157,11 @@ export default function DeliveriesTab({
                 orders: readyOrders,
                 stopKey: client.name,
                 ...statusInfo
-              };
-            });
+              });
+            }
+          });
+
+          return scheduledClients;
         };
 
         // Get ordered stops for a zone on a date (respecting saved route order)
@@ -1223,7 +1270,14 @@ export default function DeliveriesTab({
             ...savedRoutes,
             [`${date}-${zone}`]: routeData
           };
+
+          // Save to local state
           saveRoutesToStorage(newSavedRoutes);
+
+          // Also save to main data storage so driver portal can access it
+          if (saveDriverRoutes) {
+            saveDriverRoutes(newSavedRoutes);
+          }
 
           alert(`Route saved for ${driver.name} on ${date}!\n${readyStops.length} stop(s) ready for delivery.\nThe driver can now view this route in the Driver Portal.`);
         };
@@ -1517,6 +1571,24 @@ export default function DeliveriesTab({
 
         return (
           <>
+            {/* Starting Address for Routes */}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h3 className="text-xl font-bold mb-4" style={{ color: '#3d59ab' }}>Route Settings</h3>
+              <FormField label="Starting Address (for all routes)">
+                <input
+                  type="text"
+                  value={startingAddress}
+                  onChange={(e) => updateStartingAddress(e.target.value)}
+                  placeholder="e.g., 123 Kitchen St, City, State"
+                  className={inputStyle + " w-full md:w-1/2"}
+                  style={borderStyle}
+                />
+              </FormField>
+              <p className="text-sm text-gray-500 mt-2">
+                This address will be used as the starting point when generating Google Maps routes.
+              </p>
+            </div>
+
             <div className="bg-white rounded-lg shadow-lg p-6">
               <h3 className="text-xl font-bold mb-4" style={{ color: '#3d59ab' }}>Add Driver</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

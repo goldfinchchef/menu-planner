@@ -1,12 +1,41 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, Trash2, Check, Plus, ChevronRight, X, RefreshCw } from 'lucide-react';
+import { Download, Trash2, Check, Plus, ChevronRight, X, RefreshCw, MoveRight, FolderOpen } from 'lucide-react';
 
 const SHOP_DATA_KEY = 'goldfinchShopData';
 const SHOP_CHECKED_KEY = 'goldfinchShopChecked';
-const SHOP_DAYS = ['Sunday', 'Thursday'];
+const SHOP_OVERRIDES_KEY = 'goldfinchShopOverrides';
+const SHOP_DAYS = ['Sunday', 'Tuesday', 'Thursday'];
+
+// Standard sections for organizing items
+const STANDARD_SECTIONS = [
+  'Produce',
+  'Meat & Seafood',
+  'Dairy & Eggs',
+  'Pantry',
+  'Frozen',
+  'Bakery',
+  'Beverages',
+  'Spices & Seasonings',
+  'Oils & Vinegars',
+  'Canned Goods',
+  'Grains & Pasta',
+  'Other'
+];
+
+// Common store/vendor sources
+const STANDARD_SOURCES = [
+  'Grocery Store',
+  'Costco',
+  'Restaurant Depot',
+  'Farmers Market',
+  'Specialty Store',
+  'Online',
+  'Other'
+];
 
 export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepList }) {
   // Checked items state (persisted separately so it survives list regeneration)
+  // Keys now include day: `${day}-${itemId}`
   const [checkedItems, setCheckedItems] = useState(() => {
     try {
       const saved = localStorage.getItem(SHOP_CHECKED_KEY);
@@ -30,12 +59,28 @@ export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepL
         return manual;
       }
     } catch {}
-    return { Sunday: [], Thursday: [] };
+    return { Sunday: [], Tuesday: [], Thursday: [] };
   });
 
   const [newItemText, setNewItemText] = useState('');
   const [addingToDay, setAddingToDay] = useState(null);
-  const [movingItem, setMovingItem] = useState(null);
+  const [movingItem, setMovingItem] = useState(null); // { day, item }
+
+  // Item overrides for section/source (persisted)
+  // Key format: `${day}-${itemId}` -> { section?, source? }
+  const [itemOverrides, setItemOverrides] = useState(() => {
+    try {
+      const saved = localStorage.getItem(SHOP_OVERRIDES_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Save overrides to localStorage
+  useEffect(() => {
+    localStorage.setItem(SHOP_OVERRIDES_KEY, JSON.stringify(itemOverrides));
+  }, [itemOverrides]);
 
   // Save checked items to localStorage
   useEffect(() => {
@@ -57,25 +102,101 @@ export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepL
     localStorage.setItem(SHOP_DATA_KEY, JSON.stringify(combined));
   }, [manualItems, shoppingListsByDay]);
 
-  // Get combined list for a day (auto-generated + manual)
+  // Generate day-specific ID for checked state
+  const getDayItemId = (day, itemId) => `${day}-${itemId}`;
+
+  // Get combined list for a day (auto-generated + manual) with overrides applied
   const getItemsForDay = (day) => {
-    const autoItems = (shoppingListsByDay[day] || []).map(item => ({
-      ...item,
-      id: `auto-${item.name}-${item.unit}`,
-      manual: false,
-      checked: checkedItems[`auto-${item.name}-${item.unit}`] || false
-    }));
-    const manualItemsForDay = (manualItems[day] || []).map(item => ({
-      ...item,
-      checked: checkedItems[item.id] || false
-    }));
+    const autoItems = (shoppingListsByDay[day] || []).map(item => {
+      const baseId = `auto-${item.name}-${item.unit}`;
+      const dayItemId = getDayItemId(day, baseId);
+      const override = itemOverrides[dayItemId] || {};
+      return {
+        ...item,
+        id: baseId,
+        dayItemId,
+        manual: false,
+        checked: checkedItems[dayItemId] || false,
+        // Apply overrides
+        section: override.section || item.section,
+        source: override.source || item.source,
+        originalSection: item.section,
+        originalSource: item.source,
+        hasOverride: !!(override.section || override.source)
+      };
+    });
+    const manualItemsForDay = (manualItems[day] || []).map(item => {
+      const dayItemId = getDayItemId(day, item.id);
+      const override = itemOverrides[dayItemId] || {};
+      return {
+        ...item,
+        dayItemId,
+        checked: checkedItems[dayItemId] || false,
+        // Apply overrides (or use item's own values)
+        section: override.section || item.section,
+        source: override.source || item.source,
+        originalSection: item.section,
+        originalSource: item.source,
+        hasOverride: !!(override.section || override.source)
+      };
+    });
     return [...autoItems, ...manualItemsForDay];
   };
 
-  const toggleItem = (itemId) => {
+  // Change item's section within the same day
+  const changeItemSection = (day, item, newSection) => {
+    const dayItemId = getDayItemId(day, item.id);
+    setItemOverrides(prev => ({
+      ...prev,
+      [dayItemId]: {
+        ...prev[dayItemId],
+        section: newSection
+      }
+    }));
+  };
+
+  // Change item's source/vendor within the same day
+  const changeItemSource = (day, item, newSource) => {
+    const dayItemId = getDayItemId(day, item.id);
+    setItemOverrides(prev => ({
+      ...prev,
+      [dayItemId]: {
+        ...prev[dayItemId],
+        source: newSource
+      }
+    }));
+  };
+
+  // Reset item's section/source to original
+  const resetItemOverride = (day, item) => {
+    const dayItemId = getDayItemId(day, item.id);
+    setItemOverrides(prev => {
+      const updated = { ...prev };
+      delete updated[dayItemId];
+      return updated;
+    });
+  };
+
+  // Get all unique sections for a day (including overrides and standards)
+  const getAllSections = (day) => {
+    const items = getItemsForDay(day);
+    const usedSections = new Set(items.map(i => i.section).filter(Boolean));
+    const allSections = new Set([...STANDARD_SECTIONS, ...usedSections]);
+    return Array.from(allSections).sort();
+  };
+
+  // Get all unique sources for a day (including overrides and standards)
+  const getAllSources = (day) => {
+    const items = getItemsForDay(day);
+    const usedSources = new Set(items.map(i => i.source).filter(Boolean));
+    const allSources = new Set([...STANDARD_SOURCES, ...usedSources]);
+    return Array.from(allSources).sort();
+  };
+
+  const toggleItem = (dayItemId) => {
     setCheckedItems(prev => ({
       ...prev,
-      [itemId]: !prev[itemId]
+      [dayItemId]: !prev[dayItemId]
     }));
   };
 
@@ -106,27 +227,81 @@ export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepL
       [day]: (prev[day] || []).filter(item => item.id !== itemId)
     }));
     // Also remove from checked
+    const dayItemId = getDayItemId(day, itemId);
     setCheckedItems(prev => {
       const updated = { ...prev };
-      delete updated[itemId];
+      delete updated[dayItemId];
       return updated;
     });
   };
 
+  // Move item to another day
+  const moveItemToDay = (fromDay, item, toDay) => {
+    if (fromDay === toDay) return;
+
+    // For manual items, move the item itself
+    if (item.manual) {
+      setManualItems(prev => ({
+        ...prev,
+        [fromDay]: (prev[fromDay] || []).filter(i => i.id !== item.id),
+        [toDay]: [...(prev[toDay] || []), item]
+      }));
+
+      // Move checked state
+      const fromDayItemId = getDayItemId(fromDay, item.id);
+      const toDayItemId = getDayItemId(toDay, item.id);
+      setCheckedItems(prev => {
+        const updated = { ...prev };
+        if (updated[fromDayItemId]) {
+          updated[toDayItemId] = true;
+          delete updated[fromDayItemId];
+        }
+        return updated;
+      });
+    } else {
+      // For auto items, we add a manual copy to the target day
+      // and mark the original as "moved" (checked off)
+      const newManualItem = {
+        id: `manual-moved-${Date.now()}-${Math.random()}`,
+        name: item.name,
+        quantity: item.quantity,
+        unit: item.unit,
+        section: item.section,
+        source: item.source || 'Moved',
+        manual: true
+      };
+
+      setManualItems(prev => ({
+        ...prev,
+        [toDay]: [...(prev[toDay] || []), newManualItem]
+      }));
+
+      // Check off the original item
+      const fromDayItemId = getDayItemId(fromDay, item.id);
+      setCheckedItems(prev => ({
+        ...prev,
+        [fromDayItemId]: true
+      }));
+    }
+
+    setMovingItem(null);
+  };
+
   const clearChecked = (day) => {
     const items = getItemsForDay(day);
-    const checkedIds = items.filter(i => i.checked).map(i => i.id);
+    const checkedDayItemIds = items.filter(i => i.checked).map(i => i.dayItemId);
+    const checkedItemIds = items.filter(i => i.checked).map(i => i.id);
 
     // Remove checked manual items
     setManualItems(prev => ({
       ...prev,
-      [day]: (prev[day] || []).filter(item => !checkedIds.includes(item.id))
+      [day]: (prev[day] || []).filter(item => !checkedItemIds.includes(item.id))
     }));
 
     // Clear checked state for all items in this day
     setCheckedItems(prev => {
       const updated = { ...prev };
-      checkedIds.forEach(id => delete updated[id]);
+      checkedDayItemIds.forEach(id => delete updated[id]);
       return updated;
     });
   };
@@ -162,7 +337,8 @@ export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepL
 
   // Get description for each shopping day
   const getDayDescription = (day) => {
-    if (day === 'Sunday') return 'For Monday & Tuesday deliveries';
+    if (day === 'Sunday') return 'For Monday deliveries';
+    if (day === 'Tuesday') return 'For Tuesday deliveries';
     if (day === 'Thursday') return 'For Thursday deliveries';
     return '';
   };
@@ -213,11 +389,12 @@ export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepL
         )}
 
         {/* Day columns */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {SHOP_DAYS.map(day => {
             const stats = getDayStats(day);
             const grouped = getGroupedItems(day);
             const sources = Object.keys(grouped).sort();
+            const otherDays = SHOP_DAYS.filter(d => d !== day);
 
             return (
               <div
@@ -267,7 +444,7 @@ export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepL
                             <p className="text-xs font-medium text-gray-500 mb-1">{section}</p>
                             {sectionItems.map((item) => (
                               <div
-                                key={item.id}
+                                key={item.dayItemId}
                                 className={`flex items-center gap-2 p-2 rounded mb-1 group ${
                                   item.checked ? 'opacity-50' : ''
                                 }`}
@@ -275,7 +452,7 @@ export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepL
                               >
                                 {/* Checkbox */}
                                 <button
-                                  onClick={() => toggleItem(item.id)}
+                                  onClick={() => toggleItem(item.dayItemId)}
                                   className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
                                     item.checked
                                       ? 'bg-green-500 border-green-500'
@@ -288,6 +465,9 @@ export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepL
                                 {/* Item name */}
                                 <span className={`flex-1 text-sm ${item.checked ? 'line-through text-gray-400' : ''}`}>
                                   {item.name}
+                                  {item.hasOverride && (
+                                    <span className="ml-1 text-xs text-purple-500" title="Reorganized">•</span>
+                                  )}
                                 </span>
 
                                 {/* Quantity */}
@@ -295,6 +475,76 @@ export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepL
                                   <span className={`text-xs font-medium ${item.checked ? 'text-gray-400' : 'text-gray-600'}`}>
                                     {typeof item.quantity === 'number' ? item.quantity.toFixed(1) : item.quantity} {item.unit}
                                   </span>
+                                )}
+
+                                {/* Move controls - show on hover */}
+                                {!item.checked && (
+                                  <div className="flex gap-1 opacity-0 group-hover:opacity-100">
+                                    {/* Move to section dropdown */}
+                                    <select
+                                      className="text-xs p-1 rounded border border-gray-300 bg-white cursor-pointer"
+                                      style={{ maxWidth: '80px' }}
+                                      value={item.section || ''}
+                                      onChange={(e) => {
+                                        if (e.target.value) {
+                                          changeItemSection(day, item, e.target.value);
+                                        }
+                                      }}
+                                      title="Change section"
+                                    >
+                                      <option value="" disabled>Section...</option>
+                                      {getAllSections(day).map(s => (
+                                        <option key={s} value={s}>{s}</option>
+                                      ))}
+                                    </select>
+
+                                    {/* Move to source/store dropdown */}
+                                    <select
+                                      className="text-xs p-1 rounded border border-gray-300 bg-white cursor-pointer"
+                                      style={{ maxWidth: '80px' }}
+                                      value={item.source || ''}
+                                      onChange={(e) => {
+                                        if (e.target.value) {
+                                          changeItemSource(day, item, e.target.value);
+                                        }
+                                      }}
+                                      title="Change store/vendor"
+                                    >
+                                      <option value="" disabled>Store...</option>
+                                      {getAllSources(day).map(s => (
+                                        <option key={s} value={s}>{s}</option>
+                                      ))}
+                                    </select>
+
+                                    {/* Move to day dropdown */}
+                                    <select
+                                      className="text-xs p-1 rounded border border-gray-300 bg-white cursor-pointer"
+                                      style={{ maxWidth: '70px' }}
+                                      value=""
+                                      onChange={(e) => {
+                                        if (e.target.value) {
+                                          moveItemToDay(day, item, e.target.value);
+                                        }
+                                      }}
+                                      title="Move to another day"
+                                    >
+                                      <option value="">Day...</option>
+                                      {otherDays.map(d => (
+                                        <option key={d} value={d}>{d}</option>
+                                      ))}
+                                    </select>
+
+                                    {/* Reset override button */}
+                                    {item.hasOverride && (
+                                      <button
+                                        onClick={() => resetItemOverride(day, item)}
+                                        className="p-1 rounded hover:bg-gray-100"
+                                        title="Reset to original section/store"
+                                      >
+                                        <RefreshCw size={12} className="text-gray-400" />
+                                      </button>
+                                    )}
+                                  </div>
                                 )}
 
                                 {/* Remove button (only for manual items) */}
