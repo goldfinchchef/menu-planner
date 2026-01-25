@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Check, AlertTriangle, Eye, X, ChevronDown, ChevronUp, Edit2 } from 'lucide-react';
+import { Plus, Trash2, Check, AlertTriangle, Circle, Eye, X, ChevronDown, ChevronUp, Edit2 } from 'lucide-react';
 import WeekSelector from '../components/WeekSelector';
 
 // Styled Menu Card Component - matches client portal
