@@ -8,6 +8,7 @@ export function useDriverData() {
   const [readyForDelivery, setReadyForDelivery] = useState([]);
   const [deliveryLog, setDeliveryLog] = useState([]);
   const [orderHistory, setOrderHistory] = useState([]);
+  const [menuItems, setMenuItems] = useState([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Load from localStorage
@@ -22,6 +23,7 @@ export function useDriverData() {
           if (parsed.readyForDelivery) setReadyForDelivery(parsed.readyForDelivery);
           if (parsed.deliveryLog) setDeliveryLog(parsed.deliveryLog);
           if (parsed.orderHistory) setOrderHistory(parsed.orderHistory);
+          if (parsed.menuItems) setMenuItems(parsed.menuItems);
         } catch (e) {
           console.error('Error loading saved data:', e);
         }
@@ -88,6 +90,7 @@ export function useDriverData() {
     readyForDelivery,
     deliveryLog,
     orderHistory,
+    menuItems,
     isLoaded,
     updateDeliveryLog,
     updateReadyForDelivery,

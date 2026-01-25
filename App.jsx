@@ -650,6 +650,7 @@ export default function App() {
             addDeliveryLogToWeek={addDeliveryLogToWeek}
             removeReadyForDeliveryFromWeek={removeReadyForDeliveryFromWeek}
             isReadOnly={isCurrentWeekReadOnly}
+            menuItems={getWeekMenuItems()}
           />
         )}
 

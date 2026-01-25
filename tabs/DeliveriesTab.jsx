@@ -60,7 +60,8 @@ export default function DeliveriesTab({
   addDeliveryLogToWeek,
   removeReadyForDeliveryFromWeek,
   isReadOnly = false,
-  startingAddress = ''
+  startingAddress = '',
+  menuItems = []
 }) {
   // Saved routes state (persisted to localStorage and pushed to driver portal)
   const [savedRoutes, setSavedRoutes] = useState(() => {
@@ -1059,7 +1060,7 @@ export default function DeliveriesTab({
         const getWeekDates = () => {
           const date = new Date(selectedDate + 'T12:00:00');
           const day = date.getDay();
-          const diff = date.getDate() - day + (day === 0 ? -6 : 1); // Adjust for Sunday
+          const diff = date.getDate() - day + (day === 0 ? -6 : 1);
           const monday = new Date(date.setDate(diff));
 
           return {
@@ -1071,37 +1072,49 @@ export default function DeliveriesTab({
 
         const weekDates = getWeekDates();
 
-        // Get ready orders for a specific date
-        const getReadyForDate = (date) => {
-          return readyForDelivery.filter(o => o.date === date);
+        // Get client status for a specific date
+        const getClientStatus = (clientName, date) => {
+          // Check if delivered
+          if (deliveryLog.some(e => e.clientName === clientName && e.date === date)) {
+            return { status: 'delivered', label: 'Delivered', color: '#22c55e', bgColor: '#dcfce7' };
+          }
+          // Check if ready for delivery
+          if (readyForDelivery.some(o => o.clientName === clientName && o.date === date)) {
+            return { status: 'ready', label: 'Ready', color: '#f59e0b', bgColor: '#fef3c7' };
+          }
+          // Check if has approved menu (in KDS)
+          if (menuItems.some(m => m.clientName === clientName && m.approved && m.date === date)) {
+            return { status: 'kds', label: 'In KDS', color: '#3b82f6', bgColor: '#dbeafe' };
+          }
+          // Check if has menu pending approval
+          if (menuItems.some(m => m.clientName === clientName && !m.approved && m.date === date)) {
+            return { status: 'pending', label: 'Menu Pending', color: '#6b7280', bgColor: '#f3f4f6' };
+          }
+          // No menu yet
+          return { status: 'none', label: 'No Menu', color: '#9ca3af', bgColor: '#f9fafb' };
         };
 
-        // Get ready delivery stops for a date (expanded by client with zone info)
-        const getReadyStopsForDate = (date) => {
-          const orders = getReadyForDate(date);
-          const clientNames = [...new Set(orders.map(o => o.clientName))];
-          const stops = [];
+        // Get ALL scheduled clients for a day (based on deliveryDay)
+        const getScheduledClientsForDay = (dayName, date) => {
+          return clients
+            .filter(c => c.status === 'active' && c.deliveryDay === dayName && !c.pickup)
+            .map(client => {
+              const contacts = client.contacts || [];
+              const firstAddr = contacts.find(ct => ct.address)?.address || client.address || '';
+              const statusInfo = getClientStatus(client.name, date);
+              const readyOrders = readyForDelivery.filter(o => o.clientName === client.name && o.date === date);
 
-          clientNames.forEach(name => {
-            const client = clients.find(c => c.name === name);
-            if (client?.pickup) return; // Exclude pickup clients
-
-            const clientOrders = orders.filter(o => o.clientName === name);
-            const contacts = client?.contacts || [];
-            const firstAddr = contacts.find(ct => ct.address)?.address || client?.address || '';
-
-            stops.push({
-              clientName: name,
-              displayName: client?.displayName || name,
-              zone: client?.zone || 'Unassigned',
-              address: firstAddr,
-              phone: contacts[0]?.phone || client?.phone || '',
-              orders: clientOrders,
-              stopKey: name
+              return {
+                clientName: client.name,
+                displayName: client.displayName || client.name,
+                zone: client.zone || 'Unassigned',
+                address: firstAddr,
+                phone: contacts[0]?.phone || client.phone || '',
+                orders: readyOrders,
+                stopKey: client.name,
+                ...statusInfo
+              };
             });
-          });
-
-          return stops;
         };
 
         // Get ordered stops for a zone on a date (respecting saved route order)
@@ -1121,7 +1134,7 @@ export default function DeliveriesTab({
           });
         };
 
-        // Handle drag for week view
+        // Handle drag for week view - now works for ALL clients
         const handleWeekDragStart = (e, date, zone, stopKey) => {
           setDraggedItem({ date, zone, clientName: stopKey });
           e.dataTransfer.effectAllowed = 'move';
@@ -1134,7 +1147,7 @@ export default function DeliveriesTab({
           }
         };
 
-        const handleWeekDrop = (e, date, zone, targetStopKey) => {
+        const handleWeekDrop = (e, date, zone, targetStopKey, dayName) => {
           e.preventDefault();
           if (!draggedItem || draggedItem.date !== date || draggedItem.zone !== zone || draggedItem.clientName === targetStopKey) {
             setDraggedItem(null);
@@ -1142,8 +1155,8 @@ export default function DeliveriesTab({
             return;
           }
 
-          const stops = getReadyStopsForDate(date).filter(s => s.zone === zone);
-          const orderedStops = getOrderedStopsForZone(date, zone, stops);
+          const allStops = getScheduledClientsForDay(dayName, date).filter(s => s.zone === zone);
+          const orderedStops = getOrderedStopsForZone(date, zone, allStops);
           const stopKeys = orderedStops.map(s => s.stopKey);
 
           const fromIndex = stopKeys.indexOf(draggedItem.clientName);
@@ -1172,7 +1185,7 @@ export default function DeliveriesTab({
           setDragOverItem(null);
         };
 
-        // Save route to driver portal
+        // Save route to driver portal - only includes ready clients
         const saveRouteForDay = (date, zone, stops) => {
           const driver = drivers.find(d => d.zone === zone);
           if (!driver) {
@@ -1180,7 +1193,14 @@ export default function DeliveriesTab({
             return;
           }
 
-          const orderedStops = getOrderedStopsForZone(date, zone, stops);
+          // Only include ready clients in saved route
+          const readyStops = stops.filter(s => s.status === 'ready');
+          if (readyStops.length === 0) {
+            alert('No clients are ready for delivery in this zone yet.');
+            return;
+          }
+
+          const orderedStops = getOrderedStopsForZone(date, zone, readyStops);
 
           const routeData = {
             date,
@@ -1193,8 +1213,8 @@ export default function DeliveriesTab({
               displayName: stop.displayName,
               address: stop.address,
               phone: stop.phone,
-              dishes: stop.orders.flatMap(o => o.dishes),
-              portions: stop.orders.reduce((sum, o) => sum + o.portions, 0)
+              dishes: stop.orders.flatMap(o => o.dishes || []),
+              portions: stop.orders.reduce((sum, o) => sum + (o.portions || 0), 0)
             })),
             savedAt: new Date().toISOString()
           };
@@ -1205,13 +1225,13 @@ export default function DeliveriesTab({
           };
           saveRoutesToStorage(newSavedRoutes);
 
-          alert(`Route saved for ${driver.name} on ${date}!\nThe driver can now view this route in the Driver Portal.`);
+          alert(`Route saved for ${driver.name} on ${date}!\n${readyStops.length} stop(s) ready for delivery.\nThe driver can now view this route in the Driver Portal.`);
         };
 
         // Generate maps link for a zone on a date
-        const generateMapsLinkForDay = (date, zone) => {
-          const stops = getReadyStopsForDate(date).filter(s => s.zone === zone);
-          const orderedStops = getOrderedStopsForZone(date, zone, stops);
+        const generateMapsLinkForDay = (date, zone, dayName) => {
+          const allStops = getScheduledClientsForDay(dayName, date).filter(s => s.zone === zone);
+          const orderedStops = getOrderedStopsForZone(date, zone, allStops);
           const addresses = orderedStops
             .filter(s => s.address)
             .map(s => encodeURIComponent(s.address));
@@ -1234,11 +1254,11 @@ export default function DeliveriesTab({
         ];
 
         // Count totals
-        const totalReadyThisWeek = deliveryDays.reduce((sum, day) =>
-          sum + getReadyForDate(day.date).length, 0
+        const totalScheduled = deliveryDays.reduce((sum, day) =>
+          sum + getScheduledClientsForDay(day.name, day.date).length, 0
         );
-        const totalStopsThisWeek = deliveryDays.reduce((sum, day) =>
-          sum + getReadyStopsForDate(day.date).length, 0
+        const totalReady = deliveryDays.reduce((sum, day) =>
+          sum + getScheduledClientsForDay(day.name, day.date).filter(s => s.status === 'ready').length, 0
         );
 
         return (
@@ -1247,10 +1267,10 @@ export default function DeliveriesTab({
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h3 className="text-xl font-bold" style={{ color: '#3d59ab' }}>
-                    Ready for Delivery
+                    Week Deliveries
                   </h3>
                   <p className="text-gray-600">
-                    {totalStopsThisWeek} stops • {totalReadyThisWeek} orders ready
+                    {totalScheduled} scheduled • {totalReady} ready for delivery
                   </p>
                 </div>
                 <div>
@@ -1263,27 +1283,51 @@ export default function DeliveriesTab({
                   />
                 </div>
               </div>
+
+              {/* Status legend */}
+              <div className="flex flex-wrap gap-3 text-xs">
+                <span className="flex items-center gap-1">
+                  <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#22c55e' }}></span>
+                  Delivered
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#f59e0b' }}></span>
+                  Ready
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#3b82f6' }}></span>
+                  In KDS
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#6b7280' }}></span>
+                  Menu Pending
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#9ca3af' }}></span>
+                  No Menu
+                </span>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {deliveryDays.map(day => {
-                const readyStops = getReadyStopsForDate(day.date);
-                const readyOrders = getReadyForDate(day.date);
+                const scheduledClients = getScheduledClientsForDay(day.name, day.date);
 
-                // Group stops by zone
-                const stopsByZone = {};
+                // Group by zone
+                const clientsByZone = {};
                 ZONES.forEach(zone => {
-                  const zoneStops = readyStops.filter(s => s.zone === zone);
-                  if (zoneStops.length > 0) {
-                    stopsByZone[zone] = zoneStops;
+                  const zoneClients = scheduledClients.filter(s => s.zone === zone);
+                  if (zoneClients.length > 0) {
+                    clientsByZone[zone] = zoneClients;
                   }
                 });
-                const unassignedStops = readyStops.filter(s => !s.zone || !ZONES.includes(s.zone));
-                if (unassignedStops.length > 0) {
-                  stopsByZone['Unassigned'] = unassignedStops;
+                const unassignedClients = scheduledClients.filter(s => !s.zone || !ZONES.includes(s.zone));
+                if (unassignedClients.length > 0) {
+                  clientsByZone['Unassigned'] = unassignedClients;
                 }
 
-                const zonesForDay = Object.keys(stopsByZone);
+                const zonesForDay = Object.keys(clientsByZone);
+                const readyCount = scheduledClients.filter(s => s.status === 'ready').length;
 
                 return (
                   <div key={day.name} className="bg-white rounded-lg shadow-lg p-4">
@@ -1298,26 +1342,28 @@ export default function DeliveriesTab({
                         </p>
                       </div>
                       <div className="text-right">
-                        <span className="text-2xl font-bold" style={{ color: readyStops.length > 0 ? '#22c55e' : '#3d59ab' }}>
-                          {readyStops.length}
+                        <span className="text-2xl font-bold" style={{ color: readyCount > 0 ? '#22c55e' : '#3d59ab' }}>
+                          {scheduledClients.length}
                         </span>
-                        <p className="text-xs text-gray-500">stops ready</p>
+                        <p className="text-xs text-gray-500">
+                          {readyCount > 0 ? `${readyCount} ready` : 'scheduled'}
+                        </p>
                       </div>
                     </div>
 
-                    <div className="space-y-3 max-h-96 overflow-y-auto">
-                      {readyStops.length === 0 ? (
+                    <div className="space-y-3 max-h-[500px] overflow-y-auto">
+                      {scheduledClients.length === 0 ? (
                         <div className="text-center py-4">
                           <Truck size={32} className="mx-auto mb-2 text-gray-300" />
-                          <p className="text-gray-400 text-sm italic">No orders ready</p>
-                          <p className="text-gray-300 text-xs">Complete dishes in KDS first</p>
+                          <p className="text-gray-400 text-sm italic">No deliveries scheduled</p>
                         </div>
                       ) : (
                         zonesForDay.map(zone => {
-                          const zoneStops = stopsByZone[zone];
-                          const orderedStops = getOrderedStopsForZone(day.date, zone, zoneStops);
+                          const zoneClients = clientsByZone[zone];
+                          const orderedClients = getOrderedStopsForZone(day.date, zone, zoneClients);
                           const driver = zone !== 'Unassigned' ? drivers.find(d => d.zone === zone) : null;
                           const isRouteSaved = savedRoutes[`${day.date}-${zone}`];
+                          const zoneReadyCount = zoneClients.filter(c => c.status === 'ready').length;
 
                           return (
                             <div key={zone} className="border-2 rounded-lg p-3" style={{ borderColor: isRouteSaved ? '#22c55e' : '#ebb582' }}>
@@ -1337,35 +1383,34 @@ export default function DeliveriesTab({
                                     </span>
                                   )}
                                 </div>
-                                <span className="text-xs text-gray-500">{zoneStops.length} stops</span>
+                                <span className="text-xs text-gray-500">
+                                  {zoneClients.length} stops {zoneReadyCount > 0 && `(${zoneReadyCount} ready)`}
+                                </span>
                               </div>
 
                               <p className="text-xs text-gray-400 mb-2 flex items-center gap-1">
-                                <GripVertical size={12} /> Drag to reorder
+                                <GripVertical size={12} /> Drag to reorder route
                               </p>
 
                               <div className="space-y-1 mb-3">
-                                {orderedStops.map((stop, idx) => {
-                                  const isDelivered = deliveryLog.some(
-                                    e => e.date === day.date && e.clientName === stop.clientName
-                                  );
+                                {orderedClients.map((stop, idx) => {
                                   const isDragging = draggedItem?.date === day.date && draggedItem?.zone === zone && draggedItem?.clientName === stop.stopKey;
                                   const isDragOver = dragOverItem?.date === day.date && dragOverItem?.zone === zone && dragOverItem?.clientName === stop.stopKey;
 
                                   return (
                                     <div
                                       key={stop.stopKey}
-                                      draggable={!isDelivered}
+                                      draggable={stop.status !== 'delivered'}
                                       onDragStart={(e) => handleWeekDragStart(e, day.date, zone, stop.stopKey)}
                                       onDragOver={(e) => handleWeekDragOver(e, day.date, zone, stop.stopKey)}
                                       onDragLeave={handleDragLeave}
-                                      onDrop={(e) => handleWeekDrop(e, day.date, zone, stop.stopKey)}
+                                      onDrop={(e) => handleWeekDrop(e, day.date, zone, stop.stopKey, day.name)}
                                       onDragEnd={handleDragEnd}
                                       className={`p-2 rounded text-sm flex items-center gap-2 ${
-                                        isDelivered ? 'bg-green-50 opacity-60' : isDragging ? 'opacity-50' : 'cursor-move'
+                                        stop.status === 'delivered' ? 'opacity-60' : isDragging ? 'opacity-50' : 'cursor-move'
                                       }`}
                                       style={{
-                                        backgroundColor: isDelivered ? undefined : '#f9f9ed',
+                                        backgroundColor: stop.bgColor,
                                         borderLeft: isDragOver ? '3px solid #3d59ab' : '3px solid transparent'
                                       }}
                                     >
@@ -1373,15 +1418,18 @@ export default function DeliveriesTab({
                                         {idx + 1}
                                       </span>
                                       <div className="flex-1 min-w-0">
-                                        <span className={isDelivered ? 'line-through text-gray-400' : ''}>
+                                        <span className={stop.status === 'delivered' ? 'line-through text-gray-400' : ''}>
                                           {stop.displayName}
                                         </span>
-                                        <p className="text-xs text-gray-400 truncate">
-                                          {stop.orders.reduce((sum, o) => sum + o.portions, 0)}p
-                                        </p>
                                       </div>
-                                      {isDelivered && <Check size={14} className="text-green-600" />}
-                                      {!isDelivered && <GripVertical size={14} className="text-gray-300" />}
+                                      {/* Status badge */}
+                                      <span
+                                        className="text-xs px-1.5 py-0.5 rounded"
+                                        style={{ backgroundColor: stop.color + '20', color: stop.color }}
+                                      >
+                                        {stop.label}
+                                      </span>
+                                      {stop.status !== 'delivered' && <GripVertical size={14} className="text-gray-300" />}
                                     </div>
                                   );
                                 })}
@@ -1390,15 +1438,19 @@ export default function DeliveriesTab({
                               {/* Zone action buttons */}
                               <div className="flex gap-2">
                                 <button
-                                  onClick={() => saveRouteForDay(day.date, zone, zoneStops)}
-                                  className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded text-white text-xs"
+                                  onClick={() => saveRouteForDay(day.date, zone, zoneClients)}
+                                  disabled={zoneReadyCount === 0}
+                                  className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded text-white text-xs ${
+                                    zoneReadyCount === 0 ? 'opacity-50 cursor-not-allowed' : ''
+                                  }`}
                                   style={{ backgroundColor: '#3d59ab' }}
+                                  title={zoneReadyCount === 0 ? 'No clients ready for delivery' : 'Save route to driver portal'}
                                 >
                                   <Save size={12} />
-                                  Save Route
+                                  Save Route {zoneReadyCount > 0 && `(${zoneReadyCount})`}
                                 </button>
                                 <button
-                                  onClick={() => generateMapsLinkForDay(day.date, zone)}
+                                  onClick={() => generateMapsLinkForDay(day.date, zone, day.name)}
                                   className="flex items-center justify-center gap-1 px-2 py-1.5 rounded text-white text-xs"
                                   style={{ backgroundColor: '#27ae60' }}
                                   title="Open in Google Maps"

@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   Truck, MapPin, Camera, AlertTriangle, Check, ChevronLeft,
   ChevronRight, List, LogOut, Package, ShoppingBag, Home, User,
-  Calendar, Eye
+  Calendar, Eye, Clock, ChefHat, FileText
 } from 'lucide-react';
 import { useDriverData } from '../hooks/useDriverData';
 import { DELIVERY_PROBLEMS } from '../constants';
@@ -13,6 +13,15 @@ const HANDOFF_TYPES = {
   PORCH: 'porch'
 };
 
+// Status definitions for driver view
+const DELIVERY_STATUS = {
+  DELIVERED: { key: 'delivered', label: 'Delivered', color: '#22c55e', icon: Check },
+  READY: { key: 'ready', label: 'Ready', color: '#f59e0b', icon: Truck },
+  IN_KDS: { key: 'kds', label: 'In Kitchen', color: '#3b82f6', icon: ChefHat },
+  PENDING: { key: 'pending', label: 'Menu Pending', color: '#6b7280', icon: FileText },
+  NONE: { key: 'none', label: 'No Menu', color: '#9ca3af', icon: Clock }
+};
+
 export default function DriverView() {
   const [searchParams] = useSearchParams();
   const {
@@ -20,6 +29,7 @@ export default function DriverView() {
     readyForDelivery,
     deliveryLog,
     orderHistory,
+    menuItems,
     isLoaded,
     updateDeliveryLog,
     updateReadyForDelivery,
@@ -68,51 +78,98 @@ export default function DriverView() {
   const viewingDate = selectedDate || today;
   const isViewingFuture = viewingDate !== today;
 
-  // Get upcoming delivery dates for this driver's zone
+  // Get client delivery status
+  const getClientStatus = (clientName, date) => {
+    // Check if delivered
+    if (deliveryLog.some(e => e.clientName === clientName && e.date === date)) {
+      return DELIVERY_STATUS.DELIVERED;
+    }
+    // Check if ready for delivery
+    if (readyForDelivery.some(o => o.clientName === clientName && o.date === date)) {
+      return DELIVERY_STATUS.READY;
+    }
+    // Check if has approved menu (in KDS)
+    if (menuItems.some(m => m.clientName === clientName && m.approved && m.date === date)) {
+      return DELIVERY_STATUS.IN_KDS;
+    }
+    // Check if has menu pending approval
+    if (menuItems.some(m => m.clientName === clientName && !m.approved && m.date === date)) {
+      return DELIVERY_STATUS.PENDING;
+    }
+    // No menu yet
+    return DELIVERY_STATUS.NONE;
+  };
+
+  // Get the day name from a date string
+  const getDayName = (dateStr) => {
+    const date = new Date(dateStr + 'T12:00:00');
+    return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][date.getDay()];
+  };
+
+  // Get upcoming delivery dates for this driver's zone (next 7 days)
   const getUpcomingDeliveryDates = () => {
     if (!driver) return [];
-    const dates = new Set();
+    const dates = [];
+    const startDate = new Date(today);
 
-    readyForDelivery.forEach(order => {
-      if (order.date >= today) {
-        const client = clients.find(c => c.name === order.clientName);
-        if (client && client.zone === driver.zone && !client.pickup) {
-          dates.add(order.date);
-        }
+    // Get next 7 days
+    for (let i = 0; i < 7; i++) {
+      const checkDate = new Date(startDate);
+      checkDate.setDate(startDate.getDate() + i);
+      const dateStr = checkDate.toISOString().split('T')[0];
+      const dayName = getDayName(dateStr);
+
+      // Check if any clients in this zone have deliveries on this day
+      const hasDeliveries = clients.some(
+        c => c.status === 'active' && c.zone === driver.zone && c.deliveryDay === dayName && !c.pickup
+      );
+
+      if (hasDeliveries) {
+        dates.push(dateStr);
       }
-    });
+    }
 
-    return Array.from(dates).sort();
+    return dates;
   };
 
   const upcomingDates = getUpcomingDeliveryDates();
 
-  // Get stops for this driver's zone on a specific date
+  // Get ALL scheduled stops for this driver's zone on a specific date
   const getDriverStops = (date) => {
     if (!driver) return [];
-    const ordersForDate = readyForDelivery.filter(order => order.date === date);
-    const clientNames = [...new Set(ordersForDate.map(o => o.clientName))];
+    const dayName = getDayName(date);
 
-    return clientNames
-      .map(name => {
-        const client = clients.find(c => c.name === name);
-        if (!client || client.zone !== driver.zone || client.pickup) return null;
-        const orders = ordersForDate.filter(o => o.clientName === name);
+    // Get all scheduled clients for this day/zone
+    return clients
+      .filter(c => c.status === 'active' && c.zone === driver.zone && c.deliveryDay === dayName && !c.pickup)
+      .map(client => {
+        const status = getClientStatus(client.name, date);
+        const orders = readyForDelivery.filter(o => o.clientName === client.name && o.date === date);
+
         return {
-          clientName: name,
-          displayName: client.displayName || name,
+          clientName: client.name,
+          displayName: client.displayName || client.name,
           address: client.address || '',
           orders,
-          zone: client.zone
+          zone: client.zone,
+          status: status.key,
+          statusInfo: status,
+          isReady: status.key === 'ready',
+          isDelivered: status.key === 'delivered'
         };
-      })
-      .filter(Boolean);
+      });
   };
 
-  const stops = getDriverStops(viewingDate);
-  const todayStops = getDriverStops(today);
-  const remainingStops = stops.filter(s => !completedStops.includes(s.clientName));
-  const currentStop = remainingStops[currentStopIndex];
+  // Get only READY stops (for the active delivery flow)
+  const getReadyStops = (date) => {
+    return getDriverStops(date).filter(s => s.isReady);
+  };
+
+  const allStops = getDriverStops(viewingDate);
+  const readyStops = getReadyStops(viewingDate);
+  const todayReadyStops = getReadyStops(today);
+  const remainingReadyStops = readyStops.filter(s => !completedStops.includes(s.clientName) && !s.isDelivered);
+  const currentStop = remainingReadyStops[currentStopIndex];
 
   // Check if already delivered today
   const isAlreadyDelivered = (clientName) => {
@@ -124,19 +181,19 @@ export default function DriverView() {
   // Filter out already delivered stops on mount (only for today)
   useEffect(() => {
     if (driver && isLoaded && !isViewingFuture) {
-      const alreadyDeliveredToday = todayStops
+      const alreadyDeliveredToday = todayReadyStops
         .filter(s => isAlreadyDelivered(s.clientName))
         .map(s => s.clientName);
       setCompletedStops(alreadyDeliveredToday);
     }
-  }, [driver, isLoaded, todayStops.length, isViewingFuture]);
+  }, [driver, isLoaded, todayReadyStops.length, isViewingFuture]);
 
-  // Check if all stops are done
+  // Check if all READY stops are done
   useEffect(() => {
-    if (driver && stops.length > 0 && remainingStops.length === 0) {
+    if (driver && readyStops.length > 0 && remainingReadyStops.length === 0) {
       setIsComplete(true);
     }
-  }, [driver, stops.length, remainingStops.length]);
+  }, [driver, readyStops.length, remainingReadyStops.length]);
 
   const handleLogin = (e) => {
     e.preventDefault();
@@ -348,14 +405,19 @@ export default function DriverView() {
     );
   }
 
-  // View All Stops (read-only)
+  // View All Stops (shows all scheduled with status)
   if (showAllStops) {
     return (
       <div className="min-h-screen p-4" style={{ backgroundColor: '#f9f9ed' }}>
         <div className="max-w-lg mx-auto">
           <div className="bg-white rounded-lg shadow-lg p-4 mb-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold" style={{ color: '#3d59ab' }}>All Stops</h2>
+              <div>
+                <h2 className="text-xl font-bold" style={{ color: '#3d59ab' }}>All Scheduled</h2>
+                <p className="text-sm text-gray-500">
+                  {viewingDate === today ? 'Today' : new Date(viewingDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                </p>
+              </div>
               <button
                 onClick={() => setShowAllStops(false)}
                 className="px-4 py-2 rounded-lg bg-gray-200"
@@ -365,32 +427,64 @@ export default function DriverView() {
             </div>
           </div>
 
+          {/* Status legend */}
+          <div className="bg-white rounded-lg shadow p-3 mb-4">
+            <div className="flex flex-wrap gap-3 text-xs">
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-3 rounded-full" style={{ backgroundColor: DELIVERY_STATUS.READY.color }}></span>
+                Ready to Deliver
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-3 rounded-full" style={{ backgroundColor: DELIVERY_STATUS.IN_KDS.color }}></span>
+                In Kitchen
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-3 rounded-full" style={{ backgroundColor: DELIVERY_STATUS.PENDING.color }}></span>
+                Menu Pending
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-3 rounded-full" style={{ backgroundColor: DELIVERY_STATUS.DELIVERED.color }}></span>
+                Delivered
+              </span>
+            </div>
+          </div>
+
           <div className="space-y-3">
-            {stops.map((stop, index) => {
-              const isCompleted = completedStops.includes(stop.clientName);
+            {allStops.map((stop, index) => {
               const deliveryEntry = deliveryLog.find(
-                e => e.date === today && e.clientName === stop.clientName
+                e => e.date === viewingDate && e.clientName === stop.clientName
               );
+              const StatusIcon = stop.statusInfo.icon;
+
               return (
                 <div
                   key={stop.clientName}
                   className={`bg-white rounded-lg shadow p-4 border-l-4 ${
-                    isCompleted ? 'opacity-60' : ''
+                    stop.isDelivered ? 'opacity-60' : ''
                   }`}
-                  style={{ borderLeftColor: isCompleted ? '#22c55e' : '#3d59ab' }}
+                  style={{ borderLeftColor: stop.statusInfo.color }}
                 >
                   <div className="flex items-start justify-between">
-                    <div>
+                    <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-lg" style={{ color: '#3d59ab' }}>
                           {index + 1}.
                         </span>
                         <h3 className="font-bold">{stop.displayName}</h3>
-                        {isCompleted && (
-                          <Check size={18} className="text-green-600" />
-                        )}
+                        <span
+                          className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1"
+                          style={{ backgroundColor: stop.statusInfo.color + '20', color: stop.statusInfo.color }}
+                        >
+                          <StatusIcon size={12} />
+                          {stop.statusInfo.label}
+                        </span>
                       </div>
                       <p className="text-sm text-gray-600 mt-1">{stop.address}</p>
+                      {stop.isReady && stop.orders.length > 0 && (
+                        <p className="text-sm text-gray-500 mt-1">
+                          {stop.orders.map(o => `${o.portions}p: ${o.dishes?.join(', ')}`).join(' | ')}
+                        </p>
+                      )}
                       {deliveryEntry?.problem && (
                         <p className="text-sm text-red-600 mt-1 flex items-center gap-1">
                           <AlertTriangle size={14} />
@@ -398,7 +492,7 @@ export default function DriverView() {
                         </p>
                       )}
                     </div>
-                    {!isCompleted && (
+                    {stop.address && (
                       <button
                         onClick={() => openMaps(stop.address)}
                         className="p-2 rounded-lg text-white"
@@ -413,10 +507,10 @@ export default function DriverView() {
             })}
           </div>
 
-          {stops.length === 0 && (
+          {allStops.length === 0 && (
             <div className="bg-white rounded-lg shadow-lg p-8 text-center">
               <Package size={48} className="mx-auto mb-4 text-gray-300" />
-              <p className="text-gray-500">No deliveries for your zone today</p>
+              <p className="text-gray-500">No deliveries scheduled for your zone</p>
             </div>
           )}
         </div>
@@ -490,8 +584,11 @@ export default function DriverView() {
     );
   }
 
-  // No stops available
-  if (remainingStops.length === 0 && !isComplete) {
+  // No READY stops available (but might have scheduled stops)
+  if (remainingReadyStops.length === 0 && !isComplete) {
+    const scheduledCount = allStops.filter(s => !s.isDelivered).length;
+    const inKdsCount = allStops.filter(s => s.status === 'kds').length;
+
     return (
       <div className="min-h-screen p-4" style={{ backgroundColor: '#f9f9ed' }}>
         <div className="max-w-lg mx-auto">
@@ -499,11 +596,33 @@ export default function DriverView() {
           <div className="bg-white rounded-lg shadow-lg p-8 text-center">
             <Package size={48} className="mx-auto mb-4 text-gray-300" />
             <h2 className="text-xl font-bold mb-2" style={{ color: '#3d59ab' }}>
-              No Deliveries Available
+              No Deliveries Ready
             </h2>
-            <p className="text-gray-600">
-              There are no deliveries for Zone {driver.zone} today.
-            </p>
+            {scheduledCount > 0 ? (
+              <>
+                <p className="text-gray-600 mb-4">
+                  {scheduledCount} delivery{scheduledCount !== 1 ? 'ies' : ''} scheduled for Zone {driver.zone} today,
+                  but {scheduledCount === 1 ? "it's" : "they're"} not ready yet.
+                </p>
+                {inKdsCount > 0 && (
+                  <p className="text-blue-600 text-sm">
+                    <ChefHat size={16} className="inline mr-1" />
+                    {inKdsCount} in kitchen - coming soon!
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="text-gray-600">
+                No deliveries scheduled for Zone {driver.zone} today.
+              </p>
+            )}
+            <button
+              onClick={() => setShowAllStops(true)}
+              className="mt-4 px-4 py-2 rounded-lg border-2"
+              style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
+            >
+              View All Scheduled
+            </button>
           </div>
         </div>
       </div>
@@ -520,7 +639,12 @@ export default function DriverView() {
         <div className="bg-white rounded-lg shadow p-3 mb-4">
           <div className="flex items-center justify-between text-sm">
             <span className="text-gray-600">
-              Stop {completedStops.length + 1} of {stops.length}
+              Stop {completedStops.length + 1} of {readyStops.length} ready
+              {allStops.length > readyStops.length && (
+                <span className="text-gray-400 ml-1">
+                  ({allStops.length} scheduled)
+                </span>
+              )}
             </span>
             <span className="font-medium" style={{ color: '#3d59ab' }}>
               Zone {driver.zone}
@@ -530,7 +654,7 @@ export default function DriverView() {
             <div
               className="h-full transition-all"
               style={{
-                width: `${(completedStops.length / stops.length) * 100}%`,
+                width: `${readyStops.length > 0 ? (completedStops.length / readyStops.length) * 100 : 0}%`,
                 backgroundColor: '#3d59ab'
               }}
             />
