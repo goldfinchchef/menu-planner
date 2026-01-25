@@ -1,61 +1,81 @@
-import React, { useState, useEffect } from 'react';
-import { Download, Trash2, Check, Plus, ChevronRight, X } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Download, Trash2, Check, Plus, ChevronRight, X, RefreshCw } from 'lucide-react';
 
 const SHOP_DATA_KEY = 'goldfinchShopData';
-const SHOP_DAYS = ['Sunday', 'Tuesday', 'Thursday'];
+const SHOP_CHECKED_KEY = 'goldfinchShopChecked';
+const SHOP_DAYS = ['Sunday', 'Thursday'];
 
-export default function PrepTab({ prepList, exportPrepList }) {
-  // Shop data structure: { Sunday: [...items], Tuesday: [...items], Thursday: [...items] }
-  const [shopData, setShopData] = useState(() => {
+export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepList }) {
+  // Checked items state (persisted separately so it survives list regeneration)
+  const [checkedItems, setCheckedItems] = useState(() => {
+    try {
+      const saved = localStorage.getItem(SHOP_CHECKED_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Manual items added by user (persisted)
+  const [manualItems, setManualItems] = useState(() => {
     try {
       const saved = localStorage.getItem(SHOP_DATA_KEY);
       if (saved) {
-        return JSON.parse(saved);
+        const data = JSON.parse(saved);
+        // Extract only manual items
+        const manual = {};
+        SHOP_DAYS.forEach(day => {
+          manual[day] = (data[day] || []).filter(item => item.manual);
+        });
+        return manual;
       }
     } catch {}
-    return { Sunday: [], Tuesday: [], Thursday: [] };
+    return { Sunday: [], Thursday: [] };
   });
 
   const [newItemText, setNewItemText] = useState('');
   const [addingToDay, setAddingToDay] = useState(null);
-  const [movingItem, setMovingItem] = useState(null); // { day, index }
+  const [movingItem, setMovingItem] = useState(null);
 
-  // Save to localStorage whenever shopData changes
+  // Save checked items to localStorage
   useEffect(() => {
-    localStorage.setItem(SHOP_DATA_KEY, JSON.stringify(shopData));
-  }, [shopData]);
+    localStorage.setItem(SHOP_CHECKED_KEY, JSON.stringify(checkedItems));
+  }, [checkedItems]);
 
-  // Auto-populate from prepList if a day is empty
+  // Save manual items to localStorage
   useEffect(() => {
-    if (prepList.length > 0) {
-      // Check if we should auto-populate Sunday (main shop day)
-      const hasManualItems = SHOP_DAYS.some(day =>
-        shopData[day]?.some(item => item.manual)
-      );
+    // Combine auto-generated and manual items for storage
+    const combined = {};
+    SHOP_DAYS.forEach(day => {
+      const autoItems = (shoppingListsByDay[day] || []).map(item => ({
+        ...item,
+        id: `auto-${item.name}-${item.unit}`,
+        manual: false
+      }));
+      combined[day] = [...autoItems, ...(manualItems[day] || [])];
+    });
+    localStorage.setItem(SHOP_DATA_KEY, JSON.stringify(combined));
+  }, [manualItems, shoppingListsByDay]);
 
-      // Only auto-populate if there are no manual items (user hasn't customized)
-      if (!hasManualItems && shopData.Sunday?.length === 0) {
-        const autoItems = prepList.map(item => ({
-          id: `${item.name}-${item.unit}-${Date.now()}-${Math.random()}`,
-          name: item.name,
-          quantity: item.quantity,
-          unit: item.unit,
-          section: item.section,
-          source: item.source,
-          checked: false,
-          manual: false
-        }));
-        setShopData(prev => ({ ...prev, Sunday: autoItems }));
-      }
-    }
-  }, [prepList]);
+  // Get combined list for a day (auto-generated + manual)
+  const getItemsForDay = (day) => {
+    const autoItems = (shoppingListsByDay[day] || []).map(item => ({
+      ...item,
+      id: `auto-${item.name}-${item.unit}`,
+      manual: false,
+      checked: checkedItems[`auto-${item.name}-${item.unit}`] || false
+    }));
+    const manualItemsForDay = (manualItems[day] || []).map(item => ({
+      ...item,
+      checked: checkedItems[item.id] || false
+    }));
+    return [...autoItems, ...manualItemsForDay];
+  };
 
-  const toggleItem = (day, index) => {
-    setShopData(prev => ({
+  const toggleItem = (itemId) => {
+    setCheckedItems(prev => ({
       ...prev,
-      [day]: prev[day].map((item, i) =>
-        i === index ? { ...item, checked: !item.checked } : item
-      )
+      [itemId]: !prev[itemId]
     }));
   };
 
@@ -69,57 +89,63 @@ export default function PrepTab({ prepList, exportPrepList }) {
       unit: '',
       section: 'Manual Items',
       source: '',
-      checked: false,
       manual: true
     };
 
-    setShopData(prev => ({
+    setManualItems(prev => ({
       ...prev,
-      [day]: [...prev[day], newItem]
+      [day]: [...(prev[day] || []), newItem]
     }));
     setNewItemText('');
     setAddingToDay(null);
   };
 
-  const removeItem = (day, index) => {
-    setShopData(prev => ({
+  const removeManualItem = (day, itemId) => {
+    setManualItems(prev => ({
       ...prev,
-      [day]: prev[day].filter((_, i) => i !== index)
+      [day]: (prev[day] || []).filter(item => item.id !== itemId)
     }));
-  };
-
-  const moveItem = (fromDay, index, toDay) => {
-    const item = shopData[fromDay][index];
-    setShopData(prev => ({
-      ...prev,
-      [fromDay]: prev[fromDay].filter((_, i) => i !== index),
-      [toDay]: [...prev[toDay], item]
-    }));
-    setMovingItem(null);
+    // Also remove from checked
+    setCheckedItems(prev => {
+      const updated = { ...prev };
+      delete updated[itemId];
+      return updated;
+    });
   };
 
   const clearChecked = (day) => {
-    setShopData(prev => ({
+    const items = getItemsForDay(day);
+    const checkedIds = items.filter(i => i.checked).map(i => i.id);
+
+    // Remove checked manual items
+    setManualItems(prev => ({
       ...prev,
-      [day]: prev[day].filter(item => !item.checked)
+      [day]: (prev[day] || []).filter(item => !checkedIds.includes(item.id))
     }));
+
+    // Clear checked state for all items in this day
+    setCheckedItems(prev => {
+      const updated = { ...prev };
+      checkedIds.forEach(id => delete updated[id]);
+      return updated;
+    });
   };
 
-  const clearAllForDay = (day) => {
-    if (window.confirm(`Clear all items for ${day}?`)) {
-      setShopData(prev => ({ ...prev, [day]: [] }));
+  const clearAllChecks = () => {
+    if (window.confirm('Clear all checked items?')) {
+      setCheckedItems({});
     }
   };
 
   const getDayStats = (day) => {
-    const items = shopData[day] || [];
+    const items = getItemsForDay(day);
     const checked = items.filter(i => i.checked).length;
     return { total: items.length, checked };
   };
 
   // Group items by source then section
   const getGroupedItems = (day) => {
-    const items = shopData[day] || [];
+    const items = getItemsForDay(day);
     const grouped = {};
 
     items.forEach((item, index) => {
@@ -134,23 +160,60 @@ export default function PrepTab({ prepList, exportPrepList }) {
     return grouped;
   };
 
+  // Get description for each shopping day
+  const getDayDescription = (day) => {
+    if (day === 'Sunday') return 'For Monday & Tuesday deliveries';
+    if (day === 'Thursday') return 'For Thursday deliveries';
+    return '';
+  };
+
+  // Calculate totals
+  const totalItems = SHOP_DAYS.reduce((sum, day) => sum + getDayStats(day).total, 0);
+  const totalChecked = SHOP_DAYS.reduce((sum, day) => sum + getDayStats(day).checked, 0);
+
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-lg shadow-lg p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold" style={{ color: '#3d59ab' }}>Shopping Lists</h2>
-          <button
-            onClick={exportPrepList}
-            className="px-4 py-2 rounded-lg text-white flex items-center gap-2"
-            style={{ backgroundColor: '#3d59ab' }}
-          >
-            <Download size={18} />
-            Export All
-          </button>
+        <div className="flex justify-between items-center mb-2">
+          <div>
+            <h2 className="text-2xl font-bold" style={{ color: '#3d59ab' }}>Shopping Lists</h2>
+            <p className="text-sm text-gray-600">
+              Auto-generated from approved menus • {totalChecked}/{totalItems} items checked
+            </p>
+          </div>
+          <div className="flex gap-2">
+            {totalChecked > 0 && (
+              <button
+                onClick={clearAllChecks}
+                className="px-4 py-2 rounded-lg border-2 flex items-center gap-2"
+                style={{ borderColor: '#ebb582', color: '#423d3c' }}
+              >
+                <RefreshCw size={18} />
+                Reset Checks
+              </button>
+            )}
+            <button
+              onClick={exportPrepList}
+              className="px-4 py-2 rounded-lg text-white flex items-center gap-2"
+              style={{ backgroundColor: '#3d59ab' }}
+            >
+              <Download size={18} />
+              Export All
+            </button>
+          </div>
         </div>
 
-        {/* Day tabs */}
-        <div className="grid grid-cols-3 gap-4">
+        {totalItems === 0 && (
+          <div className="text-center py-8 mb-4 rounded-lg" style={{ backgroundColor: '#f9f9ed' }}>
+            <p className="text-gray-500">No shopping items yet</p>
+            <p className="text-sm text-gray-400 mt-1">
+              Approve menus in Menu Planner to auto-generate shopping lists
+            </p>
+          </div>
+        )}
+
+        {/* Day columns */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {SHOP_DAYS.map(day => {
             const stats = getDayStats(day);
             const grouped = getGroupedItems(day);
@@ -169,7 +232,10 @@ export default function PrepTab({ prepList, exportPrepList }) {
                 >
                   <div>
                     <h3 className="text-lg font-bold text-white">{day}</h3>
-                    <p className="text-sm text-white/70">
+                    <p className="text-xs text-white/70">
+                      {getDayDescription(day)}
+                    </p>
+                    <p className="text-sm text-white/80 mt-1">
                       {stats.checked}/{stats.total} done
                     </p>
                   </div>
@@ -187,9 +253,9 @@ export default function PrepTab({ prepList, exportPrepList }) {
                 </div>
 
                 {/* Items list */}
-                <div className="p-4 max-h-96 overflow-y-auto" style={{ backgroundColor: '#f9f9ed' }}>
+                <div className="p-4 max-h-[500px] overflow-y-auto" style={{ backgroundColor: '#f9f9ed' }}>
                   {stats.total === 0 ? (
-                    <p className="text-gray-500 text-center py-4">No items</p>
+                    <p className="text-gray-500 text-center py-4">No items for this day</p>
                   ) : (
                     sources.map(source => (
                       <div key={source} className="mb-4">
@@ -201,7 +267,7 @@ export default function PrepTab({ prepList, exportPrepList }) {
                             <p className="text-xs font-medium text-gray-500 mb-1">{section}</p>
                             {sectionItems.map((item) => (
                               <div
-                                key={item.id || item.originalIndex}
+                                key={item.id}
                                 className={`flex items-center gap-2 p-2 rounded mb-1 group ${
                                   item.checked ? 'opacity-50' : ''
                                 }`}
@@ -209,7 +275,7 @@ export default function PrepTab({ prepList, exportPrepList }) {
                               >
                                 {/* Checkbox */}
                                 <button
-                                  onClick={() => toggleItem(day, item.originalIndex)}
+                                  onClick={() => toggleItem(item.id)}
                                   className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
                                     item.checked
                                       ? 'bg-green-500 border-green-500'
@@ -225,25 +291,16 @@ export default function PrepTab({ prepList, exportPrepList }) {
                                 </span>
 
                                 {/* Quantity */}
-                                {item.quantity && (
+                                {item.quantity != null && (
                                   <span className={`text-xs font-medium ${item.checked ? 'text-gray-400' : 'text-gray-600'}`}>
                                     {typeof item.quantity === 'number' ? item.quantity.toFixed(1) : item.quantity} {item.unit}
                                   </span>
                                 )}
 
-                                {/* Move button */}
-                                <button
-                                  onClick={() => setMovingItem({ day, index: item.originalIndex })}
-                                  className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-gray-100"
-                                  title="Move to another day"
-                                >
-                                  <ChevronRight size={14} className="text-gray-400" />
-                                </button>
-
                                 {/* Remove button (only for manual items) */}
                                 {item.manual && (
                                   <button
-                                    onClick={() => removeItem(day, item.originalIndex)}
+                                    onClick={() => removeManualItem(day, item.id)}
                                     className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-100"
                                     title="Remove item"
                                   >
@@ -302,35 +359,6 @@ export default function PrepTab({ prepList, exportPrepList }) {
           })}
         </div>
       </div>
-
-      {/* Move item modal */}
-      {movingItem && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full mx-4">
-            <h3 className="text-lg font-bold mb-4" style={{ color: '#3d59ab' }}>
-              Move to which day?
-            </h3>
-            <div className="space-y-2">
-              {SHOP_DAYS.filter(d => d !== movingItem.day).map(day => (
-                <button
-                  key={day}
-                  onClick={() => moveItem(movingItem.day, movingItem.index, day)}
-                  className="w-full p-3 rounded-lg border-2 text-left hover:bg-gray-50"
-                  style={{ borderColor: '#ebb582' }}
-                >
-                  {day}
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={() => setMovingItem(null)}
-              className="w-full mt-4 p-2 rounded-lg border text-gray-600"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

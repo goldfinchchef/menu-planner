@@ -343,35 +343,79 @@ export default function App() {
     alert('Orders ready for delivery!');
   };
 
-  // Prep list
-  const getPrepList = () => {
-    const ingredients = {};
-    const kds = getKDSView();
-    Object.entries(kds).forEach(([dishName, data]) => {
-      const recipe = recipes[data.category]?.find(r => r.name === dishName);
-      if (recipe?.ingredients) {
-        recipe.ingredients.forEach(ing => {
-          const masterIng = findExactMatch(ing.name);
-          const key = `${ing.name}-${ing.unit}`;
-          if (!ingredients[key]) {
-            ingredients[key] = {
-              name: ing.name,
-              quantity: 0,
-              unit: ing.unit || 'oz',
-              section: ing.section || masterIng?.section || categorizeIngredient(ing.name),
-              cost: masterIng?.cost || ing.cost || '',
-              source: masterIng?.source || ing.source || ''
-            };
-          }
-          ingredients[key].quantity += parseFloat(ing.quantity) * data.totalPortions;
-        });
+  // Shopping list - grouped by shopping day based on client delivery days
+  // Monday + Tuesday deliveries → Sunday shopping list
+  // Thursday deliveries → Thursday shopping list
+  const getShoppingListsByDay = () => {
+    const shoppingLists = {
+      Sunday: {},    // For Monday + Tuesday deliveries
+      Thursday: {}   // For Thursday deliveries
+    };
+
+    const approvedItems = getApprovedMenuItems();
+
+    approvedItems.forEach(item => {
+      // Find the client to get their delivery day
+      const client = clients.find(c => c.name === item.clientName || c.displayName === item.clientName);
+      const deliveryDay = client?.deliveryDay || '';
+
+      // Determine shopping day based on delivery day
+      let shopDay = 'Sunday'; // Default
+      if (deliveryDay === 'Thursday') {
+        shopDay = 'Thursday';
       }
+      // Monday and Tuesday deliveries both go to Sunday shopping
+
+      // Get all dishes from this menu item
+      const dishes = [item.protein, item.veg, item.starch, ...(item.extras || [])].filter(Boolean);
+
+      dishes.forEach(dishName => {
+        // Find the recipe
+        const category = ['protein', 'veg', 'starch', 'sauces', 'breakfast', 'soups'].find(
+          cat => recipes[cat]?.find(r => r.name === dishName)
+        );
+        const recipe = category ? recipes[category].find(r => r.name === dishName) : null;
+
+        if (recipe?.ingredients) {
+          recipe.ingredients.forEach(ing => {
+            const masterIng = findExactMatch(ing.name);
+            const key = `${ing.name}-${ing.unit || 'oz'}`;
+
+            if (!shoppingLists[shopDay][key]) {
+              shoppingLists[shopDay][key] = {
+                name: ing.name,
+                quantity: 0,
+                unit: ing.unit || 'oz',
+                section: ing.section || masterIng?.section || categorizeIngredient(ing.name),
+                cost: masterIng?.cost || ing.cost || '',
+                source: masterIng?.source || ing.source || ''
+              };
+            }
+            shoppingLists[shopDay][key].quantity += parseFloat(ing.quantity || 0) * (item.portions || 1);
+          });
+        }
+      });
     });
-    return Object.values(ingredients).sort((a, b) => {
-      const sourceCompare = (a.source || 'ZZZ').localeCompare(b.source || 'ZZZ');
-      if (sourceCompare !== 0) return sourceCompare;
-      return a.section.localeCompare(b.section);
-    });
+
+    // Convert to sorted arrays
+    const sortIngredients = (ingredients) => {
+      return Object.values(ingredients).sort((a, b) => {
+        const sourceCompare = (a.source || 'ZZZ').localeCompare(b.source || 'ZZZ');
+        if (sourceCompare !== 0) return sourceCompare;
+        return a.section.localeCompare(b.section);
+      });
+    };
+
+    return {
+      Sunday: sortIngredients(shoppingLists.Sunday),
+      Thursday: sortIngredients(shoppingLists.Thursday)
+    };
+  };
+
+  // Legacy prep list (all items combined) - kept for backwards compatibility
+  const getPrepList = () => {
+    const lists = getShoppingListsByDay();
+    return [...lists.Sunday, ...lists.Thursday];
   };
 
   const exportPrepList = () => {
@@ -579,7 +623,11 @@ export default function App() {
         )}
 
         {activeTab === 'prep' && (
-          <PrepTab prepList={prepList} exportPrepList={exportPrepList} />
+          <PrepTab
+            prepList={prepList}
+            shoppingListsByDay={getShoppingListsByDay()}
+            exportPrepList={exportPrepList}
+          />
         )}
 
         {activeTab === 'deliveries' && (
