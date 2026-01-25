@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
-import { MapPin, Clock, ExternalLink, GripVertical, Truck, Activity, FileText, Check, AlertTriangle, User, Phone, ShoppingBag, Bell } from 'lucide-react';
-import { ZONES, DAYS, DELIVERY_PROBLEMS } from '../constants';
+import { MapPin, Clock, ExternalLink, GripVertical, Truck, Activity, FileText, Check, AlertTriangle, User, Phone, ShoppingBag, Bell, Calendar, Plus, Trash2, Edit2, X, Car } from 'lucide-react';
+import { ZONES, DAYS, DELIVERY_PROBLEMS, DEFAULT_NEW_DRIVER } from '../constants';
 
 const ViewToggle = ({ activeView, setActiveView }) => (
   <div className="flex rounded-lg overflow-hidden border-2 flex-wrap" style={{ borderColor: '#ebb582' }}>
     {[
+      { id: 'week', label: 'Week View', icon: Calendar },
       { id: 'plan', label: 'Plan Routes', icon: MapPin },
       { id: 'progress', label: 'Live Progress', icon: Activity },
       { id: 'log', label: 'Delivery Log', icon: FileText },
-      { id: 'bags', label: 'Bags Summary', icon: ShoppingBag }
+      { id: 'bags', label: 'Bags Summary', icon: ShoppingBag },
+      { id: 'drivers', label: 'Drivers', icon: Car }
     ].map(view => (
       <button
         key={view.id}
@@ -25,9 +27,22 @@ const ViewToggle = ({ activeView, setActiveView }) => (
   </div>
 );
 
+const FormField = ({ label, children }) => (
+  <div className="flex flex-col">
+    <label className="text-sm font-medium mb-1" style={{ color: '#423d3c' }}>{label}</label>
+    {children}
+  </div>
+);
+
+const inputStyle = "p-2 border-2 rounded-lg";
+const borderStyle = { borderColor: '#ebb582' };
+
 export default function DeliveriesTab({
   clients,
   drivers,
+  setDrivers,
+  newDriver,
+  setNewDriver,
   deliveryLog = [],
   setDeliveryLog,
   bagReminders = {},
@@ -40,12 +55,18 @@ export default function DeliveriesTab({
   weeks = {},
   addDeliveryLogToWeek,
   removeReadyForDeliveryFromWeek,
-  isReadOnly = false
+  isReadOnly = false,
+  startingAddress = ''
 }) {
-  const [activeView, setActiveView] = useState('plan');
+  const [activeView, setActiveView] = useState('week');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [draggedItem, setDraggedItem] = useState(null);
   const [dragOverItem, setDragOverItem] = useState(null);
+
+  // Drivers state
+  const [editingDriverIndex, setEditingDriverIndex] = useState(null);
+  const [editingDriver, setEditingDriver] = useState(null);
+  const [localNewDriver, setLocalNewDriver] = useState(newDriver || { ...DEFAULT_NEW_DRIVER });
 
   // Log filters
   const [logDateFilter, setLogDateFilter] = useState('');
@@ -919,6 +940,380 @@ export default function DeliveriesTab({
           )}
         </>
       )}
+
+      {/* Week View */}
+      {activeView === 'week' && (() => {
+        // Get the Monday of selected week
+        const getWeekDates = () => {
+          const date = new Date(selectedDate + 'T12:00:00');
+          const day = date.getDay();
+          const diff = date.getDate() - day + (day === 0 ? -6 : 1); // Adjust for Sunday
+          const monday = new Date(date.setDate(diff));
+
+          return {
+            monday: monday.toISOString().split('T')[0],
+            tuesday: new Date(new Date(monday).setDate(monday.getDate() + 1)).toISOString().split('T')[0],
+            thursday: new Date(new Date(monday).setDate(monday.getDate() + 3)).toISOString().split('T')[0]
+          };
+        };
+
+        const weekDates = getWeekDates();
+
+        // Get clients delivering on each day
+        const getClientsForDay = (dayName) => {
+          return clients.filter(c =>
+            c.status === 'active' &&
+            c.deliveryDay === dayName &&
+            !c.pickup
+          );
+        };
+
+        // Get ready orders for a specific date
+        const getReadyForDate = (date) => {
+          return readyForDelivery.filter(o => o.date === date);
+        };
+
+        const deliveryDays = [
+          { name: 'Monday', date: weekDates.monday },
+          { name: 'Tuesday', date: weekDates.tuesday },
+          { name: 'Thursday', date: weekDates.thursday }
+        ];
+
+        // Count totals
+        const totalClientsThisWeek = deliveryDays.reduce((sum, day) =>
+          sum + getClientsForDay(day.name).length, 0
+        );
+        const totalReadyThisWeek = deliveryDays.reduce((sum, day) =>
+          sum + getReadyForDate(day.date).length, 0
+        );
+
+        return (
+          <>
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-xl font-bold" style={{ color: '#3d59ab' }}>
+                    Delivering This Week
+                  </h3>
+                  <p className="text-gray-600">
+                    {totalClientsThisWeek} clients scheduled • {totalReadyThisWeek} orders ready
+                  </p>
+                </div>
+                <div>
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="p-2 border-2 rounded-lg"
+                    style={{ borderColor: '#ebb582' }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {deliveryDays.map(day => {
+                const dayClients = getClientsForDay(day.name);
+                const readyOrders = getReadyForDate(day.date);
+                const readyClientNames = [...new Set(readyOrders.map(o => o.clientName))];
+
+                return (
+                  <div key={day.name} className="bg-white rounded-lg shadow-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <h4 className="font-bold text-lg" style={{ color: '#3d59ab' }}>{day.name}</h4>
+                        <p className="text-sm text-gray-500">
+                          {new Date(day.date + 'T12:00:00').toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric'
+                          })}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-2xl font-bold" style={{ color: '#3d59ab' }}>
+                          {dayClients.length}
+                        </span>
+                        <p className="text-xs text-gray-500">clients</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {dayClients.length === 0 ? (
+                        <p className="text-gray-400 text-sm italic">No deliveries</p>
+                      ) : (
+                        dayClients.map((client, idx) => {
+                          const isReady = readyClientNames.includes(client.name);
+                          const isDelivered = deliveryLog.some(
+                            e => e.date === day.date && e.clientName === client.name
+                          );
+
+                          return (
+                            <div
+                              key={idx}
+                              className={`p-2 rounded text-sm flex items-center justify-between ${
+                                isDelivered ? 'bg-green-50' : isReady ? 'bg-amber-50' : ''
+                              }`}
+                              style={{ backgroundColor: isDelivered ? undefined : isReady ? undefined : '#f9f9ed' }}
+                            >
+                              <span className={isDelivered ? 'line-through text-gray-400' : ''}>
+                                {client.displayName || client.name}
+                              </span>
+                              <div className="flex items-center gap-1">
+                                {client.zone && (
+                                  <span className="text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">
+                                    {client.zone}
+                                  </span>
+                                )}
+                                {isDelivered && (
+                                  <Check size={14} className="text-green-600" />
+                                )}
+                                {isReady && !isDelivered && (
+                                  <Truck size={14} className="text-amber-600" />
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {dayClients.length > 0 && (
+                      <button
+                        onClick={() => {
+                          // Generate maps link for all clients on this day
+                          const addresses = dayClients
+                            .map(c => {
+                              const contacts = c.contacts || [];
+                              const firstAddr = contacts.find(ct => ct.address)?.address || c.address;
+                              return firstAddr;
+                            })
+                            .filter(Boolean)
+                            .map(a => encodeURIComponent(a));
+
+                          if (addresses.length === 0) {
+                            alert('No addresses found for this day');
+                            return;
+                          }
+                          window.open(`https://www.google.com/maps/dir/${addresses.join('/')}`, '_blank');
+                        }}
+                        className="w-full mt-3 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-white text-sm"
+                        style={{ backgroundColor: '#27ae60' }}
+                      >
+                        <ExternalLink size={16} />
+                        Plan Route
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        );
+      })()}
+
+      {/* Drivers View */}
+      {activeView === 'drivers' && (() => {
+        const addDriver = () => {
+          if (!localNewDriver.name) {
+            alert('Please enter a driver name');
+            return;
+          }
+          if (setDrivers) {
+            setDrivers([...drivers, { ...localNewDriver, id: Date.now() }]);
+          }
+          setLocalNewDriver({ ...DEFAULT_NEW_DRIVER });
+          if (setNewDriver) {
+            setNewDriver({ ...DEFAULT_NEW_DRIVER });
+          }
+        };
+
+        const deleteDriver = (index) => {
+          if (window.confirm('Delete this driver?')) {
+            if (setDrivers) {
+              setDrivers(drivers.filter((_, i) => i !== index));
+            }
+          }
+        };
+
+        const startEditingDriver = (index) => {
+          setEditingDriverIndex(index);
+          setEditingDriver({ ...drivers[index] });
+        };
+
+        const cancelEditingDriver = () => {
+          setEditingDriverIndex(null);
+          setEditingDriver(null);
+        };
+
+        const saveEditingDriver = () => {
+          if (setDrivers) {
+            const updated = [...drivers];
+            updated[editingDriverIndex] = editingDriver;
+            setDrivers(updated);
+          }
+          setEditingDriverIndex(null);
+          setEditingDriver(null);
+        };
+
+        return (
+          <>
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h3 className="text-xl font-bold mb-4" style={{ color: '#3d59ab' }}>Add Driver</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <FormField label="Driver Name">
+                  <input
+                    type="text"
+                    value={localNewDriver.name}
+                    onChange={(e) => setLocalNewDriver({ ...localNewDriver, name: e.target.value })}
+                    placeholder="Enter driver name"
+                    className={inputStyle}
+                    style={borderStyle}
+                  />
+                </FormField>
+                <FormField label="Phone">
+                  <input
+                    type="tel"
+                    value={localNewDriver.phone || ''}
+                    onChange={(e) => setLocalNewDriver({ ...localNewDriver, phone: e.target.value })}
+                    placeholder="Phone number"
+                    className={inputStyle}
+                    style={borderStyle}
+                  />
+                </FormField>
+                <FormField label="Zone">
+                  <select
+                    value={localNewDriver.zone || ''}
+                    onChange={(e) => setLocalNewDriver({ ...localNewDriver, zone: e.target.value })}
+                    className={inputStyle}
+                    style={borderStyle}
+                  >
+                    <option value="">Unassigned</option>
+                    {ZONES.map(z => <option key={z} value={z}>Zone {z}</option>)}
+                  </select>
+                </FormField>
+                <FormField label="Access Code">
+                  <input
+                    type="text"
+                    value={localNewDriver.accessCode || ''}
+                    onChange={(e) => setLocalNewDriver({ ...localNewDriver, accessCode: e.target.value })}
+                    placeholder="Access code"
+                    className={inputStyle}
+                    style={borderStyle}
+                  />
+                </FormField>
+              </div>
+              <button
+                onClick={addDriver}
+                className="mt-4 px-6 py-2 rounded-lg text-white flex items-center gap-2"
+                style={{ backgroundColor: '#3d59ab' }}
+              >
+                <Plus size={20} />Add Driver
+              </button>
+            </div>
+
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h3 className="text-xl font-bold mb-4" style={{ color: '#3d59ab' }}>
+                Drivers ({drivers.length})
+              </h3>
+              {drivers.length > 0 ? (
+                <div className="space-y-3">
+                  {drivers.map((driver, i) => (
+                    <div key={driver.id || i}>
+                      {editingDriverIndex === i ? (
+                        <div className="border-2 rounded-lg p-4" style={{ borderColor: '#3d59ab', backgroundColor: '#f9f9ed' }}>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <FormField label="Driver Name">
+                              <input
+                                type="text"
+                                value={editingDriver.name}
+                                onChange={(e) => setEditingDriver({ ...editingDriver, name: e.target.value })}
+                                className={inputStyle}
+                                style={borderStyle}
+                              />
+                            </FormField>
+                            <FormField label="Phone">
+                              <input
+                                type="tel"
+                                value={editingDriver.phone || ''}
+                                onChange={(e) => setEditingDriver({ ...editingDriver, phone: e.target.value })}
+                                className={inputStyle}
+                                style={borderStyle}
+                              />
+                            </FormField>
+                            <FormField label="Zone">
+                              <select
+                                value={editingDriver.zone || ''}
+                                onChange={(e) => setEditingDriver({ ...editingDriver, zone: e.target.value })}
+                                className={inputStyle}
+                                style={borderStyle}
+                              >
+                                <option value="">Unassigned</option>
+                                {ZONES.map(z => <option key={z} value={z}>Zone {z}</option>)}
+                              </select>
+                            </FormField>
+                            <FormField label="Access Code">
+                              <input
+                                type="text"
+                                value={editingDriver.accessCode || ''}
+                                onChange={(e) => setEditingDriver({ ...editingDriver, accessCode: e.target.value })}
+                                className={inputStyle}
+                                style={borderStyle}
+                              />
+                            </FormField>
+                          </div>
+                          <div className="flex gap-2 mt-4">
+                            <button
+                              onClick={saveEditingDriver}
+                              className="flex items-center gap-1 px-4 py-2 rounded-lg text-white"
+                              style={{ backgroundColor: '#3d59ab' }}
+                            >
+                              <Check size={18} />Save
+                            </button>
+                            <button
+                              onClick={cancelEditingDriver}
+                              className="flex items-center gap-1 px-4 py-2 rounded-lg bg-gray-200"
+                            >
+                              <X size={18} />Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="border-2 rounded-lg p-4 flex justify-between" style={{ borderColor: '#ebb582' }}>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-bold text-lg">{driver.name}</h4>
+                              {driver.zone && (
+                                <span className="text-xs px-2 py-1 rounded bg-purple-100 text-purple-700">
+                                  Zone {driver.zone}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-sm text-gray-600">
+                              {driver.phone && `Phone: ${driver.phone}`}
+                              {driver.phone && driver.accessCode && ' • '}
+                              {driver.accessCode && `Code: ${driver.accessCode}`}
+                            </p>
+                          </div>
+                          <div className="flex gap-2 self-start ml-4">
+                            <button onClick={() => startEditingDriver(i)} className="text-blue-600">
+                              <Edit2 size={18} />
+                            </button>
+                            <button onClick={() => deleteDriver(i)} className="text-red-600">
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-500">No drivers yet. Add your first driver above.</p>
+              )}
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }

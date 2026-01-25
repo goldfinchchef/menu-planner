@@ -1134,14 +1134,16 @@ export default function AdminPage() {
   } = useAdminData();
 
   const [searchParams] = useSearchParams();
-  const [activeSection, setActiveSection] = useState('dashboard');
+  const [activeSection, setActiveSection] = useState('overview');
   const [newDriver, setNewDriver] = useState(DEFAULT_NEW_DRIVER);
 
   // Handle URL section parameter
   useEffect(() => {
     const sectionFromUrl = searchParams.get('section');
-    if (sectionFromUrl === 'menu-approval') {
-      setActiveSection('approvals');
+    if (sectionFromUrl === 'menu-approval' || sectionFromUrl === 'approvals') {
+      setActiveSection('overview');
+    } else if (sectionFromUrl === 'dashboard' || sectionFromUrl === 'tasks') {
+      setActiveSection('overview');
     } else if (sectionFromUrl) {
       setActiveSection(sectionFromUrl);
     }
@@ -1917,17 +1919,11 @@ export default function AdminPage() {
         {/* Navigation */}
         <div className="flex gap-2 mb-6 overflow-x-auto">
           {[
-            { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-            { id: 'menu', label: 'Menu Planner', icon: ChefHat },
-            { id: 'approvals', label: 'Menu Approval', icon: Eye },
+            { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+            { id: 'billing', label: 'Billing & Dates', icon: CreditCard },
             { id: 'recipes', label: 'Recipes', icon: FileText },
             { id: 'ingredients', label: 'Ingredients', icon: Package },
             { id: 'clients', label: 'Clients', icon: Users },
-            { id: 'billing', label: 'Billing & Dates', icon: CreditCard },
-            { id: 'subscriptions', label: 'Subscriptions', icon: RefreshCw },
-            { id: 'groceries', label: 'Grocery Tracking', icon: Receipt },
-            { id: 'analytics', label: 'Analytics', icon: TrendingUp },
-            { id: 'tasks', label: 'Weekly Tasks', icon: ClipboardList },
             { id: 'settings', label: 'Settings', icon: Settings }
           ].map(section => (
             <button
@@ -1946,8 +1942,8 @@ export default function AdminPage() {
           ))}
         </div>
 
-        {/* Dashboard Section */}
-        {activeSection === 'dashboard' && (
+        {/* Overview Section (Combined Dashboard + Tasks) */}
+        {activeSection === 'overview' && (
           <div className="space-y-6">
             <div className="bg-white rounded-lg shadow-lg p-6">
               <h2 className="text-2xl font-bold mb-4" style={{ color: '#3d59ab' }}>
@@ -2043,6 +2039,72 @@ export default function AdminPage() {
               </div>
             )}
 
+            {/* Auto-generated To Do List */}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-2xl font-bold mb-4" style={{ color: '#3d59ab' }}>
+                <ClipboardList size={28} className="inline mr-2" />
+                To Do This Week
+              </h2>
+              <div className="space-y-4">
+                {autoTasks.length === 0 ? (
+                  <p className="text-gray-500 text-center py-4">All caught up! No tasks for this week.</p>
+                ) : (
+                  autoTasks.map((task, idx) => (
+                    <div
+                      key={idx}
+                      className="p-4 rounded-lg border-2"
+                      style={{ borderColor: task.color, backgroundColor: `${task.color}10` }}
+                    >
+                      <div className="flex items-start gap-3">
+                        <task.icon size={24} style={{ color: task.color }} />
+                        <div className="flex-1">
+                          <h3 className="font-bold">{task.title}</h3>
+                          <p className="text-sm text-gray-500">{task.category}</p>
+                          {task.details && task.details.length > 0 && (
+                            <ul className="mt-2 text-sm text-gray-600">
+                              {task.details.slice(0, 3).map((detail, i) => (
+                                <li key={i}>• {detail}</li>
+                              ))}
+                              {task.details.length > 3 && (
+                                <li className="text-gray-400">...and {task.details.length - 3} more</li>
+                              )}
+                            </ul>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Custom Tasks */}
+            {customTasks.length > 0 && (
+              <div className="bg-white rounded-lg shadow-lg p-6">
+                <h3 className="text-xl font-bold mb-4" style={{ color: '#3d59ab' }}>Custom Tasks</h3>
+                <div className="space-y-2">
+                  {customTasks.map((task, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3 rounded-lg flex items-center justify-between"
+                      style={{ backgroundColor: '#f9f9ed' }}
+                    >
+                      <div>
+                        <p className="font-medium">{task.title}</p>
+                        {task.notes && <p className="text-sm text-gray-500">{task.notes}</p>}
+                      </div>
+                      <button
+                        onClick={() => updateCustomTasks(customTasks.filter((_, i) => i !== idx))}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Quick links */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <Link
@@ -2060,11 +2122,11 @@ export default function AdminPage() {
                 <p className="font-medium">Driver View</p>
               </Link>
               <button
-                onClick={() => setActiveSection('tasks')}
+                onClick={() => setActiveSection('billing')}
                 className="p-4 bg-white rounded-lg shadow hover:shadow-md transition-shadow text-center"
               >
-                <ClipboardList size={32} className="mx-auto mb-2" style={{ color: '#3d59ab' }} />
-                <p className="font-medium">Weekly Tasks</p>
+                <CreditCard size={32} className="mx-auto mb-2" style={{ color: '#3d59ab' }} />
+                <p className="font-medium">Billing & Dates</p>
               </button>
               <button
                 onClick={() => setActiveSection('settings')}
@@ -2320,10 +2382,50 @@ export default function AdminPage() {
                 })}
               </div>
             </div>
+
+            {/* Paused Clients */}
+            {(() => {
+              const pausedClients = clients.filter(c => c.status === 'paused');
+              if (pausedClients.length === 0) return null;
+
+              return (
+                <div className="bg-white rounded-lg shadow-lg p-6">
+                  <h2 className="text-2xl font-bold mb-2" style={{ color: '#3d59ab' }}>
+                    Paused Clients ({pausedClients.length})
+                  </h2>
+                  <p className="text-gray-600 mb-4">
+                    Clients with paused subscriptions
+                  </p>
+                  <div className="space-y-2">
+                    {pausedClients.map((client, idx) => (
+                      <div
+                        key={idx}
+                        className="p-3 rounded-lg flex items-center justify-between bg-gray-50 border border-gray-200"
+                      >
+                        <div>
+                          <h3 className="font-medium">{client.displayName || client.name}</h3>
+                          {client.pausedDate && (
+                            <p className="text-sm text-gray-500">
+                              Paused: {new Date(client.pausedDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </p>
+                          )}
+                          {client.billingNotes && (
+                            <p className="text-sm text-gray-500">{client.billingNotes}</p>
+                          )}
+                        </div>
+                        <span className="text-xs px-2 py-1 rounded bg-gray-200 text-gray-600">
+                          Paused
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 
-        {/* Subscriptions Section */}
+        {/* Subscriptions Section - Removed, keeping for backwards compatibility */}
         {activeSection === 'subscriptions' && (
           <SubscriptionsTab
             clients={clients}

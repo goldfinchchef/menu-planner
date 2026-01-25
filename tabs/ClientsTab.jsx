@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Upload, Download, Edit2, Check, X, Link2, Minus, Users, User } from 'lucide-react';
+import { Plus, Trash2, Upload, Download, Edit2, Check, X, Link2, Minus, Users, User, ChevronDown, ChevronUp, Truck } from 'lucide-react';
 import { ZONES, DAYS, DEFAULT_CONTACT, DEFAULT_NEW_SUBSCRIPTION } from '../constants';
 
 const FormField = ({ label, children }) => (
@@ -141,10 +141,58 @@ export default function ClientsTab({
   deleteClient,
   clientsFileRef,
   exportClientsCSV,
-  setClients
+  setClients,
+  deliveryLog = [],
+  orderHistory = []
 }) {
   const [editingIndex, setEditingIndex] = useState(null);
   const [editingClient, setEditingClient] = useState(null);
+  const [expandedDeliveries, setExpandedDeliveries] = useState({});
+
+  // Toggle delivery history visibility for a client
+  const toggleDeliveryHistory = (subscriptionId) => {
+    setExpandedDeliveries(prev => ({
+      ...prev,
+      [subscriptionId]: !prev[subscriptionId]
+    }));
+  };
+
+  // Get recent deliveries for a client (from both deliveryLog and orderHistory)
+  const getRecentDeliveries = (clientName) => {
+    // Combine deliveries from deliveryLog and orderHistory
+    const fromLog = deliveryLog
+      .filter(entry => entry.clientName === clientName)
+      .map(entry => ({
+        date: entry.date,
+        dishes: [],
+        status: entry.problem ? 'problem' : 'delivered',
+        problem: entry.problem,
+        bagsReturned: entry.bagsReturned,
+        source: 'log'
+      }));
+
+    const fromHistory = orderHistory
+      .filter(order => order.clientName === clientName)
+      .map(order => ({
+        date: order.date,
+        dishes: order.dishes || [],
+        status: 'completed',
+        source: 'history'
+      }));
+
+    // Combine and dedupe by date, preferring history entries (they have dishes)
+    const combined = {};
+    [...fromLog, ...fromHistory].forEach(entry => {
+      if (!combined[entry.date] || entry.dishes.length > 0) {
+        combined[entry.date] = entry;
+      }
+    });
+
+    // Sort by date descending and take last 4
+    return Object.values(combined)
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
+      .slice(0, 4);
+  };
 
   // Ensure subscription has contacts array
   const ensureContacts = (subscription) => {
@@ -844,6 +892,73 @@ export default function ClientsTab({
                             Billing: {subscription.billingNotes}
                           </p>
                         )}
+
+                        {/* Recent Deliveries Section */}
+                        {(() => {
+                          const subId = subscription.subscriptionId || subscription.displayName || i;
+                          const clientName = subscription.displayName || subscription.name;
+                          const recentDeliveries = getRecentDeliveries(clientName);
+                          const isExpanded = expandedDeliveries[subId];
+
+                          if (recentDeliveries.length === 0) return null;
+
+                          return (
+                            <div className="mt-3">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleDeliveryHistory(subId);
+                                }}
+                                className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-800"
+                              >
+                                <Truck size={14} />
+                                <span>Recent Deliveries ({recentDeliveries.length})</span>
+                                {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                              </button>
+
+                              {isExpanded && (
+                                <div className="mt-2 pl-4 border-l-2 space-y-2" style={{ borderColor: '#3d59ab' }}>
+                                  {recentDeliveries.map((delivery, idx) => (
+                                    <div
+                                      key={idx}
+                                      className="text-sm p-2 rounded"
+                                      style={{ backgroundColor: '#f9f9ed' }}
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium">
+                                          {new Date(delivery.date + 'T12:00:00').toLocaleDateString('en-US', {
+                                            month: 'short',
+                                            day: 'numeric'
+                                          })}
+                                        </span>
+                                        {delivery.status === 'problem' && (
+                                          <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700">
+                                            {delivery.problem}
+                                          </span>
+                                        )}
+                                        {delivery.status === 'delivered' && !delivery.problem && (
+                                          <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700">
+                                            Delivered
+                                          </span>
+                                        )}
+                                        {delivery.bagsReturned === false && (
+                                          <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+                                            No bags
+                                          </span>
+                                        )}
+                                      </div>
+                                      {delivery.dishes && delivery.dishes.length > 0 && (
+                                        <p className="text-xs text-gray-500 mt-1">
+                                          {delivery.dishes.join(', ')}
+                                        </p>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                       <div className="flex gap-2 self-start ml-4">
                         <button

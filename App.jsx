@@ -11,9 +11,9 @@ import {
   MenuTab,
   KDSTab,
   PrepTab,
-  HistoryTab,
   ClientsTab,
-  DeliveriesTab
+  DeliveriesTab,
+  IngredientsTab
 } from './tabs';
 import {
   categorizeIngredient,
@@ -30,7 +30,7 @@ import Papa from 'papaparse';
 
 export default function App() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('recipes');
+  const [activeTab, setActiveTab] = useState('menu');
   const {
     recipes, setRecipes,
     menuItems, setMenuItems,
@@ -450,7 +450,6 @@ export default function App() {
   };
 
   const prepList = getPrepList();
-  const historyByClient = getHistoryByClient();
 
   // Week-related helpers
   const currentWeek = weeks[selectedWeekId] || null;
@@ -521,16 +520,17 @@ export default function App() {
       </nav>
 
       <div className="max-w-6xl mx-auto p-4 space-y-6">
-        {['kds', 'deliveries', 'history'].includes(activeTab) && (
+        {['kds', 'deliveries'].includes(activeTab) && (
           <WeekSelector
             selectedWeekId={selectedWeekId}
             setSelectedWeekId={setSelectedWeekId}
             weeks={weeks}
+            onLockWeek={lockWeekAndSnapshot}
             onUnlockWeek={unlockWeekById}
           />
         )}
 
-        {['kds', 'deliveries', 'history'].includes(activeTab) && (
+        {['kds', 'deliveries'].includes(activeTab) && (
           <WorkflowStatus
             menuItems={getWeekMenuItems()}
             completedDishes={getWeekKdsStatus()}
@@ -573,18 +573,26 @@ export default function App() {
           <MenuTab
             menuDate={menuDate}
             setMenuDate={setMenuDate}
-            clients={clients.filter(c => c.status === 'active')}
+            clients={clients}
+            allClients={clients}
             selectedClients={selectedClients}
             setSelectedClients={setSelectedClients}
             recipes={recipes}
             newMenuItem={newMenuItem}
             setNewMenuItem={setNewMenuItem}
             menuItems={menuItems}
+            setMenuItems={setMenuItems}
             addMenuItem={addMenuItem}
             clearMenu={clearMenu}
             deleteMenuItem={deleteMenuItem}
             getOrdersByClient={getOrdersByClient}
-            onFinishReview={() => navigate('/admin?section=menu-approval')}
+            clientPortalData={clientPortalData}
+            weeklyTasks={weeklyTasks}
+            weeks={weeks}
+            selectedWeekId={selectedWeekId}
+            setSelectedWeekId={setSelectedWeekId}
+            lockWeekAndSnapshot={lockWeekAndSnapshot}
+            unlockWeekById={unlockWeekById}
           />
         )}
 
@@ -605,11 +613,25 @@ export default function App() {
           <PrepTab prepList={prepList} exportPrepList={exportPrepList} />
         )}
 
-        {activeTab === 'history' && (
-          <HistoryTab
-            historyByClient={historyByClient}
-            orderHistory={orderHistory}
-            setOrderHistory={setOrderHistory}
+        {activeTab === 'ingredients' && (
+          <IngredientsTab
+            masterIngredients={masterIngredients}
+            newIngredient={newIngredient}
+            setNewIngredient={setNewIngredient}
+            editingIngredientId={editingIngredientId}
+            editingIngredientData={editingIngredientData}
+            setEditingIngredientData={setEditingIngredientData}
+            duplicateWarnings={duplicateWarnings}
+            setDuplicateWarnings={setDuplicateWarnings}
+            scanForDuplicates={scanForDuplicates}
+            mergeIngredients={mergeIngredients}
+            addMasterIngredient={addMasterIngredient}
+            deleteMasterIngredient={deleteMasterIngredient}
+            startEditingMasterIngredient={startEditingMasterIngredient}
+            saveEditingMasterIngredient={saveEditingMasterIngredient}
+            cancelEditingMasterIngredient={cancelEditingMasterIngredient}
+            ingredientsFileRef={ingredientsFileRef}
+            exportIngredientsCSV={() => exportIngredientsCSV(masterIngredients)}
           />
         )}
 
@@ -623,6 +645,8 @@ export default function App() {
             deleteClient={deleteClient}
             clientsFileRef={clientsFileRef}
             exportClientsCSV={() => exportClientsCSV(clients)}
+            deliveryLog={deliveryLog}
+            orderHistory={orderHistory}
           />
         )}
 
@@ -630,6 +654,9 @@ export default function App() {
           <DeliveriesTab
             clients={clients}
             drivers={drivers}
+            setDrivers={setDrivers}
+            newDriver={newDriver}
+            setNewDriver={setNewDriver}
             deliveryLog={getWeekDeliveryLog()}
             setDeliveryLog={setDeliveryLog}
             bagReminders={bagReminders}
