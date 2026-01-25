@@ -28,10 +28,14 @@ export default function WorkflowStatus({
   selectedDate,
   onNavigate
 }) {
+  // Split menu items into approved and unapproved
+  const unapprovedItems = menuItems.filter(item => !item.approved);
+  const approvedItems = menuItems.filter(item => item.approved);
+
   // Calculate counts for each stage
   const getKDSProgress = () => {
     const dishes = new Set();
-    menuItems.forEach(item => {
+    approvedItems.forEach(item => {
       ['protein', 'veg', 'starch'].forEach(type => {
         if (item[type]) dishes.add(item[type]);
       });
@@ -44,11 +48,11 @@ export default function WorkflowStatus({
 
   const kdsProgress = getKDSProgress();
 
-  // Orders in menu (not yet cooking or all dishes not started)
-  const menuCount = menuItems.length;
+  // Menu Planned = unapproved items (waiting for approval)
+  const menuCount = unapprovedItems.length;
 
-  // Cooking = menu items exist and some dishes are being worked on
-  const cookingCount = kdsProgress.completed > 0 && kdsProgress.completed < kdsProgress.total ? menuCount : 0;
+  // Cooking = approved menu items in KDS
+  const cookingCount = approvedItems.length;
 
   // Ready for delivery count
   const readyCount = readyForDelivery.length;
@@ -71,7 +75,7 @@ export default function WorkflowStatus({
 
   const stageCounts = {
     menu: menuCount,
-    cooking: cookingCount > 0 ? menuCount : 0,
+    cooking: cookingCount,
     ready: readyCount,
     delivering: deliveringCount,
     delivered: deliveredCount,
@@ -79,8 +83,8 @@ export default function WorkflowStatus({
   };
 
   const stageActive = {
-    menu: menuCount > 0 && kdsProgress.completed === 0,
-    cooking: menuCount > 0 && kdsProgress.completed > 0,
+    menu: menuCount > 0,
+    cooking: cookingCount > 0,
     ready: readyCount > 0,
     delivering: deliveringCount > 0 && readyCount > 0,
     delivered: deliveredCount > 0,
@@ -91,7 +95,7 @@ export default function WorkflowStatus({
   const getCurrentStage = () => {
     if (deliveringCount > 0 && readyCount > 0) return 'delivering';
     if (readyCount > 0) return 'ready';
-    if (menuCount > 0 && kdsProgress.completed > 0) return 'cooking';
+    if (cookingCount > 0 && kdsProgress.completed < kdsProgress.total) return 'cooking';
     if (menuCount > 0) return 'menu';
     return null;
   };

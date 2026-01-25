@@ -5,6 +5,7 @@ import {
   getWeekIdFromDate,
   createWeekRecord,
   lockWeek,
+  unlockWeek,
   isDateInWeek
 } from '../utils/weekUtils';
 import {
@@ -110,6 +111,17 @@ export function useAppData() {
 
   const findExactMatch = (name) => masterIngredients.find(mi => normalizeName(mi.name) === normalizeName(name));
 
+  // Get unique vendors/sources from master ingredients
+  const getUniqueVendors = () => {
+    const vendors = new Set();
+    masterIngredients.forEach(mi => {
+      if (mi.source && mi.source.trim()) {
+        vendors.add(mi.source.trim());
+      }
+    });
+    return Array.from(vendors).sort();
+  };
+
   const addToMasterIngredients = (ingredient) => {
     if (!ingredient.name) return;
     const exactMatch = findExactMatch(ingredient.name);
@@ -131,6 +143,73 @@ export function useAppData() {
       source: ingredient.source || '',
       section: ingredient.section || 'Other'
     }]);
+  };
+
+  // Update master ingredient cost when changed in recipe
+  const updateMasterIngredientCost = (ingredientName, newCost) => {
+    const exactMatch = findExactMatch(ingredientName);
+    if (exactMatch && newCost) {
+      setMasterIngredients(prev => prev.map(mi =>
+        mi.id === exactMatch.id ? { ...mi, cost: newCost } : mi
+      ));
+      return true;
+    }
+    return false;
+  };
+
+  // Sync all recipe ingredients from master ingredients data
+  const syncRecipeIngredientsFromMaster = () => {
+    let ingredientsAdded = 0;
+    let costsUpdated = 0;
+
+    const updatedRecipes = { ...recipes };
+
+    Object.keys(updatedRecipes).forEach(category => {
+      updatedRecipes[category] = updatedRecipes[category].map(recipe => {
+        const updatedIngredients = recipe.ingredients.map(ing => {
+          const masterIng = findExactMatch(ing.name);
+          if (masterIng) {
+            const updated = { ...ing };
+            // Sync fields from master if master has values
+            if (masterIng.cost && masterIng.cost !== ing.cost) {
+              updated.cost = masterIng.cost;
+              costsUpdated++;
+            }
+            if (masterIng.source && masterIng.source !== ing.source) {
+              updated.source = masterIng.source;
+            }
+            if (masterIng.section && masterIng.section !== 'Other' && masterIng.section !== ing.section) {
+              updated.section = masterIng.section;
+            }
+            if (masterIng.unit && masterIng.unit !== ing.unit) {
+              updated.unit = masterIng.unit;
+            }
+            return updated;
+          } else if (ing.name) {
+            // Add to master ingredients if not exists
+            ingredientsAdded++;
+            return ing;
+          }
+          return ing;
+        });
+        return { ...recipe, ingredients: updatedIngredients };
+      });
+    });
+
+    // Add any new ingredients to master
+    Object.values(updatedRecipes).forEach(categoryRecipes => {
+      categoryRecipes.forEach(recipe => {
+        recipe.ingredients.forEach(ing => {
+          if (ing.name && !findExactMatch(ing.name)) {
+            addToMasterIngredients(ing);
+          }
+        });
+      });
+    });
+
+    setRecipes(updatedRecipes);
+
+    return { ingredientsAdded, costsUpdated };
   };
 
   const mergeIngredients = (keepId, removeId) => {
@@ -214,6 +293,16 @@ export function useAppData() {
     setWeeks(prev => ({ ...prev, [weekId]: lockedWeek }));
     return lockedWeek;
   }, [weeks, menuItems, clients]);
+
+  // Unlock a week for editing
+  const unlockWeekById = useCallback((weekId) => {
+    const week = weeks[weekId];
+    if (!week || week.status !== 'locked') return null;
+
+    const unlockedWeek = unlockWeek(week);
+    setWeeks(prev => ({ ...prev, [weekId]: unlockedWeek }));
+    return unlockedWeek;
+  }, [weeks]);
 
   // Update week's operational data
   const updateWeekData = useCallback((weekId, updates) => {
@@ -352,6 +441,9 @@ export function useAppData() {
     findSimilarIngredients,
     findExactMatch,
     addToMasterIngredients,
+    updateMasterIngredientCost,
+    syncRecipeIngredientsFromMaster,
+    getUniqueVendors,
     mergeIngredients,
     scanForDuplicates,
     getRecipeCost,
@@ -360,6 +452,7 @@ export function useAppData() {
     getOrCreateWeek,
     getCurrentWeek,
     lockWeekAndSnapshot,
+    unlockWeekById,
     updateWeekData,
     updateWeekKdsStatus,
     addReadyForDeliveryToWeek,

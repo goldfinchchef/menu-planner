@@ -1,5 +1,5 @@
-import React from 'react';
-import { Upload, Download, Save, X, Edit2, Check, Trash2, AlertCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { Upload, Download, Save, X, Edit2, Check, Trash2, AlertCircle, RefreshCw } from 'lucide-react';
 import { STORE_SECTIONS, RECIPE_CATEGORIES } from '../constants';
 
 export default function RecipesTab({
@@ -21,9 +21,16 @@ export default function RecipesTab({
   updateEditingIngredient,
   addEditingIngredient,
   removeEditingIngredient,
-  exportRecipesCSV
+  exportRecipesCSV,
+  getUniqueVendors,
+  updateMasterIngredientCost,
+  syncRecipeIngredientsFromMaster
 }) {
+  const [showNewVendorInput, setShowNewVendorInput] = useState({});
+  const [editShowNewVendorInput, setEditShowNewVendorInput] = useState({});
+
   const recipeCounts = getRecipeCounts();
+  const uniqueVendors = getUniqueVendors ? getUniqueVendors() : [];
 
   const addIngredient = () => setNewRecipe({
     ...newRecipe,
@@ -33,6 +40,27 @@ export default function RecipesTab({
   const updateIngredient = (index, field, value) => {
     const updated = [...newRecipe.ingredients];
     updated[index][field] = value;
+
+    // Auto-fill from master when ingredient name changes
+    if (field === 'name' && value.length > 2) {
+      const masterIng = findExactMatch(value);
+      if (masterIng) {
+        updated[index] = {
+          ...updated[index],
+          name: value,
+          cost: masterIng.cost || updated[index].cost,
+          source: masterIng.source || updated[index].source,
+          section: masterIng.section || updated[index].section,
+          unit: masterIng.unit || updated[index].unit
+        };
+      }
+    }
+
+    // Sync cost back to master when cost changes
+    if (field === 'cost' && value && updated[index].name && updateMasterIngredientCost) {
+      updateMasterIngredientCost(updated[index].name, value);
+    }
+
     setNewRecipe({ ...newRecipe, ingredients: updated });
   };
 
@@ -54,6 +82,64 @@ export default function RecipesTab({
     setNewRecipe({ ...newRecipe, ingredients: updated });
   };
 
+  // Handle sync button click
+  const handleSync = () => {
+    if (!syncRecipeIngredientsFromMaster) return;
+    const result = syncRecipeIngredientsFromMaster();
+    alert(`Sync complete!\n\n${result.ingredientsAdded} ingredient(s) added to master list\n${result.costsUpdated} cost(s) updated from master`);
+  };
+
+  // Vendor dropdown with "Add new" option
+  const VendorSelect = ({ value, onChange, index, isEditing = false }) => {
+    const showNew = isEditing ? editShowNewVendorInput[index] : showNewVendorInput[index];
+    const setShowNew = isEditing
+      ? (val) => setEditShowNewVendorInput(prev => ({ ...prev, [index]: val }))
+      : (val) => setShowNewVendorInput(prev => ({ ...prev, [index]: val }));
+
+    if (showNew) {
+      return (
+        <div className="flex gap-1">
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="New vendor"
+            className={isEditing ? "w-16 p-1 border rounded text-sm" : "w-20 p-2 border-2 rounded-lg"}
+            style={isEditing ? {} : { borderColor: '#ebb582' }}
+            autoFocus
+          />
+          <button
+            onClick={() => setShowNew(false)}
+            className="text-gray-500 hover:text-gray-700"
+            type="button"
+          >
+            <X size={isEditing ? 14 : 16} />
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <select
+        value={uniqueVendors.includes(value) ? value : ''}
+        onChange={(e) => {
+          if (e.target.value === '__new__') {
+            setShowNew(true);
+            onChange('');
+          } else {
+            onChange(e.target.value);
+          }
+        }}
+        className={isEditing ? "w-20 p-1 border rounded text-sm" : "w-24 p-2 border-2 rounded-lg"}
+        style={isEditing ? {} : { borderColor: '#ebb582' }}
+      >
+        <option value="">Vendor</option>
+        {uniqueVendors.map(v => <option key={v} value={v}>{v}</option>)}
+        <option value="__new__">+ Add new...</option>
+      </select>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-lg shadow-lg p-6">
@@ -71,6 +157,14 @@ export default function RecipesTab({
             </p>
           </div>
           <div className="flex gap-2">
+            {syncRecipeIngredientsFromMaster && (
+              <button
+                onClick={handleSync}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-green-500 text-green-600 hover:bg-green-50"
+              >
+                <RefreshCw size={18} />Sync Ingredients
+              </button>
+            )}
             <button
               onClick={() => recipesFileRef.current.click()}
               className="flex items-center gap-2 px-4 py-2 rounded-lg border-2"
@@ -153,13 +247,10 @@ export default function RecipesTab({
                       className="w-16 p-2 border-2 rounded-lg"
                       style={{ borderColor: '#ebb582' }}
                     />
-                    <input
-                      type="text"
+                    <VendorSelect
                       value={ing.source}
-                      onChange={(e) => updateIngredient(index, 'source', e.target.value)}
-                      placeholder="Source"
-                      className="w-20 p-2 border-2 rounded-lg"
-                      style={{ borderColor: '#ebb582' }}
+                      onChange={(val) => updateIngredient(index, 'source', val)}
+                      index={index}
                     />
                     <select
                       value={ing.section}
@@ -256,48 +347,79 @@ export default function RecipesTab({
                           rows="2"
                         />
                         <p className="text-sm font-medium mb-2">Ingredients:</p>
-                        {editingRecipe.recipe.ingredients.map((ing, ingIndex) => (
-                          <div key={ingIndex} className="flex flex-wrap gap-2 mb-2">
-                            <input
-                              type="text"
-                              value={ing.name}
-                              onChange={(e) => updateEditingIngredient(ingIndex, 'name', e.target.value)}
-                              placeholder="Name"
-                              className="flex-1 min-w-[100px] p-1 border rounded text-sm"
-                            />
-                            <input
-                              type="text"
-                              value={ing.quantity}
-                              onChange={(e) => updateEditingIngredient(ingIndex, 'quantity', e.target.value)}
-                              placeholder="Oz"
-                              className="w-12 p-1 border rounded text-sm"
-                            />
-                            <input
-                              type="text"
-                              value={ing.cost}
-                              onChange={(e) => updateEditingIngredient(ingIndex, 'cost', e.target.value)}
-                              placeholder="$"
-                              className="w-12 p-1 border rounded text-sm"
-                            />
-                            <input
-                              type="text"
-                              value={ing.source}
-                              onChange={(e) => updateEditingIngredient(ingIndex, 'source', e.target.value)}
-                              placeholder="Source"
-                              className="w-16 p-1 border rounded text-sm"
-                            />
-                            <select
-                              value={ing.section}
-                              onChange={(e) => updateEditingIngredient(ingIndex, 'section', e.target.value)}
-                              className="w-24 p-1 border rounded text-sm"
-                            >
-                              {STORE_SECTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                            <button onClick={() => removeEditingIngredient(ingIndex)} className="text-red-600">
-                              <X size={16} />
-                            </button>
-                          </div>
-                        ))}
+                        {editingRecipe.recipe.ingredients.map((ing, ingIndex) => {
+                          const masterIng = ing.name.length > 2 ? findExactMatch(ing.name) : null;
+                          return (
+                            <div key={ingIndex} className="mb-2">
+                              <div className="flex flex-wrap gap-2">
+                                <input
+                                  type="text"
+                                  value={ing.name}
+                                  onChange={(e) => {
+                                    updateEditingIngredient(ingIndex, 'name', e.target.value);
+                                    // Auto-fill from master when name changes
+                                    const match = e.target.value.length > 2 ? findExactMatch(e.target.value) : null;
+                                    if (match) {
+                                      setTimeout(() => {
+                                        if (match.cost) updateEditingIngredient(ingIndex, 'cost', match.cost);
+                                        if (match.source) updateEditingIngredient(ingIndex, 'source', match.source);
+                                        if (match.section) updateEditingIngredient(ingIndex, 'section', match.section);
+                                        if (match.unit) updateEditingIngredient(ingIndex, 'unit', match.unit);
+                                      }, 0);
+                                    }
+                                  }}
+                                  placeholder="Name"
+                                  className="flex-1 min-w-[100px] p-1 border rounded text-sm"
+                                  list={`edit-ing-${ingIndex}`}
+                                />
+                                <datalist id={`edit-ing-${ingIndex}`}>
+                                  {masterIngredients.map((mi, i) => <option key={i} value={mi.name} />)}
+                                </datalist>
+                                <input
+                                  type="text"
+                                  value={ing.quantity}
+                                  onChange={(e) => updateEditingIngredient(ingIndex, 'quantity', e.target.value)}
+                                  placeholder="Oz"
+                                  className="w-12 p-1 border rounded text-sm"
+                                />
+                                <input
+                                  type="text"
+                                  value={ing.cost}
+                                  onChange={(e) => {
+                                    updateEditingIngredient(ingIndex, 'cost', e.target.value);
+                                    // Sync cost back to master
+                                    if (e.target.value && ing.name && updateMasterIngredientCost) {
+                                      updateMasterIngredientCost(ing.name, e.target.value);
+                                    }
+                                  }}
+                                  placeholder="$"
+                                  className="w-12 p-1 border rounded text-sm"
+                                />
+                                <VendorSelect
+                                  value={ing.source}
+                                  onChange={(val) => updateEditingIngredient(ingIndex, 'source', val)}
+                                  index={ingIndex}
+                                  isEditing={true}
+                                />
+                                <select
+                                  value={ing.section}
+                                  onChange={(e) => updateEditingIngredient(ingIndex, 'section', e.target.value)}
+                                  className="w-24 p-1 border rounded text-sm"
+                                >
+                                  {STORE_SECTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                                <button onClick={() => removeEditingIngredient(ingIndex)} className="text-red-600">
+                                  <X size={16} />
+                                </button>
+                              </div>
+                              {masterIng && (
+                                <div className="text-xs text-green-600 mt-1">
+                                  Master: ${masterIng.cost || '?'}/{masterIng.unit} • {masterIng.source || 'No vendor'} • {masterIng.section}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                         <button
                           onClick={addEditingIngredient}
                           className="text-sm px-2 py-1 rounded mb-2"

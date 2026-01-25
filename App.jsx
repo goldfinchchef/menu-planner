@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ChefHat, Settings } from 'lucide-react';
 import Tabs from './components/Tabs';
 import WorkflowStatus from './components/WorkflowStatus';
@@ -8,6 +8,7 @@ import { useAppData } from './hooks/useAppData';
 import { getWeekId, getWeekIdFromDate } from './utils/weekUtils';
 import {
   RecipesTab,
+  MenuTab,
   KDSTab,
   PrepTab,
   HistoryTab,
@@ -28,6 +29,7 @@ import { DEFAULT_NEW_CLIENT, DEFAULT_NEW_RECIPE, DEFAULT_NEW_MENU_ITEM, DEFAULT_
 import Papa from 'papaparse';
 
 export default function App() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('recipes');
   const {
     recipes, setRecipes,
@@ -58,6 +60,9 @@ export default function App() {
     findSimilarIngredients,
     findExactMatch,
     addToMasterIngredients,
+    updateMasterIngredientCost,
+    syncRecipeIngredientsFromMaster,
+    getUniqueVendors,
     mergeIngredients,
     scanForDuplicates,
     getRecipeCost,
@@ -65,6 +70,7 @@ export default function App() {
     getOrCreateWeek,
     getCurrentWeek,
     lockWeekAndSnapshot,
+    unlockWeekById,
     updateWeekData,
     updateWeekKdsStatus,
     addReadyForDeliveryToWeek,
@@ -230,7 +236,8 @@ export default function App() {
     }
     const newItems = selectedClients.map(clientName => {
       const client = clients.find(c => c.name === clientName);
-      return { ...newMenuItem, clientName, date: menuDate, portions: client ? client.persons : 1, id: Date.now() + Math.random() };
+      const clientPortions = client ? (client.portions || client.persons || 1) : 1;
+      return { ...newMenuItem, clientName, date: menuDate, portions: clientPortions, id: Date.now() + Math.random(), approved: false };
     });
     setMenuItems(prev => [...prev, ...newItems]);
     setNewMenuItem(DEFAULT_NEW_MENU_ITEM);
@@ -255,10 +262,15 @@ export default function App() {
     return grouped;
   };
 
-  // KDS functions
+  // KDS functions - only show approved menus
+  const getApprovedMenuItems = () => {
+    return menuItems.filter(item => item.approved);
+  };
+
   const getKDSView = () => {
     const kds = {};
-    menuItems.forEach(item => {
+    const approvedItems = getApprovedMenuItems();
+    approvedItems.forEach(item => {
       ['protein', 'veg', 'starch'].forEach(type => {
         if (item[type]) {
           if (!kds[item[type]]) kds[item[type]] = { totalPortions: 0, category: type, clients: [] };
@@ -514,6 +526,7 @@ export default function App() {
             selectedWeekId={selectedWeekId}
             setSelectedWeekId={setSelectedWeekId}
             weeks={weeks}
+            onUnlockWeek={unlockWeekById}
           />
         )}
 
@@ -550,18 +563,41 @@ export default function App() {
             addEditingIngredient={addEditingIngredient}
             removeEditingIngredient={removeEditingIngredient}
             exportRecipesCSV={() => exportRecipesCSV(recipes)}
+            getUniqueVendors={getUniqueVendors}
+            updateMasterIngredientCost={updateMasterIngredientCost}
+            syncRecipeIngredientsFromMaster={syncRecipeIngredientsFromMaster}
+          />
+        )}
+
+        {activeTab === 'menu' && (
+          <MenuTab
+            menuDate={menuDate}
+            setMenuDate={setMenuDate}
+            clients={clients.filter(c => c.status === 'active')}
+            selectedClients={selectedClients}
+            setSelectedClients={setSelectedClients}
+            recipes={recipes}
+            newMenuItem={newMenuItem}
+            setNewMenuItem={setNewMenuItem}
+            menuItems={menuItems}
+            addMenuItem={addMenuItem}
+            clearMenu={clearMenu}
+            deleteMenuItem={deleteMenuItem}
+            getOrdersByClient={getOrdersByClient}
+            onFinishReview={() => navigate('/admin?section=menu-approval')}
           />
         )}
 
         {activeTab === 'kds' && (
           <KDSTab
-            menuItems={menuItems}
+            menuItems={getApprovedMenuItems()}
             recipes={recipes}
             completedDishes={completedDishes}
             toggleDishComplete={toggleDishComplete}
             allDishesComplete={allDishesComplete}
             completeAllOrders={completeAllOrders}
             getKDSView={getKDSView}
+            pendingApprovalCount={menuItems.filter(item => !item.approved).length}
           />
         )}
 

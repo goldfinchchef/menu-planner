@@ -105,10 +105,23 @@ export function useClientPortalData() {
   }, [deliveryLog]);
 
   const getClientHistory = useCallback((clientName) => {
-    return orderHistory
+    // Get order history and merge with delivery log for times/photos
+    const history = orderHistory
       .filter(order => order.clientName === clientName)
+      .map(order => {
+        const logEntry = deliveryLog.find(
+          log => log.clientName === clientName && log.date === order.date
+        );
+        return {
+          ...order,
+          completedAt: logEntry?.completedAt || order.completedAt,
+          handoffType: logEntry?.handoffType || order.handoffType,
+          photoData: logEntry?.photoData || order.photoData
+        };
+      })
       .sort((a, b) => new Date(b.date) - new Date(a.date));
-  }, [orderHistory]);
+    return history;
+  }, [orderHistory, deliveryLog]);
 
   const getRecipeName = useCallback((dishName) => {
     for (const category of Object.keys(recipes)) {

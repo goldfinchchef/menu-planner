@@ -1,4 +1,4 @@
-import { Plus, Trash2, List, Book, ChefHat, Users, Clock, DollarSign, Monitor, RefreshCw, Truck, Car } from 'lucide-react';
+import { Plus, Trash2, List, Book, ChefHat, Users, Clock, DollarSign, Monitor, RefreshCw, Truck, Car, Utensils } from 'lucide-react';
 
 export const STORE_SECTIONS = [
   'Produce',
@@ -21,6 +21,7 @@ export const RECIPE_CATEGORIES = ['protein', 'veg', 'starch', 'sauces', 'breakfa
 
 export const TABS = [
   { id: 'recipes', label: 'Recipes', icon: Book },
+  { id: 'menu', label: 'Menu', icon: Utensils },
   { id: 'kds', label: 'KDS', icon: Monitor },
   { id: 'prep', label: 'Shop', icon: List },
   { id: 'history', label: 'History', icon: Clock },

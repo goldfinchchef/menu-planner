@@ -3,7 +3,8 @@ import { useParams, Link } from 'react-router-dom';
 import {
   ChefHat, Calendar, CreditCard, Truck, Check, Clock,
   AlertTriangle, Play, MapPin, Package, Home, User,
-  ExternalLink, ArrowLeft, Utensils, RefreshCw
+  ExternalLink, ArrowLeft, Utensils, RefreshCw, Edit3,
+  Camera, History
 } from 'lucide-react';
 import { useClientPortalData } from '../hooks/useClientPortalData';
 
@@ -18,6 +19,42 @@ const STATUS = {
   PAUSED: 'paused',
   NO_UPCOMING: 'no_upcoming'
 };
+
+// Helper to check if we're past Saturday EOD for date editing
+function isPastSaturdayDeadline() {
+  const now = new Date();
+  const dayOfWeek = now.getDay(); // 0 = Sunday, 6 = Saturday
+  // Past Saturday if it's Sunday (0) or if it's Saturday past 11:59 PM (handled by time)
+  // Actually, if it's Sunday or later in the week and we're looking at this week's dates
+  return dayOfWeek === 0; // Sunday means Saturday deadline passed
+}
+
+// Get Saturday 11:59pm of this week
+function getThisWeekSaturdayDeadline() {
+  const now = new Date();
+  const dayOfWeek = now.getDay();
+  const daysUntilSaturday = (6 - dayOfWeek + 7) % 7;
+  const saturday = new Date(now);
+  saturday.setDate(now.getDate() + daysUntilSaturday);
+  saturday.setHours(23, 59, 59, 999);
+  return saturday;
+}
+
+// Check if a specific date can still be edited (before Saturday EOD of the prior week)
+function canEditDeliveryDate(deliveryDateStr) {
+  if (!deliveryDateStr) return false;
+  const now = new Date();
+  const deliveryDate = new Date(deliveryDateStr + 'T12:00:00');
+
+  // Get Saturday before the delivery date
+  const dayOfWeek = deliveryDate.getDay();
+  const daysBack = dayOfWeek === 0 ? 1 : (dayOfWeek === 6 ? 0 : dayOfWeek + 1);
+  const saturdayBefore = new Date(deliveryDate);
+  saturdayBefore.setDate(deliveryDate.getDate() - daysBack);
+  saturdayBefore.setHours(23, 59, 59, 999);
+
+  return now < saturdayBefore;
+}
 
 export default function ClientPortal() {
   const { id } = useParams();
@@ -34,6 +71,7 @@ export default function ClientPortal() {
   } = useClientPortalData();
 
   const [selectedDates, setSelectedDates] = useState([]);
+  const [showDateEditor, setShowDateEditor] = useState(false);
 
   const client = useMemo(() => getClientById(id), [id, getClientById]);
   const today = new Date().toISOString().split('T')[0];
@@ -161,11 +199,17 @@ export default function ClientPortal() {
           )}
         </div>
 
-        {/* Status-specific content */}
-        {portalStatus === STATUS.PAUSED && (
-          <PausedView client={client} />
+        {/* PRIORITY 1: Delivery in progress - show at top */}
+        {portalStatus === STATUS.DELIVERY_DAY && (
+          <DeliveryDayView
+            client={client}
+            getClientReadyOrders={getClientReadyOrders}
+            getClientDeliveryStatus={getClientDeliveryStatus}
+            today={today}
+          />
         )}
 
+        {/* PRIORITY 2: Payment/renewal due - show prominently */}
         {portalStatus === STATUS.OVERDUE && (
           <OverdueView client={client} />
         )}
@@ -174,6 +218,7 @@ export default function ClientPortal() {
           <PaymentView client={client} />
         )}
 
+        {/* PRIORITY 3: Date selection needed */}
         {portalStatus === STATUS.PICK_DATES && (
           <DatePickerView
             client={client}
@@ -191,6 +236,40 @@ export default function ClientPortal() {
           />
         )}
 
+        {/* Paused state */}
+        {portalStatus === STATUS.PAUSED && (
+          <PausedView client={client} />
+        )}
+
+        {/* PRIORITY 4: Show subscription info and menu for normal states */}
+        {(portalStatus === STATUS.MENU_READY || portalStatus === STATUS.DELIVERED || portalStatus === STATUS.NO_UPCOMING) && (
+          <>
+            {/* Subscription Info Card */}
+            <SubscriptionInfoCard
+              client={client}
+              clientPortalData={clientPortalData}
+              onEditDates={() => setShowDateEditor(true)}
+            />
+
+            {/* Date Editor Modal */}
+            {showDateEditor && (
+              <DateEditorModal
+                client={client}
+                blockedDates={blockedDates}
+                clientPortalData={clientPortalData}
+                onSave={(newDates) => {
+                  updateClientPortalData(client.name, {
+                    selectedDates: newDates,
+                    dateSelectionSubmittedAt: new Date().toISOString()
+                  });
+                  setShowDateEditor(false);
+                }}
+                onClose={() => setShowDateEditor(false)}
+              />
+            )}
+          </>
+        )}
+
         {portalStatus === STATUS.MENU_READY && (
           <MenuReadyView
             client={client}
@@ -199,15 +278,6 @@ export default function ClientPortal() {
             today={today}
             clientPortalData={clientPortalData}
             updateClientPortalData={updateClientPortalData}
-          />
-        )}
-
-        {portalStatus === STATUS.DELIVERY_DAY && (
-          <DeliveryDayView
-            client={client}
-            getClientReadyOrders={getClientReadyOrders}
-            getClientDeliveryStatus={getClientDeliveryStatus}
-            today={today}
           />
         )}
 
@@ -223,6 +293,16 @@ export default function ClientPortal() {
 
         {portalStatus === STATUS.NO_UPCOMING && (
           <NoUpcomingView client={client} getClientHistory={getClientHistory} />
+        )}
+
+        {/* Delivery History - show at bottom for relevant states */}
+        {(portalStatus === STATUS.MENU_READY || portalStatus === STATUS.DELIVERED || portalStatus === STATUS.NO_UPCOMING) && (
+          <div className="mt-6">
+            <DeliveryHistorySection
+              client={client}
+              getClientHistory={getClientHistory}
+            />
+          </div>
         )}
       </div>
 
@@ -254,6 +334,398 @@ function getStatusMessage(status) {
     default:
       return "Welcome to your client portal.";
   }
+}
+
+// Subscription Info Card - shows portions, meals, frequency, and upcoming dates
+function SubscriptionInfoCard({ client, onEditDates, clientPortalData = {} }) {
+  const portions = client.portions || client.persons || 1;
+  const mealsPerWeek = client.mealsPerWeek || 0;
+  const frequency = client.frequency || 'weekly';
+  // Show portal-selected dates if available, otherwise show admin-set dates
+  const portalDates = clientPortalData[client.name]?.selectedDates || [];
+  const deliveryDates = portalDates.length > 0 ? portalDates : (client.deliveryDates || []);
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr + 'T12:00:00');
+    return date.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  const saturdayDeadline = getThisWeekSaturdayDeadline();
+  const canEdit = deliveryDates.some(d => canEditDeliveryDate(d));
+
+  return (
+    <div className="bg-white rounded-lg shadow-lg p-6 mb-4">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-bold flex items-center gap-2" style={{ color: '#3d59ab' }}>
+          <Utensils size={20} />
+          Your Subscription
+        </h3>
+        {canEdit && onEditDates && (
+          <button
+            onClick={onEditDates}
+            className="flex items-center gap-1 px-3 py-1 text-sm rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100"
+          >
+            <Edit3 size={14} />
+            Edit Dates
+          </button>
+        )}
+      </div>
+
+      {/* Subscription details */}
+      <div className="grid grid-cols-3 gap-4 mb-4">
+        <div className="text-center p-3 rounded-lg" style={{ backgroundColor: '#f9f9ed' }}>
+          <p className="text-2xl font-bold" style={{ color: '#3d59ab' }}>{portions}</p>
+          <p className="text-xs text-gray-500">Portions</p>
+        </div>
+        <div className="text-center p-3 rounded-lg" style={{ backgroundColor: '#f9f9ed' }}>
+          <p className="text-2xl font-bold" style={{ color: '#3d59ab' }}>{mealsPerWeek}</p>
+          <p className="text-xs text-gray-500">Meals/Week</p>
+        </div>
+        <div className="text-center p-3 rounded-lg" style={{ backgroundColor: '#f9f9ed' }}>
+          <p className="text-lg font-bold capitalize" style={{ color: '#3d59ab' }}>{frequency}</p>
+          <p className="text-xs text-gray-500">Frequency</p>
+        </div>
+      </div>
+
+      {/* Upcoming delivery dates */}
+      {deliveryDates.length > 0 && (
+        <div>
+          <p className="text-sm font-medium text-gray-600 mb-2 flex items-center gap-2">
+            <Calendar size={14} />
+            Upcoming Deliveries
+          </p>
+          <div className="space-y-2">
+            {deliveryDates.slice(0, 4).map((dateStr, idx) => {
+              const canEditThis = canEditDeliveryDate(dateStr);
+              const isPast = new Date(dateStr + 'T12:00:00') < new Date();
+              return (
+                <div
+                  key={dateStr}
+                  className={`flex items-center justify-between p-2 rounded-lg ${isPast ? 'opacity-50' : ''}`}
+                  style={{ backgroundColor: '#fff', border: '1px solid #ebb582' }}
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400">#{idx + 1}</span>
+                    <span className={isPast ? 'text-gray-400' : ''}>{formatDate(dateStr)}</span>
+                  </span>
+                  {!canEditThis && !isPast && (
+                    <span className="text-xs text-amber-600 flex items-center gap-1">
+                      <Clock size={12} />
+                      Locked
+                    </span>
+                  )}
+                  {isPast && (
+                    <Check size={16} className="text-green-500" />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {canEdit && (
+            <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+              <Clock size={12} />
+              Edit dates by Saturday {saturdayDeadline.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at 11:59 PM
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Delivery History Section - shows past deliveries with date, dishes, time, and photo
+function DeliveryHistorySection({ client, getClientHistory }) {
+  const [expanded, setExpanded] = useState(false);
+  // getClientHistory now returns enriched history with delivery times and photos
+  const history = getClientHistory(client.name);
+  const displayHistory = expanded ? history : history.slice(0, 3);
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr + 'T12:00:00');
+    return date.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  const formatTime = (isoString) => {
+    if (!isoString) return '';
+    return new Date(isoString).toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+  };
+
+  if (history.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="bg-white rounded-lg shadow-lg p-6">
+      <div className="flex items-center gap-3 mb-4">
+        <History size={24} style={{ color: '#3d59ab' }} />
+        <h4 className="font-bold" style={{ color: '#3d59ab' }}>Delivery History</h4>
+      </div>
+
+      <div className="space-y-4">
+        {displayHistory.map((order, idx) => (
+          <div
+            key={idx}
+            className="border rounded-lg overflow-hidden"
+            style={{ borderColor: '#ebb582' }}
+          >
+            {/* Header */}
+            <div className="p-3 flex items-center justify-between" style={{ backgroundColor: '#f9f9ed' }}>
+              <div>
+                <p className="font-medium">{formatDate(order.date)}</p>
+                {order.completedAt && (
+                  <p className="text-xs text-gray-500">
+                    Delivered at {formatTime(order.completedAt)}
+                    {order.handoffType === 'porch' && ' (Porch drop)'}
+                    {order.handoffType === 'hand' && ' (Hand delivery)'}
+                  </p>
+                )}
+              </div>
+              <Check size={20} className="text-green-500" />
+            </div>
+
+            {/* Dishes */}
+            <div className="p-3">
+              <div className="flex flex-wrap gap-2">
+                {order.dishes?.map((dish, dIdx) => (
+                  <span
+                    key={dIdx}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded text-sm"
+                    style={{ backgroundColor: '#fff4e0' }}
+                  >
+                    <Utensils size={12} style={{ color: '#3d59ab' }} />
+                    {dish}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Photo if porch drop */}
+            {order.handoffType === 'porch' && order.photoData && (
+              <div className="p-3 border-t" style={{ borderColor: '#ebb582' }}>
+                <p className="text-xs text-gray-500 mb-2 flex items-center gap-1">
+                  <Camera size={12} />
+                  Delivery Photo
+                </p>
+                <img
+                  src={order.photoData}
+                  alt="Delivery confirmation"
+                  className="w-full max-h-48 object-cover rounded-lg"
+                />
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {history.length > 3 && (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="mt-4 w-full py-2 text-sm font-medium rounded-lg border-2 hover:bg-gray-50"
+          style={{ borderColor: '#ebb582', color: '#3d59ab' }}
+        >
+          {expanded ? 'Show Less' : `Show All (${history.length})`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Date Editor Modal - allows clients to edit their upcoming delivery dates
+function DateEditorModal({ client, blockedDates = [], onSave, onClose, clientPortalData = {} }) {
+  // Use portal dates if available, otherwise use admin-set dates
+  const portalDates = clientPortalData[client.name]?.selectedDates || [];
+  const initialDates = portalDates.length > 0 ? portalDates : (client.deliveryDates || []);
+  const [editedDates, setEditedDates] = useState(initialDates);
+  const [validationError, setValidationError] = useState('');
+
+  const today = new Date();
+  const isBiweekly = client.frequency === 'biweekly';
+  const maxDates = 4;
+
+  // Map delivery day name to day of week number
+  const dayNameToNumber = {
+    'Monday': 1,
+    'Tuesday': 2,
+    'Thursday': 4
+  };
+  const clientDeliveryDayNum = dayNameToNumber[client.deliveryDay];
+
+  // Get next available dates
+  const getAvailableDates = () => {
+    const dates = [];
+    let daysChecked = 0;
+    const maxDaysToCheck = 120;
+
+    while (dates.length < 8 && daysChecked < maxDaysToCheck) {
+      daysChecked++;
+      const date = new Date(today);
+      date.setDate(date.getDate() + daysChecked);
+      const dateStr = date.toISOString().split('T')[0];
+
+      if (date.getDay() !== clientDeliveryDayNum) continue;
+      if (blockedDates.includes(dateStr)) continue;
+
+      dates.push({
+        date: dateStr,
+        display: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+        canEdit: canEditDeliveryDate(dateStr)
+      });
+    }
+    return dates;
+  };
+
+  const availableDates = getAvailableDates();
+
+  // Validate biweekly spacing
+  const validateBiweeklySpacing = (dates) => {
+    if (!isBiweekly || dates.length < 2) return true;
+    const sortedDates = [...dates].sort();
+    for (let i = 1; i < sortedDates.length; i++) {
+      const prev = new Date(sortedDates[i - 1] + 'T12:00:00');
+      const curr = new Date(sortedDates[i] + 'T12:00:00');
+      const daysDiff = (curr - prev) / (1000 * 60 * 60 * 24);
+      if (daysDiff < 14) return false;
+    }
+    return true;
+  };
+
+  const toggleDate = (date) => {
+    setValidationError('');
+
+    if (editedDates.includes(date)) {
+      setEditedDates(editedDates.filter(d => d !== date));
+    } else {
+      if (editedDates.length >= maxDates) {
+        setValidationError(`Maximum ${maxDates} delivery dates allowed`);
+        return;
+      }
+      const newDates = [...editedDates, date];
+      if (isBiweekly && !validateBiweeklySpacing(newDates)) {
+        setValidationError('Biweekly deliveries must be at least 2 weeks apart');
+        return;
+      }
+      setEditedDates(newDates);
+    }
+  };
+
+  const handleSave = () => {
+    if (editedDates.length === 0) {
+      setValidationError('Please select at least one delivery date');
+      return;
+    }
+    if (isBiweekly && !validateBiweeklySpacing(editedDates)) {
+      setValidationError('Biweekly deliveries must be at least 2 weeks apart');
+      return;
+    }
+    onSave(editedDates.sort());
+  };
+
+  const saturdayDeadline = getThisWeekSaturdayDeadline();
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-4 border-b flex items-center justify-between" style={{ backgroundColor: '#f9f9ed' }}>
+          <h3 className="text-lg font-bold" style={{ color: '#3d59ab' }}>
+            Edit Delivery Dates
+          </h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded">
+            <span className="text-2xl">&times;</span>
+          </button>
+        </div>
+
+        <div className="p-4">
+          <p className="text-sm text-gray-600 mb-2">
+            Your deliveries are on <strong>{client.deliveryDay}s</strong>. Select up to {maxDates} dates.
+          </p>
+
+          <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 mb-4">
+            <div className="flex items-center gap-2 text-amber-700">
+              <Clock size={16} />
+              <span className="text-sm">
+                Changes must be made by Saturday {saturdayDeadline.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at 11:59 PM
+              </span>
+            </div>
+          </div>
+
+          {validationError && (
+            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+              {validationError}
+            </div>
+          )}
+
+          <div className="mb-4 text-sm text-gray-600">
+            Selected: {editedDates.length} / {maxDates}
+          </div>
+
+          <div className="space-y-2 mb-4">
+            {availableDates.map(({ date, display, canEdit }) => {
+              const isSelected = editedDates.includes(date);
+              const isLocked = !canEdit && !isSelected;
+
+              return (
+                <button
+                  key={date}
+                  onClick={() => canEdit && toggleDate(date)}
+                  disabled={isLocked}
+                  className={`w-full p-3 rounded-lg border-2 text-left transition-all ${
+                    isSelected
+                      ? 'border-blue-500 bg-blue-50'
+                      : isLocked
+                      ? 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className={isSelected ? 'text-blue-700 font-medium' : ''}>
+                      {display}
+                    </span>
+                    {isLocked && (
+                      <span className="text-xs text-gray-400 flex items-center gap-1">
+                        <Clock size={12} />
+                        Locked
+                      </span>
+                    )}
+                    {isSelected && <Check size={16} className="text-blue-600" />}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="p-4 border-t flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg border-2 hover:bg-gray-50"
+            style={{ borderColor: '#ebb582' }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            className="px-4 py-2 rounded-lg text-white"
+            style={{ backgroundColor: '#3d59ab' }}
+          >
+            Save Changes
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // Paused View
@@ -612,15 +1084,6 @@ function StyledMenuCard({ client, date, menuItems, readyOrders }) {
   const meals = extractMeals();
   const displayName = client.displayName || client.name;
 
-  // Calculate renewal date (4 weeks from delivery date)
-  const deliveryDate = new Date(date + 'T12:00:00');
-  const renewalDate = new Date(deliveryDate);
-  renewalDate.setDate(renewalDate.getDate() + 28);
-  const renewalFormatted = renewalDate.toLocaleDateString('en-US', {
-    month: 'long',
-    day: 'numeric'
-  }).toUpperCase();
-
   return (
     <div className="overflow-hidden shadow-lg" style={{ backgroundColor: '#fff' }}>
       {/* Header with pattern background */}
@@ -669,7 +1132,7 @@ function StyledMenuCard({ client, date, menuItems, readyOrders }) {
           style={{
             color: '#5a5a5a',
             fontFamily: '"Beth Ellen", cursive',
-            fontSize: '1.4rem'
+            fontSize: '1rem'
           }}
         >
           here's what to expect on your plate!
@@ -780,19 +1243,6 @@ function StyledMenuCard({ client, date, menuItems, readyOrders }) {
           alt=""
           className="absolute right-4 bottom-4 h-20 object-contain"
         />
-
-        {/* Renewal date */}
-        <p
-          style={{
-            color: '#3d59ab',
-            fontSize: '0.75rem',
-            letterSpacing: '0.15em',
-            textTransform: 'uppercase',
-            fontWeight: 'bold'
-          }}
-        >
-          Your subscription renews: {renewalFormatted}
-        </p>
       </div>
     </div>
   );
@@ -819,19 +1269,7 @@ function MenuReadyView({ client, getClientMenuItems, getClientReadyOrders, today
   });
 
   const sortedDates = Object.keys(byDate).sort();
-
-  // Collect all dishes for substitution dropdown
-  const allDishes = [];
-  upcomingMenuItems.forEach(item => {
-    [item.protein, item.veg, item.starch, ...(item.extras || [])].filter(Boolean).forEach(dish => {
-      if (!allDishes.includes(dish)) allDishes.push(dish);
-    });
-  });
-  upcomingReadyOrders.forEach(order => {
-    (order.dishes || []).forEach(dish => {
-      if (!allDishes.includes(dish)) allDishes.push(dish);
-    });
-  });
+  const hasUpcoming = sortedDates.length > 0;
 
   return (
     <div className="space-y-6">
@@ -848,10 +1286,9 @@ function MenuReadyView({ client, getClientMenuItems, getClientReadyOrders, today
         );
       })}
 
-      {/* Substitution Request Form */}
-      {allDishes.length > 0 && (
+      {/* Substitution Request Form - simplified text-only */}
+      {hasUpcoming && (
         <SubstitutionRequestForm
-          dishes={allDishes}
           clientName={client.name}
           clientPortalData={clientPortalData}
           updateClientPortalData={updateClientPortalData}
@@ -947,24 +1384,18 @@ function isBeforeDeadline(deliveryDate) {
   return new Date() < getSubstitutionDeadline(deliveryDate);
 }
 
-// Substitution Request Form - supports multiple requests (one per dish)
-function SubstitutionRequestForm({ dishes, clientName, clientPortalData, updateClientPortalData, deliveryDate }) {
-  const [selectedDish, setSelectedDish] = useState('');
-  const [substitution, setSubstitution] = useState('');
-  const [justSubmitted, setJustSubmitted] = useState(null);
+// Substitution Request Form - simplified text-only version
+function SubstitutionRequestForm({ clientName, clientPortalData, updateClientPortalData, deliveryDate }) {
+  const [request, setRequest] = useState('');
+  const [justSubmitted, setJustSubmitted] = useState(false);
 
   const deadline = getSubstitutionDeadline(deliveryDate);
   const canSubmit = isBeforeDeadline(deliveryDate);
 
-  // Get existing substitution requests (now an array)
+  // Get existing substitution requests
   const existingRequests = clientPortalData[clientName]?.substitutionRequests || [];
-  // Also support legacy single request format
   const legacyRequest = clientPortalData[clientName]?.substitutionRequest;
   const allRequests = legacyRequest ? [...existingRequests, legacyRequest] : existingRequests;
-
-  // Get dishes that already have requests
-  const requestedDishes = allRequests.map(r => r.originalDish);
-  const availableDishes = dishes.filter(d => !requestedDishes.includes(d));
 
   const formatDeadline = (date) => {
     return date.toLocaleDateString('en-US', {
@@ -976,31 +1407,27 @@ function SubstitutionRequestForm({ dishes, clientName, clientPortalData, updateC
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!selectedDish || !substitution.trim()) {
-      alert('Please select a dish and enter your substitution request');
+    if (!request.trim()) {
+      alert('Please enter your substitution request');
       return;
     }
 
     const newRequest = {
       clientId: clientName,
       date: deliveryDate || new Date().toISOString().split('T')[0],
-      originalDish: selectedDish,
-      requestedSubstitution: substitution.trim(),
+      requestText: request.trim(),
       submittedAt: new Date().toISOString()
     };
 
-    // Add to existing requests array
     const updatedRequests = [...existingRequests, newRequest];
 
     updateClientPortalData(clientName, {
       substitutionRequests: updatedRequests,
-      // Also update legacy field for backwards compatibility with Admin view
       substitutionRequest: newRequest
     });
 
-    setJustSubmitted(newRequest);
-    setSelectedDish('');
-    setSubstitution('');
+    setJustSubmitted(true);
+    setRequest('');
   };
 
   return (
@@ -1014,17 +1441,14 @@ function SubstitutionRequestForm({ dishes, clientName, clientPortalData, updateC
       {allRequests.length > 0 && (
         <div className="mb-6 space-y-3">
           <p className="text-sm font-medium text-gray-600">Your submitted requests:</p>
-          {allRequests.map((request, idx) => (
+          {allRequests.map((req, idx) => (
             <div key={idx} className="p-3 rounded-lg" style={{ backgroundColor: '#dcfce7' }}>
               <div className="flex items-center gap-2 mb-1">
                 <Check size={16} className="text-green-600" />
                 <span className="text-sm font-medium text-green-700">Request received</span>
               </div>
-              <p className="text-sm">
-                <span className="text-gray-500">Instead of</span>{' '}
-                <span className="font-medium">{request.originalDish}</span>
-                <span className="text-gray-500">, you requested:</span>{' '}
-                <span className="font-medium">{request.requestedSubstitution}</span>
+              <p className="text-sm text-gray-700">
+                {req.requestText || (req.originalDish ? `Instead of ${req.originalDish}: ${req.requestedSubstitution}` : req.requestedSubstitution)}
               </p>
             </div>
           ))}
@@ -1036,7 +1460,7 @@ function SubstitutionRequestForm({ dishes, clientName, clientPortalData, updateC
         <div className="mb-6 p-4 rounded-lg border-2 border-green-200" style={{ backgroundColor: '#f0fdf4' }}>
           <div className="flex items-center gap-2 mb-2">
             <Check size={20} className="text-green-600" />
-            <span className="font-bold text-green-700">Substitution request submitted!</span>
+            <span className="font-bold text-green-700">Request submitted!</span>
           </div>
           <p className="text-sm text-gray-600">
             We'll review it before your next delivery.
@@ -1054,40 +1478,19 @@ function SubstitutionRequestForm({ dishes, clientName, clientPortalData, updateC
             Requests must be submitted by Saturday at 11:59 PM.
           </p>
         </div>
-      ) : availableDishes.length === 0 ? (
-        <div className="text-center py-4 text-gray-500">
-          <p>You've already submitted requests for all dishes.</p>
-        </div>
       ) : (
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
             <label className="block text-sm font-medium mb-2">
-              Which dish would you like to substitute?
-            </label>
-            <select
-              value={selectedDish}
-              onChange={(e) => setSelectedDish(e.target.value)}
-              className="w-full p-3 border-2 rounded-lg"
-              style={{ borderColor: '#ebb582' }}
-            >
-              <option value="">Select a dish...</option>
-              {availableDishes.map((dish, idx) => (
-                <option key={idx} value={dish}>{dish}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">
-              What would you prefer instead?
+              What would you like to change or substitute?
             </label>
             <textarea
-              value={substitution}
-              onChange={(e) => setSubstitution(e.target.value)}
-              placeholder="E.g., 'Chicken instead of beef' or 'No onions please'"
+              value={request}
+              onChange={(e) => setRequest(e.target.value)}
+              placeholder="E.g., 'Chicken instead of beef for Tuesday' or 'No onions in any dishes please' or 'Can I have extra vegetables instead of the starch?'"
               className="w-full p-3 border-2 rounded-lg"
               style={{ borderColor: '#ebb582' }}
-              rows={3}
+              rows={4}
             />
           </div>
 
@@ -1102,7 +1505,7 @@ function SubstitutionRequestForm({ dishes, clientName, clientPortalData, updateC
 
           <button
             type="submit"
-            disabled={!selectedDish || !substitution.trim()}
+            disabled={!request.trim()}
             className="w-full py-3 rounded-lg text-white font-medium disabled:opacity-50"
             style={{ backgroundColor: '#3d59ab' }}
           >

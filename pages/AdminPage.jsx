@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   ChefHat, Home, Calendar, Truck, AlertTriangle, RefreshCw,
   Plus, Trash2, Edit2, Check, X, Settings, ClipboardList,
@@ -412,54 +412,86 @@ function StyledMenuCard({ client, date, menuItems }) {
 function MenuApprovalSection({ clients, menuItems, updateMenuItems, lockWeekWithSnapshot }) {
   const today = new Date().toISOString().split('T')[0];
 
-  // Get unapproved menu items grouped by client and date
+  // Get unapproved menu items grouped by date, then by client
   const getUnapprovedMenus = () => {
     const unapproved = menuItems.filter(item => !item.approved && item.date >= today);
-    const grouped = {};
+    const byDate = {};
 
     unapproved.forEach(item => {
-      const key = `${item.clientName}-${item.date}`;
-      if (!grouped[key]) {
-        grouped[key] = {
-          clientName: item.clientName,
-          date: item.date,
-          items: []
-        };
+      if (!byDate[item.date]) byDate[item.date] = {};
+      if (!byDate[item.date][item.clientName]) {
+        byDate[item.date][item.clientName] = [];
       }
-      grouped[key].items.push(item);
+      byDate[item.date][item.clientName].push(item);
     });
 
-    return Object.values(grouped).sort((a, b) => {
-      if (a.date !== b.date) return a.date.localeCompare(b.date);
-      return a.clientName.localeCompare(b.clientName);
-    });
+    // Convert to array sorted by date
+    return Object.entries(byDate)
+      .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+      .map(([date, clientMenus]) => ({
+        date,
+        weekId: getWeekIdFromDate(date),
+        menus: Object.entries(clientMenus)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([clientName, items]) => ({
+            clientName,
+            items
+          }))
+      }));
   };
 
-  const approveMenu = (clientName, date) => {
-    // Mark menu items as approved
-    const updated = menuItems.map(item =>
-      item.clientName === clientName && item.date === date
-        ? { ...item, approved: true }
-        : item
-    );
+  // Approve all menus and lock the week
+  const approveAndPushAll = () => {
+    if (!window.confirm('Approve all menus and push to client portals?\n\nThis will lock the week and menus will appear in KDS for cooking.')) {
+      return;
+    }
+
+    // Get unique week IDs from unapproved menus
+    const weekIds = new Set();
+    const updated = menuItems.map(item => {
+      if (!item.approved && item.date >= today) {
+        weekIds.add(getWeekIdFromDate(item.date));
+        return { ...item, approved: true };
+      }
+      return item;
+    });
+
     updateMenuItems(updated);
 
-    // Lock the week for this date
-    const weekId = getWeekIdFromDate(date);
-    lockWeekWithSnapshot(weekId);
+    // Lock all affected weeks
+    weekIds.forEach(weekId => {
+      lockWeekWithSnapshot(weekId);
+    });
+
+    alert('All menus approved and pushed to client portals!');
   };
 
   const unapprovedMenus = getUnapprovedMenus();
+  const totalMenus = unapprovedMenus.reduce((sum, d) => sum + d.menus.length, 0);
 
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-lg shadow-lg p-6">
-        <h2 className="text-2xl font-bold mb-2" style={{ color: '#3d59ab' }}>
-          Menu Approval
-        </h2>
-        <p className="text-gray-600 mb-6">
-          Review and approve menus before they appear on client portals.
-        </p>
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <h2 className="text-2xl font-bold mb-2" style={{ color: '#3d59ab' }}>
+              Menu Approval
+            </h2>
+            <p className="text-gray-600">
+              Review all menus before pushing to client portals. Approving will lock the week and send menus to KDS.
+            </p>
+          </div>
+          {totalMenus > 0 && (
+            <button
+              onClick={approveAndPushAll}
+              className="flex items-center gap-2 px-6 py-3 rounded-lg text-white font-medium hover:opacity-90 transition-opacity"
+              style={{ backgroundColor: '#10b981' }}
+            >
+              <Check size={20} />
+              Approve & Push All ({totalMenus})
+            </button>
+          )}
+        </div>
 
         {unapprovedMenus.length === 0 ? (
           <div className="text-center py-12">
@@ -468,68 +500,69 @@ function MenuApprovalSection({ clients, menuItems, updateMenuItems, lockWeekWith
             <p className="text-sm text-gray-400 mt-2">
               Create new menus in the Menu tab, then come back here to approve them.
             </p>
+            <Link
+              to="/?tab=menu"
+              className="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-lg border-2 hover:bg-gray-50"
+              style={{ borderColor: '#ebb582' }}
+            >
+              <Utensils size={18} />
+              Go to Menu Planner
+            </Link>
           </div>
         ) : (
-          <p className="text-sm text-gray-500 mb-4">
-            {unapprovedMenus.length} menu{unapprovedMenus.length > 1 ? 's' : ''} pending approval
+          <p className="text-sm text-gray-500">
+            {totalMenus} menu{totalMenus > 1 ? 's' : ''} pending approval
           </p>
         )}
       </div>
 
-      {unapprovedMenus.map(({ clientName, date, items }) => {
-        const client = clients.find(c => c.name === clientName) || { name: clientName };
-        const displayName = client.displayName || client.name;
-
-        return (
-          <div key={`${clientName}-${date}`} className="bg-white rounded-lg shadow-lg overflow-hidden">
-            {/* Header */}
-            <div className="p-4 border-b flex items-center justify-between" style={{ backgroundColor: '#f9f9ed' }}>
-              <div>
-                <h3 className="font-bold text-lg" style={{ color: '#3d59ab' }}>
-                  {displayName}
-                </h3>
-                <p className="text-sm text-gray-600">
-                  Delivery: {new Date(date + 'T12:00:00').toLocaleDateString('en-US', {
-                    weekday: 'long',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Link
-                  to="/?tab=menu"
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg border-2 hover:bg-gray-50"
-                  style={{ borderColor: '#ebb582' }}
-                >
-                  <Edit2 size={18} />
-                  Edit
-                </Link>
-                <button
-                  onClick={() => approveMenu(clientName, date)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-white"
-                  style={{ backgroundColor: '#10b981' }}
-                >
-                  <Check size={18} />
-                  Approve
-                </button>
-              </div>
-            </div>
-
-            {/* Menu Preview */}
-            <div className="p-4">
-              <p className="text-xs text-gray-500 mb-3 uppercase tracking-wide">Preview (as client will see it)</p>
-              <div className="max-w-md mx-auto">
-                <StyledMenuCard
-                  client={client}
-                  date={date}
-                  menuItems={items}
-                />
-              </div>
-            </div>
+      {/* Group by date */}
+      {unapprovedMenus.map(({ date, weekId, menus }) => (
+        <div key={date} className="space-y-4">
+          <div className="flex items-center gap-3">
+            <h3 className="text-lg font-bold" style={{ color: '#3d59ab' }}>
+              {new Date(date + 'T12:00:00').toLocaleDateString('en-US', {
+                weekday: 'long',
+                month: 'long',
+                day: 'numeric'
+              })}
+            </h3>
+            <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">
+              Week {weekId}
+            </span>
           </div>
-        );
-      })}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {menus.map(({ clientName, items }) => {
+              const client = clients.find(c => c.name === clientName) || { name: clientName };
+
+              return (
+                <div key={`${clientName}-${date}`} className="bg-white rounded-lg shadow-lg overflow-hidden">
+                  <StyledMenuCard
+                    client={client}
+                    date={date}
+                    menuItems={items}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+
+      {/* Bottom approve button for convenience */}
+      {totalMenus > 0 && (
+        <div className="sticky bottom-4 flex justify-center">
+          <button
+            onClick={approveAndPushAll}
+            className="flex items-center gap-2 px-8 py-4 rounded-lg text-white font-medium shadow-lg hover:opacity-90 transition-opacity"
+            style={{ backgroundColor: '#10b981' }}
+          >
+            <Check size={24} />
+            Approve & Push All Menus ({totalMenus})
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -565,8 +598,19 @@ export default function AdminPage() {
     lockWeekWithSnapshot
   } = useAdminData();
 
+  const [searchParams] = useSearchParams();
   const [activeSection, setActiveSection] = useState('dashboard');
   const [newDriver, setNewDriver] = useState(DEFAULT_NEW_DRIVER);
+
+  // Handle URL section parameter
+  useEffect(() => {
+    const sectionFromUrl = searchParams.get('section');
+    if (sectionFromUrl === 'menu-approval') {
+      setActiveSection('approvals');
+    } else if (sectionFromUrl) {
+      setActiveSection(sectionFromUrl);
+    }
+  }, [searchParams]);
   const [editingDriverIndex, setEditingDriverIndex] = useState(null);
   const [editingDriver, setEditingDriver] = useState(null);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
@@ -826,6 +870,82 @@ export default function AdminPage() {
 
   const findExactMatch = (name) => masterIngredients.find(mi => normalizeName(mi.name) === normalizeName(name));
 
+  // Get unique vendors/sources from master ingredients
+  const getUniqueVendors = () => {
+    const vendors = new Set();
+    masterIngredients.forEach(mi => {
+      if (mi.source && mi.source.trim()) {
+        vendors.add(mi.source.trim());
+      }
+    });
+    return Array.from(vendors).sort();
+  };
+
+  // Update master ingredient cost when changed in recipe
+  const updateMasterIngredientCost = (ingredientName, newCost) => {
+    const exactMatch = findExactMatch(ingredientName);
+    if (exactMatch && newCost) {
+      updateMasterIngredients(masterIngredients.map(mi =>
+        mi.id === exactMatch.id ? { ...mi, cost: newCost } : mi
+      ));
+      return true;
+    }
+    return false;
+  };
+
+  // Sync all recipe ingredients from master ingredients data
+  const syncRecipeIngredientsFromMaster = () => {
+    let ingredientsAdded = 0;
+    let costsUpdated = 0;
+
+    const updatedRecipes = { ...recipes };
+
+    Object.keys(updatedRecipes).forEach(category => {
+      updatedRecipes[category] = updatedRecipes[category].map(recipe => {
+        const updatedIngredients = recipe.ingredients.map(ing => {
+          const masterIng = findExactMatch(ing.name);
+          if (masterIng) {
+            const updated = { ...ing };
+            if (masterIng.cost && masterIng.cost !== ing.cost) {
+              updated.cost = masterIng.cost;
+              costsUpdated++;
+            }
+            if (masterIng.source && masterIng.source !== ing.source) {
+              updated.source = masterIng.source;
+            }
+            if (masterIng.section && masterIng.section !== 'Other' && masterIng.section !== ing.section) {
+              updated.section = masterIng.section;
+            }
+            if (masterIng.unit && masterIng.unit !== ing.unit) {
+              updated.unit = masterIng.unit;
+            }
+            return updated;
+          } else if (ing.name) {
+            ingredientsAdded++;
+            return ing;
+          }
+          return ing;
+        });
+        return { ...recipe, ingredients: updatedIngredients };
+      });
+    });
+
+    // Add any new ingredients to master
+    Object.values(updatedRecipes).forEach(categoryRecipes => {
+      categoryRecipes.forEach(recipe => {
+        recipe.ingredients.forEach(ing => {
+          if (ing.name && !findExactMatch(ing.name)) {
+            addToMasterIngredients(ing);
+          }
+        });
+      });
+    });
+
+    updateRecipes(updatedRecipes);
+
+    return { ingredientsAdded, costsUpdated };
+  };
+
   const addToMasterIngredients = (ingredient) => {
     if (!ingredient.name) return;
     const exactMatch = findExactMatch(ingredient.name);
@@ -882,7 +1002,8 @@ export default function AdminPage() {
     }
     const newItems = selectedClients.map(clientName => {
       const client = clients.find(c => c.name === clientName);
-      return { ...newMenuItem, clientName, date: menuDate, portions: client ? client.persons : 1, id: Date.now() + Math.random(), approved: false };
+      const clientPortions = client ? (client.portions || client.persons || 1) : 1;
+      return { ...newMenuItem, clientName, date: menuDate, portions: clientPortions, id: Date.now() + Math.random(), approved: false };
     });
     updateMenuItems([...menuItems, ...newItems]);
     setNewMenuItem(DEFAULT_NEW_MENU_ITEM);
@@ -1212,7 +1333,7 @@ export default function AdminPage() {
     const eligibleClients = clients.filter(c => !c.paysOwnGroceries && c.status === 'active');
     return eligibleClients.reduce((sum, client) => {
       const deliveries = deliveryLog.filter(d => d.clientName === client.name && d.date >= startDate && d.date <= endDate);
-      return sum + (deliveries.length * (client.persons || 1));
+      return sum + (deliveries.length * (client.portions || client.persons || 1));
     }, 0);
   };
 
@@ -1437,7 +1558,7 @@ export default function AdminPage() {
           <MenuTab
             menuDate={menuDate}
             setMenuDate={setMenuDate}
-            clients={clients}
+            clients={clients.filter(c => c.status === 'active')}
             selectedClients={selectedClients}
             setSelectedClients={setSelectedClients}
             recipes={recipes}
@@ -1448,6 +1569,7 @@ export default function AdminPage() {
             clearMenu={clearMenu}
             deleteMenuItem={deleteMenuItem}
             getOrdersByClient={getOrdersByClient}
+            onFinishReview={() => setActiveSection('approvals')}
           />
         )}
 
@@ -1483,6 +1605,9 @@ export default function AdminPage() {
             addEditingIngredient={addEditingIngredient}
             removeEditingIngredient={removeEditingIngredient}
             exportRecipesCSV={() => exportRecipesCSV(recipes)}
+            getUniqueVendors={getUniqueVendors}
+            updateMasterIngredientCost={updateMasterIngredientCost}
+            syncRecipeIngredientsFromMaster={syncRecipeIngredientsFromMaster}
           />
         )}
 
@@ -1973,7 +2098,7 @@ export default function AdminPage() {
                                 )}
                               </div>
                               <div className="text-xs text-gray-500">
-                                {client.persons} persons • {client.frequency}
+                                {client.portions || client.persons || 1} portions • {client.frequency}
                               </div>
                             </td>
                             <td className="py-2 px-3 text-right">${rev.basePlan.toFixed(2)}</td>

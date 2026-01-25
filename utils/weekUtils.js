@@ -255,6 +255,18 @@ export function lockWeek(week, menuItems, clients) {
 }
 
 /**
+ * Unlock a week - returns to draft status but preserves snapshot for reference
+ */
+export function unlockWeek(week) {
+  return {
+    ...week,
+    status: 'draft',
+    unlockedAt: new Date().toISOString()
+    // Note: snapshot is preserved for reference but week is now editable
+  };
+}
+
+/**
  * Navigate to previous/next week
  */
 export function getAdjacentWeekId(weekId, direction = 1) {

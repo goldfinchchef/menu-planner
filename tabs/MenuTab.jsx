@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, ArrowRight } from 'lucide-react';
 
 export default function MenuTab({
   menuDate,
@@ -14,7 +14,8 @@ export default function MenuTab({
   addMenuItem,
   clearMenu,
   deleteMenuItem,
-  getOrdersByClient
+  getOrdersByClient,
+  onFinishReview
 }) {
   const toggleExtra = (recipeName) => {
     setNewMenuItem(prev => ({
@@ -62,7 +63,7 @@ export default function MenuTab({
                   ? { backgroundColor: '#3d59ab', borderColor: '#3d59ab' }
                   : { borderColor: '#ebb582', color: '#423d3c' }}
               >
-                {client.name} ({client.persons}p)
+                {client.displayName || client.name} ({client.portions || client.persons || 1}p)
               </button>
             ))}
           </div>
@@ -134,9 +135,21 @@ export default function MenuTab({
 
       {menuItems.length > 0 && (
         <div className="bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-2xl font-bold mb-4" style={{ color: '#3d59ab' }}>
-            Current Orders ({menuItems.length})
-          </h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-2xl font-bold" style={{ color: '#3d59ab' }}>
+              Current Orders ({menuItems.length})
+            </h2>
+            {onFinishReview && (
+              <button
+                onClick={onFinishReview}
+                className="flex items-center gap-2 px-6 py-2 rounded-lg text-white font-medium hover:opacity-90"
+                style={{ backgroundColor: '#10b981' }}
+              >
+                Finish & Review
+                <ArrowRight size={20} />
+              </button>
+            )}
+          </div>
           <div className="space-y-4">
             {Object.entries(ordersByClient).map(([clientName, orders]) => (
               <div key={clientName} className="border-2 rounded-lg p-4" style={{ borderColor: '#ebb582' }}>
