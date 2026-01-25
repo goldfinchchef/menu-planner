@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MapPin, Clock, ExternalLink, GripVertical, Truck, Activity, FileText, Check, AlertTriangle, User, Phone, ShoppingBag, Bell, Calendar, Plus, Trash2, Edit2, X, Car } from 'lucide-react';
+import { MapPin, Clock, ExternalLink, GripVertical, Truck, Activity, FileText, Check, AlertTriangle, User, Phone, ShoppingBag, Bell, Calendar, Plus, Trash2, Edit2, X, Car, Save, Navigation } from 'lucide-react';
 import { ZONES, DAYS, DELIVERY_PROBLEMS, DEFAULT_NEW_DRIVER } from '../constants';
 
 const ViewToggle = ({ activeView, setActiveView }) => (
@@ -39,6 +39,8 @@ const borderStyle = { borderColor: '#ebb582' };
 
 const ROUTE_ORDER_KEY = 'goldfinchRouteOrder';
 
+const SAVED_ROUTES_KEY = 'goldfinchSavedRoutes';
+
 export default function DeliveriesTab({
   clients,
   drivers,
@@ -60,6 +62,20 @@ export default function DeliveriesTab({
   isReadOnly = false,
   startingAddress = ''
 }) {
+  // Saved routes state (persisted to localStorage and pushed to driver portal)
+  const [savedRoutes, setSavedRoutes] = useState(() => {
+    try {
+      const saved = localStorage.getItem(SAVED_ROUTES_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const saveRoutesToStorage = (routes) => {
+    setSavedRoutes(routes);
+    localStorage.setItem(SAVED_ROUTES_KEY, JSON.stringify(routes));
+  };
   const [activeView, setActiveView] = useState('week');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [draggedItem, setDraggedItem] = useState(null);
@@ -1055,18 +1071,160 @@ export default function DeliveriesTab({
 
         const weekDates = getWeekDates();
 
-        // Get clients delivering on each day
-        const getClientsForDay = (dayName) => {
-          return clients.filter(c =>
-            c.status === 'active' &&
-            c.deliveryDay === dayName &&
-            !c.pickup
-          );
-        };
-
         // Get ready orders for a specific date
         const getReadyForDate = (date) => {
           return readyForDelivery.filter(o => o.date === date);
+        };
+
+        // Get ready delivery stops for a date (expanded by client with zone info)
+        const getReadyStopsForDate = (date) => {
+          const orders = getReadyForDate(date);
+          const clientNames = [...new Set(orders.map(o => o.clientName))];
+          const stops = [];
+
+          clientNames.forEach(name => {
+            const client = clients.find(c => c.name === name);
+            if (client?.pickup) return; // Exclude pickup clients
+
+            const clientOrders = orders.filter(o => o.clientName === name);
+            const contacts = client?.contacts || [];
+            const firstAddr = contacts.find(ct => ct.address)?.address || client?.address || '';
+
+            stops.push({
+              clientName: name,
+              displayName: client?.displayName || name,
+              zone: client?.zone || 'Unassigned',
+              address: firstAddr,
+              phone: contacts[0]?.phone || client?.phone || '',
+              orders: clientOrders,
+              stopKey: name
+            });
+          });
+
+          return stops;
+        };
+
+        // Get ordered stops for a zone on a date (respecting saved route order)
+        const getOrderedStopsForZone = (date, zone, zoneStops) => {
+          const dateOrder = routeOrder[date]?.[zone];
+          if (!dateOrder || dateOrder.length === 0) {
+            return zoneStops;
+          }
+
+          return [...zoneStops].sort((a, b) => {
+            const aIndex = dateOrder.indexOf(a.stopKey);
+            const bIndex = dateOrder.indexOf(b.stopKey);
+            if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+            if (aIndex === -1 && bIndex !== -1) return 1;
+            if (aIndex !== -1 && bIndex === -1) return -1;
+            return 0;
+          });
+        };
+
+        // Handle drag for week view
+        const handleWeekDragStart = (e, date, zone, stopKey) => {
+          setDraggedItem({ date, zone, clientName: stopKey });
+          e.dataTransfer.effectAllowed = 'move';
+        };
+
+        const handleWeekDragOver = (e, date, zone, stopKey) => {
+          e.preventDefault();
+          if (draggedItem && draggedItem.date === date && draggedItem.zone === zone && draggedItem.clientName !== stopKey) {
+            setDragOverItem({ date, zone, clientName: stopKey });
+          }
+        };
+
+        const handleWeekDrop = (e, date, zone, targetStopKey) => {
+          e.preventDefault();
+          if (!draggedItem || draggedItem.date !== date || draggedItem.zone !== zone || draggedItem.clientName === targetStopKey) {
+            setDraggedItem(null);
+            setDragOverItem(null);
+            return;
+          }
+
+          const stops = getReadyStopsForDate(date).filter(s => s.zone === zone);
+          const orderedStops = getOrderedStopsForZone(date, zone, stops);
+          const stopKeys = orderedStops.map(s => s.stopKey);
+
+          const fromIndex = stopKeys.indexOf(draggedItem.clientName);
+          const toIndex = stopKeys.indexOf(targetStopKey);
+
+          if (fromIndex === -1 || toIndex === -1) {
+            setDraggedItem(null);
+            setDragOverItem(null);
+            return;
+          }
+
+          const newOrder = [...stopKeys];
+          const [removed] = newOrder.splice(fromIndex, 1);
+          newOrder.splice(toIndex, 0, removed);
+
+          const newRouteOrder = {
+            ...routeOrder,
+            [date]: {
+              ...(routeOrder[date] || {}),
+              [zone]: newOrder
+            }
+          };
+          saveRouteOrder(newRouteOrder);
+
+          setDraggedItem(null);
+          setDragOverItem(null);
+        };
+
+        // Save route to driver portal
+        const saveRouteForDay = (date, zone, stops) => {
+          const driver = drivers.find(d => d.zone === zone);
+          if (!driver) {
+            alert('No driver assigned to this zone');
+            return;
+          }
+
+          const orderedStops = getOrderedStopsForZone(date, zone, stops);
+
+          const routeData = {
+            date,
+            zone,
+            driverName: driver.name,
+            driverId: driver.id,
+            stops: orderedStops.map((stop, idx) => ({
+              order: idx + 1,
+              clientName: stop.clientName,
+              displayName: stop.displayName,
+              address: stop.address,
+              phone: stop.phone,
+              dishes: stop.orders.flatMap(o => o.dishes),
+              portions: stop.orders.reduce((sum, o) => sum + o.portions, 0)
+            })),
+            savedAt: new Date().toISOString()
+          };
+
+          const newSavedRoutes = {
+            ...savedRoutes,
+            [`${date}-${zone}`]: routeData
+          };
+          saveRoutesToStorage(newSavedRoutes);
+
+          alert(`Route saved for ${driver.name} on ${date}!\nThe driver can now view this route in the Driver Portal.`);
+        };
+
+        // Generate maps link for a zone on a date
+        const generateMapsLinkForDay = (date, zone) => {
+          const stops = getReadyStopsForDate(date).filter(s => s.zone === zone);
+          const orderedStops = getOrderedStopsForZone(date, zone, stops);
+          const addresses = orderedStops
+            .filter(s => s.address)
+            .map(s => encodeURIComponent(s.address));
+
+          if (startingAddress) {
+            addresses.unshift(encodeURIComponent(startingAddress));
+          }
+
+          if (addresses.length === 0) {
+            alert('No addresses found for this zone');
+            return;
+          }
+          window.open(`https://www.google.com/maps/dir/${addresses.join('/')}`, '_blank');
         };
 
         const deliveryDays = [
@@ -1076,11 +1234,11 @@ export default function DeliveriesTab({
         ];
 
         // Count totals
-        const totalClientsThisWeek = deliveryDays.reduce((sum, day) =>
-          sum + getClientsForDay(day.name).length, 0
-        );
         const totalReadyThisWeek = deliveryDays.reduce((sum, day) =>
           sum + getReadyForDate(day.date).length, 0
+        );
+        const totalStopsThisWeek = deliveryDays.reduce((sum, day) =>
+          sum + getReadyStopsForDate(day.date).length, 0
         );
 
         return (
@@ -1089,10 +1247,10 @@ export default function DeliveriesTab({
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h3 className="text-xl font-bold" style={{ color: '#3d59ab' }}>
-                    Delivering This Week
+                    Ready for Delivery
                   </h3>
                   <p className="text-gray-600">
-                    {totalClientsThisWeek} clients scheduled • {totalReadyThisWeek} orders ready
+                    {totalStopsThisWeek} stops • {totalReadyThisWeek} orders ready
                   </p>
                 </div>
                 <div>
@@ -1109,24 +1267,23 @@ export default function DeliveriesTab({
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {deliveryDays.map(day => {
-                const dayClients = getClientsForDay(day.name);
+                const readyStops = getReadyStopsForDate(day.date);
                 const readyOrders = getReadyForDate(day.date);
-                const readyClientNames = [...new Set(readyOrders.map(o => o.clientName))];
 
-                // Group day's clients by zone
-                const clientsByZoneForDay = {};
+                // Group stops by zone
+                const stopsByZone = {};
                 ZONES.forEach(zone => {
-                  const zoneClients = dayClients.filter(c => c.zone === zone);
-                  if (zoneClients.length > 0) {
-                    clientsByZoneForDay[zone] = zoneClients;
+                  const zoneStops = readyStops.filter(s => s.zone === zone);
+                  if (zoneStops.length > 0) {
+                    stopsByZone[zone] = zoneStops;
                   }
                 });
-                const unassignedForDay = dayClients.filter(c => !c.zone || !ZONES.includes(c.zone));
-                if (unassignedForDay.length > 0) {
-                  clientsByZoneForDay['Unassigned'] = unassignedForDay;
+                const unassignedStops = readyStops.filter(s => !s.zone || !ZONES.includes(s.zone));
+                if (unassignedStops.length > 0) {
+                  stopsByZone['Unassigned'] = unassignedStops;
                 }
 
-                const zonesForDay = Object.keys(clientsByZoneForDay);
+                const zonesForDay = Object.keys(stopsByZone);
 
                 return (
                   <div key={day.name} className="bg-white rounded-lg shadow-lg p-4">
@@ -1141,95 +1298,119 @@ export default function DeliveriesTab({
                         </p>
                       </div>
                       <div className="text-right">
-                        <span className="text-2xl font-bold" style={{ color: '#3d59ab' }}>
-                          {dayClients.length}
+                        <span className="text-2xl font-bold" style={{ color: readyStops.length > 0 ? '#22c55e' : '#3d59ab' }}>
+                          {readyStops.length}
                         </span>
-                        <p className="text-xs text-gray-500">clients</p>
+                        <p className="text-xs text-gray-500">stops ready</p>
                       </div>
                     </div>
 
-                    <div className="space-y-3 max-h-80 overflow-y-auto">
-                      {dayClients.length === 0 ? (
-                        <p className="text-gray-400 text-sm italic">No deliveries</p>
+                    <div className="space-y-3 max-h-96 overflow-y-auto">
+                      {readyStops.length === 0 ? (
+                        <div className="text-center py-4">
+                          <Truck size={32} className="mx-auto mb-2 text-gray-300" />
+                          <p className="text-gray-400 text-sm italic">No orders ready</p>
+                          <p className="text-gray-300 text-xs">Complete dishes in KDS first</p>
+                        </div>
                       ) : (
                         zonesForDay.map(zone => {
-                          const zoneClientsForDay = clientsByZoneForDay[zone];
+                          const zoneStops = stopsByZone[zone];
+                          const orderedStops = getOrderedStopsForZone(day.date, zone, zoneStops);
                           const driver = zone !== 'Unassigned' ? drivers.find(d => d.zone === zone) : null;
+                          const isRouteSaved = savedRoutes[`${day.date}-${zone}`];
 
                           return (
-                            <div key={zone} className="border-l-4 pl-3" style={{ borderColor: '#3d59ab' }}>
-                              <div className="flex items-center gap-2 mb-2">
-                                <span className="font-bold text-sm" style={{ color: '#3d59ab' }}>
-                                  Zone {zone}
-                                </span>
-                                {driver && (
-                                  <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
-                                    {driver.name}
+                            <div key={zone} className="border-2 rounded-lg p-3" style={{ borderColor: isRouteSaved ? '#22c55e' : '#ebb582' }}>
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-sm" style={{ color: '#3d59ab' }}>
+                                    Zone {zone}
                                   </span>
-                                )}
+                                  {driver && (
+                                    <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                                      {driver.name}
+                                    </span>
+                                  )}
+                                  {isRouteSaved && (
+                                    <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 flex items-center gap-1">
+                                      <Check size={10} /> Saved
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-xs text-gray-500">{zoneStops.length} stops</span>
                               </div>
-                              <div className="space-y-1">
-                                {zoneClientsForDay.map((client, idx) => {
-                                  const isReady = readyClientNames.includes(client.name);
+
+                              <p className="text-xs text-gray-400 mb-2 flex items-center gap-1">
+                                <GripVertical size={12} /> Drag to reorder
+                              </p>
+
+                              <div className="space-y-1 mb-3">
+                                {orderedStops.map((stop, idx) => {
                                   const isDelivered = deliveryLog.some(
-                                    e => e.date === day.date && e.clientName === client.name
+                                    e => e.date === day.date && e.clientName === stop.clientName
                                   );
+                                  const isDragging = draggedItem?.date === day.date && draggedItem?.zone === zone && draggedItem?.clientName === stop.stopKey;
+                                  const isDragOver = dragOverItem?.date === day.date && dragOverItem?.zone === zone && dragOverItem?.clientName === stop.stopKey;
 
                                   return (
                                     <div
-                                      key={idx}
-                                      className={`p-2 rounded text-sm flex items-center justify-between ${
-                                        isDelivered ? 'bg-green-50' : isReady ? 'bg-amber-50' : ''
+                                      key={stop.stopKey}
+                                      draggable={!isDelivered}
+                                      onDragStart={(e) => handleWeekDragStart(e, day.date, zone, stop.stopKey)}
+                                      onDragOver={(e) => handleWeekDragOver(e, day.date, zone, stop.stopKey)}
+                                      onDragLeave={handleDragLeave}
+                                      onDrop={(e) => handleWeekDrop(e, day.date, zone, stop.stopKey)}
+                                      onDragEnd={handleDragEnd}
+                                      className={`p-2 rounded text-sm flex items-center gap-2 ${
+                                        isDelivered ? 'bg-green-50 opacity-60' : isDragging ? 'opacity-50' : 'cursor-move'
                                       }`}
-                                      style={{ backgroundColor: isDelivered ? undefined : isReady ? undefined : '#f9f9ed' }}
+                                      style={{
+                                        backgroundColor: isDelivered ? undefined : '#f9f9ed',
+                                        borderLeft: isDragOver ? '3px solid #3d59ab' : '3px solid transparent'
+                                      }}
                                     >
-                                      <span className={isDelivered ? 'line-through text-gray-400' : ''}>
-                                        {client.displayName || client.name}
+                                      <span className="font-bold text-xs w-5 text-center" style={{ color: '#3d59ab' }}>
+                                        {idx + 1}
                                       </span>
-                                      <div className="flex items-center gap-1">
-                                        {isDelivered && (
-                                          <Check size={14} className="text-green-600" />
-                                        )}
-                                        {isReady && !isDelivered && (
-                                          <Truck size={14} className="text-amber-600" />
-                                        )}
+                                      <div className="flex-1 min-w-0">
+                                        <span className={isDelivered ? 'line-through text-gray-400' : ''}>
+                                          {stop.displayName}
+                                        </span>
+                                        <p className="text-xs text-gray-400 truncate">
+                                          {stop.orders.reduce((sum, o) => sum + o.portions, 0)}p
+                                        </p>
                                       </div>
+                                      {isDelivered && <Check size={14} className="text-green-600" />}
+                                      {!isDelivered && <GripVertical size={14} className="text-gray-300" />}
                                     </div>
                                   );
                                 })}
+                              </div>
+
+                              {/* Zone action buttons */}
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => saveRouteForDay(day.date, zone, zoneStops)}
+                                  className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded text-white text-xs"
+                                  style={{ backgroundColor: '#3d59ab' }}
+                                >
+                                  <Save size={12} />
+                                  Save Route
+                                </button>
+                                <button
+                                  onClick={() => generateMapsLinkForDay(day.date, zone)}
+                                  className="flex items-center justify-center gap-1 px-2 py-1.5 rounded text-white text-xs"
+                                  style={{ backgroundColor: '#27ae60' }}
+                                  title="Open in Google Maps"
+                                >
+                                  <Navigation size={12} />
+                                </button>
                               </div>
                             </div>
                           );
                         })
                       )}
                     </div>
-
-                    {dayClients.length > 0 && (
-                      <button
-                        onClick={() => {
-                          // Generate maps link for all clients on this day
-                          const addresses = dayClients
-                            .map(c => {
-                              const contacts = c.contacts || [];
-                              const firstAddr = contacts.find(ct => ct.address)?.address || c.address;
-                              return firstAddr;
-                            })
-                            .filter(Boolean)
-                            .map(a => encodeURIComponent(a));
-
-                          if (addresses.length === 0) {
-                            alert('No addresses found for this day');
-                            return;
-                          }
-                          window.open(`https://www.google.com/maps/dir/${addresses.join('/')}`, '_blank');
-                        }}
-                        className="w-full mt-3 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-white text-sm"
-                        style={{ backgroundColor: '#27ae60' }}
-                      >
-                        <ExternalLink size={16} />
-                        Plan Route
-                      </button>
-                    )}
                   </div>
                 );
               })}
