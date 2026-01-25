@@ -115,9 +115,12 @@ const parsePrice = (val) => {
 export const parseClientsCSV = (file, onSuccess, onError) => {
   Papa.parse(file, {
     header: true,
+    skipEmptyLines: true,
     complete: (results) => {
+      console.log('CSV parse results:', results);
       // Check format based on headers
       const headers = results.meta.fields || [];
+      console.log('Headers found:', headers);
       const isMultiRowFormat = headers.includes('subscriptionId') || headers.includes('subscriptionDisplayName');
 
       // Check for common column name variations

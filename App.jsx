@@ -80,21 +80,35 @@ export default function App() {
 
   // CSV Import handlers
   const importClientsCSV = (e) => {
+    alert('File input changed!'); // Debug alert
     const file = e.target.files[0];
-    if (!file) return;
-    parseClientsCSV(
-      file,
-      (imported) => {
-        if (imported.length === 0) {
-          alert('No subscriptions found in CSV. Please check the file format.');
-          return;
+    if (!file) {
+      alert('No file in selection');
+      return;
+    }
+    alert('File selected: ' + file.name);
+    try {
+      parseClientsCSV(
+        file,
+        (imported) => {
+          console.log('Parsed clients:', imported);
+          if (imported.length === 0) {
+            alert('No subscriptions found in CSV. Please check the file format.\n\nExpected columns: Name, Display Name, Address, Email, Phone, Portions, Meals, etc.');
+            return;
+          }
+          const totalContacts = imported.reduce((sum, sub) => sum + (sub.contacts?.length || 0), 0);
+          setClients(imported);
+          alert(`Import successful!\n\n${imported.length} subscription(s) imported\n${totalContacts} contact(s) total`);
+        },
+        (err) => {
+          console.error('CSV parse error:', err);
+          alert('Error parsing CSV: ' + (err.message || err));
         }
-        const totalContacts = imported.reduce((sum, sub) => sum + (sub.contacts?.length || 0), 0);
-        setClients(imported);
-        alert(`Import successful!\n\n${imported.length} subscription(s) imported\n${totalContacts} contact(s) total`);
-      },
-      (err) => alert('Error parsing CSV: ' + err.message)
-    );
+      );
+    } catch (err) {
+      console.error('Import error:', err);
+      alert('Error importing CSV: ' + err.message);
+    }
     e.target.value = '';
   };
 
