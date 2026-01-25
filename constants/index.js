@@ -68,7 +68,9 @@ export const DEFAULT_NEW_SUBSCRIPTION = {
   billingNotes: '',
   accessCode: '',
   honeyBookLink: '',
-  contacts: [{ ...DEFAULT_CONTACT }]
+  contacts: [{ ...DEFAULT_CONTACT }],
+  deliveryDates: [],  // Next 4 delivery dates
+  billDueDate: ''     // When payment is due
 };
 
 // Legacy alias for backwards compatibility

@@ -13,6 +13,7 @@ import MenuTab from '../tabs/MenuTab';
 import RecipesTab from '../tabs/RecipesTab';
 import IngredientsTab from '../tabs/IngredientsTab';
 import ClientsTab from '../tabs/ClientsTab';
+import SubscriptionDetailModal from '../components/SubscriptionDetailModal';
 import { normalizeName, similarity, exportIngredientsCSV, exportRecipesCSV, parseIngredientsCSV, parseRecipesCSV, parseClientsCSV, categorizeIngredient } from '../utils';
 import { getWeekIdFromDate, createWeekRecord, lockWeek } from '../utils/weekUtils';
 
@@ -590,6 +591,7 @@ export default function AdminPage() {
 
   // Client management state
   const clientsFileRef = React.useRef();
+  const [selectedClientForDetail, setSelectedClientForDetail] = useState(null);
   const [newClient, setNewClient] = useState({
     name: '', displayName: '', persons: 1,
     contacts: [{ name: '', email: '', phone: '', address: '' }],
@@ -633,17 +635,28 @@ export default function AdminPage() {
   };
 
   const getRenewalsThisWeek = () => {
+    const now = new Date();
+    const sevenDaysFromNow = new Date(now);
+    sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+
     return clients.filter(client => {
       if (client.status !== 'active') return false;
-      // Week 4 clients need billing attention
+
+      // Use billDueDate if set
+      if (client.billDueDate) {
+        const dueDate = new Date(client.billDueDate + 'T12:00:00');
+        return dueDate >= now && dueDate <= sevenDaysFromNow;
+      }
+
+      // Fallback: calculate from last delivery (legacy behavior)
       const lastDelivery = deliveryLog
-        .filter(d => d.clientName === client.name)
+        .filter(d => d.clientName === client.name || d.clientName === client.displayName)
         .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
       if (!lastDelivery) return false;
       const deliveryDate = new Date(lastDelivery.date + 'T12:00:00');
       const renewalDate = new Date(deliveryDate);
       renewalDate.setDate(renewalDate.getDate() + 28);
-      return renewalDate >= weekStart && renewalDate <= weekEnd;
+      return renewalDate >= now && renewalDate <= sevenDaysFromNow;
     });
   };
 
@@ -1265,6 +1278,7 @@ export default function AdminPage() {
             { id: 'recipes', label: 'Recipes', icon: FileText },
             { id: 'ingredients', label: 'Ingredients', icon: Package },
             { id: 'clients', label: 'Clients', icon: Users },
+            { id: 'billing', label: 'Billing & Dates', icon: CreditCard },
             { id: 'subscriptions', label: 'Subscriptions', icon: RefreshCw },
             { id: 'groceries', label: 'Grocery Tracking', icon: Receipt },
             { id: 'analytics', label: 'Analytics', icon: TrendingUp },
@@ -1507,6 +1521,130 @@ export default function AdminPage() {
             exportClientsCSV={exportClientsCSV}
             setClients={updateClients}
           />
+        )}
+
+        {/* Billing & Dates Section */}
+        {activeSection === 'billing' && (
+          <div className="space-y-6">
+            {/* Bills Due Soon */}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-2xl font-bold mb-2" style={{ color: '#3d59ab' }}>
+                <CreditCard className="inline mr-2" size={28} />
+                Bills Due (Next 7 Days)
+              </h2>
+              <p className="text-gray-600 mb-6">
+                Clients with payment due within the next week
+              </p>
+
+              {getRenewalsThisWeek().length === 0 ? (
+                <div className="text-center py-8 text-gray-400">
+                  <CreditCard size={48} className="mx-auto mb-3 opacity-50" />
+                  <p>No bills due in the next 7 days</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {getRenewalsThisWeek().map((client, idx) => {
+                    const dueDate = client.billDueDate ? new Date(client.billDueDate + 'T12:00:00') : null;
+                    const isOverdue = dueDate && dueDate < new Date();
+                    return (
+                      <div
+                        key={idx}
+                        className={`p-4 rounded-lg border-2 ${isOverdue ? 'bg-red-50 border-red-300' : 'border-amber-200 bg-amber-50'}`}
+                      >
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div>
+                            <h3 className="font-bold">{client.displayName || client.name}</h3>
+                            <p className="text-sm text-gray-600">
+                              ${client.planPrice || 0} + ${client.serviceFee || 0} service fee
+                            </p>
+                            {dueDate && (
+                              <p className={`text-sm font-medium ${isOverdue ? 'text-red-600' : 'text-amber-700'}`}>
+                                Due: {dueDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                                {isOverdue && ' (OVERDUE)'}
+                              </p>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => setSelectedClientForDetail(client)}
+                            className="px-4 py-2 rounded-lg text-white text-sm"
+                            style={{ backgroundColor: '#3d59ab' }}
+                          >
+                            Set Dates
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* All Clients - Set Dates */}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-2xl font-bold mb-2" style={{ color: '#3d59ab' }}>
+                <Calendar className="inline mr-2" size={28} />
+                All Client Dates
+              </h2>
+              <p className="text-gray-600 mb-6">
+                Set delivery dates and bill due dates for each client
+              </p>
+
+              <div className="space-y-3">
+                {clients.filter(c => c.status === 'active').map((client, idx) => {
+                  const portalDates = clientPortalData[client.name]?.selectedDates || [];
+                  const hasPortalDates = portalDates.length > 0;
+                  const hasDates = client.deliveryDates?.length > 0;
+                  const hasDueDate = !!client.billDueDate;
+
+                  return (
+                    <div
+                      key={idx}
+                      className="p-4 rounded-lg border-2 flex items-center justify-between flex-wrap gap-3"
+                      style={{ borderColor: '#ebb582' }}
+                    >
+                      <div className="flex-1">
+                        <h3 className="font-bold">{client.displayName || client.name}</h3>
+                        <div className="text-sm text-gray-600 space-y-1">
+                          {hasDates ? (
+                            <p>
+                              <span className="text-green-600">Delivery dates:</span>{' '}
+                              {client.deliveryDates.slice(0, 2).map(d =>
+                                new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                              ).join(', ')}
+                              {client.deliveryDates.length > 2 && ` +${client.deliveryDates.length - 2} more`}
+                            </p>
+                          ) : hasPortalDates ? (
+                            <p className="text-purple-600">
+                              Portal dates pending sync ({portalDates.length} selected)
+                            </p>
+                          ) : (
+                            <p className="text-gray-400">No delivery dates set</p>
+                          )}
+                          {hasDueDate ? (
+                            <p>
+                              <span className="text-amber-600">Bill due:</span>{' '}
+                              {new Date(client.billDueDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            </p>
+                          ) : (
+                            <p className="text-gray-400">No bill due date set</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setSelectedClientForDetail(client)}
+                          className="px-3 py-2 rounded-lg border-2 text-sm font-medium hover:bg-gray-50"
+                          style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
+                        >
+                          Set Dates
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Subscriptions Section */}
@@ -2348,6 +2486,27 @@ export default function AdminPage() {
           </div>
         )}
       </div>
+
+      {/* Subscription Detail Modal */}
+      {selectedClientForDetail && (
+        <SubscriptionDetailModal
+          client={selectedClientForDetail}
+          clientPortalData={clientPortalData}
+          onSave={(updatedClient) => {
+            const idx = clients.findIndex(c =>
+              c.subscriptionId === updatedClient.subscriptionId ||
+              c.name === updatedClient.name ||
+              c.displayName === updatedClient.displayName
+            );
+            if (idx >= 0) {
+              const updated = [...clients];
+              updated[idx] = { ...updated[idx], ...updatedClient };
+              updateClients(updated);
+            }
+          }}
+          onClose={() => setSelectedClientForDetail(null)}
+        />
+      )}
 
       {/* Hidden file inputs */}
       <input
