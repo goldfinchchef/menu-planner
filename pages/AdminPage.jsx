@@ -109,9 +109,19 @@ function useAdminData() {
     saveData({ customTasks: newTasks });
   }, [saveData]);
 
-  const updateMenuItems = useCallback((newMenuItems) => {
-    setMenuItems(newMenuItems);
-    saveData({ menuItems: newMenuItems });
+  const updateMenuItems = useCallback((newMenuItemsOrFn) => {
+    // Handle both direct values and functional updates
+    if (typeof newMenuItemsOrFn === 'function') {
+      setMenuItems(prev => {
+        const updated = newMenuItemsOrFn(prev);
+        // Save after computing the new value
+        setTimeout(() => saveData({ menuItems: updated }), 0);
+        return updated;
+      });
+    } else {
+      setMenuItems(newMenuItemsOrFn);
+      saveData({ menuItems: newMenuItemsOrFn });
+    }
   }, [saveData]);
 
   const updateWeeklyTasks = useCallback((newWeeklyTasks) => {
