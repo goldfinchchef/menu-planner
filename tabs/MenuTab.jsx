@@ -616,7 +616,8 @@ export default function MenuTab({
               </button>
               <button
                 onClick={() => {
-                  setSelectedClient(previewClient);
+                  setSelectedClients([previewClient.name]);
+                  setShowMenuBuilder(true);
                   setPreviewClient(null);
                 }}
                 className="px-4 py-2 rounded-lg border-2 flex items-center gap-2"
