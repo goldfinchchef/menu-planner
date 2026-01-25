@@ -126,20 +126,12 @@ export default function ClientPortal() {
       return STATUS.PICK_DATES;
     }
 
-    // Check if client has chefChoice = false and needs to pick ingredients
-    // They can pick until Saturday EOD
+    // For chefChoice = false clients, show MENU_READY status so they see
+    // SubscriptionInfoCard with per-date ingredient picking
     if (client.chefChoice === false) {
-      const portalPicks = portalInfo.ingredientPicks;
-      const hasSubmittedPicks = portalPicks?.submittedAt;
-      const isPastDeadline = isPastSaturdayDeadline();
-
-      // Show picker if they haven't submitted picks and deadline hasn't passed
-      if (!hasSubmittedPicks && !isPastDeadline) {
-        // Only show if they have upcoming dates set
-        const hasDates = (client.deliveryDates?.length > 0) || (portalInfo.selectedDates?.length > 0);
-        if (hasDates) {
-          return STATUS.PICK_INGREDIENTS;
-        }
+      const hasDates = (client.deliveryDates?.length > 0) || (portalInfo.selectedDates?.length > 0);
+      if (hasDates) {
+        return STATUS.MENU_READY;
       }
     }
 
@@ -199,11 +191,11 @@ export default function ClientPortal() {
             Hello, {displayName.split(' ')[0]}!
           </h2>
           <p className="text-gray-600 mt-1">
-            {getStatusMessage(portalStatus)}
+            {getStatusMessage(portalStatus, client)}
           </p>
 
-          {/* HoneyBook Invoice Button - show on most views */}
-          {client.honeyBookLink && portalStatus !== STATUS.NEEDS_PAYMENT && portalStatus !== STATUS.OVERDUE && (
+          {/* HoneyBook Invoice Button - show if link exists and invoice not marked as paid */}
+          {client.honeyBookLink && !(clientPortalData[client.name]?.invoicePaid) && (
             <a
               href={client.honeyBookLink}
               target="_blank"
@@ -285,6 +277,8 @@ export default function ClientPortal() {
               client={client}
               clientPortalData={clientPortalData}
               onEditDates={() => setShowDateEditor(true)}
+              recipes={recipes}
+              updateClientPortalData={updateClientPortalData}
             />
 
             {/* Date Editor Modal */}
@@ -351,7 +345,7 @@ export default function ClientPortal() {
 }
 
 // Helper function for status messages
-function getStatusMessage(status) {
+function getStatusMessage(status, client) {
   switch (status) {
     case STATUS.PAUSED:
       return "Your account is currently paused.";
@@ -364,6 +358,10 @@ function getStatusMessage(status) {
     case STATUS.PICK_INGREDIENTS:
       return "Pick your proteins, veggies, and starches for this week!";
     case STATUS.MENU_READY:
+      // Show different message for chefChoice=false clients
+      if (client?.chefChoice === false) {
+        return "Pick your ingredients for each delivery below!";
+      }
       return "Your menu is ready! Here's what's coming.";
     case STATUS.DELIVERY_DAY:
       return "Your delivery is on the way!";
@@ -375,7 +373,9 @@ function getStatusMessage(status) {
 }
 
 // Subscription Info Card - shows portions, meals, frequency, and upcoming dates
-function SubscriptionInfoCard({ client, onEditDates, clientPortalData = {} }) {
+function SubscriptionInfoCard({ client, onEditDates, clientPortalData = {}, recipes, updateClientPortalData }) {
+  const [pickingDate, setPickingDate] = useState(null);
+
   const portions = client.portions || client.persons || 1;
   const mealsPerWeek = client.mealsPerWeek || 0;
   const frequency = client.frequency || 'weekly';
@@ -395,6 +395,45 @@ function SubscriptionInfoCard({ client, onEditDates, clientPortalData = {} }) {
 
   const saturdayDeadline = getThisWeekSaturdayDeadline();
   const canEdit = deliveryDates.some(d => canEditDeliveryDate(d));
+
+  // Check if client has chefChoice = false (they pick their own ingredients)
+  const isClientPicker = client.chefChoice === false;
+
+  // Get picks for a specific date
+  const getDatePicks = (dateStr) => {
+    return clientPortalData[client.name]?.dateIngredientPicks?.[dateStr];
+  };
+
+  // Get Saturday deadline before a specific delivery date
+  const getDeadlineForDate = (deliveryDateStr) => {
+    const delivery = new Date(deliveryDateStr + 'T12:00:00');
+    const dayOfWeek = delivery.getDay();
+    const daysBack = dayOfWeek === 0 ? 1 : (dayOfWeek === 6 ? 0 : dayOfWeek + 1);
+    const saturday = new Date(delivery);
+    saturday.setDate(delivery.getDate() - daysBack);
+    saturday.setHours(23, 59, 59, 999);
+    return saturday;
+  };
+
+  // Check if we're past the deadline for a specific date
+  const isPastDeadlineForDate = (dateStr) => {
+    return new Date() > getDeadlineForDate(dateStr);
+  };
+
+  // Handle saving picks for a date
+  const handleSaveDatePicks = (dateStr, picks) => {
+    const existingPicks = clientPortalData[client.name]?.dateIngredientPicks || {};
+    updateClientPortalData(client.name, {
+      dateIngredientPicks: {
+        ...existingPicks,
+        [dateStr]: {
+          ...picks,
+          submittedAt: new Date().toISOString()
+        }
+      }
+    });
+    setPickingDate(null);
+  };
 
   return (
     <div className="bg-white rounded-lg shadow-lg p-6 mb-4">
@@ -441,30 +480,79 @@ function SubscriptionInfoCard({ client, onEditDates, clientPortalData = {} }) {
             {deliveryDates.slice(0, 4).map((dateStr, idx) => {
               const canEditThis = canEditDeliveryDate(dateStr);
               const isPast = new Date(dateStr + 'T12:00:00') < new Date();
+              const datePicks = getDatePicks(dateStr);
+              const hasSubmittedPicks = datePicks?.submittedAt;
+              const pastDeadline = isPastDeadlineForDate(dateStr);
+              const deadline = getDeadlineForDate(dateStr);
+
               return (
                 <div
                   key={dateStr}
-                  className={`flex items-center justify-between p-2 rounded-lg ${isPast ? 'opacity-50' : ''}`}
+                  className={`p-3 rounded-lg ${isPast ? 'opacity-50' : ''}`}
                   style={{ backgroundColor: '#fff', border: '1px solid #ebb582' }}
                 >
-                  <span className="flex items-center gap-2">
-                    <span className="text-xs text-gray-400">#{idx + 1}</span>
-                    <span className={isPast ? 'text-gray-400' : ''}>{formatDate(dateStr)}</span>
-                  </span>
-                  {!canEditThis && !isPast && (
-                    <span className="text-xs text-amber-600 flex items-center gap-1">
-                      <Clock size={12} />
-                      Locked
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400">#{idx + 1}</span>
+                      <span className={isPast ? 'text-gray-400' : ''}>{formatDate(dateStr)}</span>
                     </span>
-                  )}
-                  {isPast && (
-                    <Check size={16} className="text-green-500" />
+                    <div className="flex items-center gap-2">
+                      {!canEditThis && !isPast && !isClientPicker && (
+                        <span className="text-xs text-amber-600 flex items-center gap-1">
+                          <Clock size={12} />
+                          Locked
+                        </span>
+                      )}
+                      {isPast && (
+                        <Check size={16} className="text-green-500" />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Per-date ingredient picking for chefChoice=false clients */}
+                  {isClientPicker && !isPast && (
+                    <div className="mt-2 pt-2 border-t border-gray-100">
+                      {hasSubmittedPicks ? (
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-green-600 flex items-center gap-1">
+                            <Check size={14} />
+                            Picks submitted
+                          </span>
+                          {!pastDeadline && (
+                            <button
+                              onClick={() => setPickingDate(dateStr)}
+                              className="text-xs text-blue-600 hover:text-blue-800"
+                            >
+                              Edit
+                            </button>
+                          )}
+                        </div>
+                      ) : pastDeadline ? (
+                        <span className="text-xs text-amber-600 flex items-center gap-1">
+                          <Clock size={12} />
+                          Deadline passed - Chef will pick
+                        </span>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <button
+                            onClick={() => setPickingDate(dateStr)}
+                            className="text-xs px-3 py-1 rounded-lg text-white font-medium"
+                            style={{ backgroundColor: '#3d59ab' }}
+                          >
+                            Pick Menu
+                          </button>
+                          <span className="text-xs text-gray-500">
+                            by {deadline.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               );
             })}
           </div>
-          {canEdit && (
+          {canEdit && !isClientPicker && (
             <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
               <Clock size={12} />
               Edit dates by Saturday {saturdayDeadline.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at 11:59 PM
@@ -472,6 +560,214 @@ function SubscriptionInfoCard({ client, onEditDates, clientPortalData = {} }) {
           )}
         </div>
       )}
+
+      {/* Date Ingredient Picker Modal */}
+      {pickingDate && (
+        <DateIngredientPickerModal
+          client={client}
+          dateStr={pickingDate}
+          recipes={recipes}
+          existingPicks={getDatePicks(pickingDate)}
+          onSave={(picks) => handleSaveDatePicks(pickingDate, picks)}
+          onClose={() => setPickingDate(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Modal for picking ingredients for a specific delivery date
+function DateIngredientPickerModal({ client, dateStr, recipes, existingPicks, onSave, onClose }) {
+  const mealsPerWeek = client.mealsPerWeek || 3;
+
+  // Initialize with existing picks or empty arrays
+  const [proteins, setProteins] = useState(existingPicks?.proteins || Array(mealsPerWeek).fill(''));
+  const [veggies, setVeggies] = useState(existingPicks?.veggies || Array(mealsPerWeek).fill(''));
+  const [starches, setStarches] = useState(existingPicks?.starches || Array(mealsPerWeek).fill(''));
+  const [notes, setNotes] = useState(existingPicks?.notes || '');
+
+  // Get recipe options by category
+  const proteinOptions = recipes?.protein?.map(r => r.name) || [];
+  const vegOptions = recipes?.veg?.map(r => r.name) || [];
+  const starchOptions = recipes?.starch?.map(r => r.name) || [];
+
+  const formatDate = (ds) => {
+    const date = new Date(ds + 'T12:00:00');
+    return date.toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  // Get filtered options (no duplicates within same category)
+  const getFilteredOptions = (options, selectedValues, currentIndex) => {
+    const otherSelections = selectedValues.filter((_, i) => i !== currentIndex);
+    return options.filter(opt => !otherSelections.includes(opt));
+  };
+
+  const isComplete = () => {
+    return proteins.every(p => p !== '') &&
+           veggies.every(v => v !== '') &&
+           starches.every(s => s !== '');
+  };
+
+  const handleSubmit = () => {
+    if (!isComplete()) {
+      alert(`Please select ${mealsPerWeek} of each: proteins, veggies, and starches.`);
+      return;
+    }
+    onSave({ proteins, veggies, starches, notes, mealsPerWeek });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-4 border-b flex items-center justify-between" style={{ backgroundColor: '#f9f9ed' }}>
+          <div>
+            <h3 className="text-lg font-bold" style={{ color: '#3d59ab' }}>
+              Pick Your Menu
+            </h3>
+            <p className="text-sm text-gray-600">{formatDate(dateStr)}</p>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded">
+            <span className="text-2xl">&times;</span>
+          </button>
+        </div>
+
+        <div className="p-4">
+          <p className="text-gray-600 mb-4">
+            Select {mealsPerWeek} proteins, veggies, and starches. Chef Paula will pair them into delicious meals!
+          </p>
+
+          {/* Proteins */}
+          <div className="mb-4">
+            <h4 className="font-bold mb-2 flex items-center gap-2 text-sm" style={{ color: '#3d59ab' }}>
+              <span className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center text-red-600 text-xs">P</span>
+              Proteins ({proteins.filter(p => p).length}/{mealsPerWeek})
+            </h4>
+            <div className="space-y-2">
+              {proteins.map((protein, idx) => (
+                <select
+                  key={idx}
+                  value={protein}
+                  onChange={(e) => {
+                    const updated = [...proteins];
+                    updated[idx] = e.target.value;
+                    setProteins(updated);
+                  }}
+                  className="w-full p-2 border-2 rounded-lg text-sm"
+                  style={{ borderColor: protein ? '#22c55e' : '#ebb582' }}
+                >
+                  <option value="">Select protein #{idx + 1}</option>
+                  {getFilteredOptions(proteinOptions, proteins, idx).map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              ))}
+            </div>
+          </div>
+
+          {/* Veggies */}
+          <div className="mb-4">
+            <h4 className="font-bold mb-2 flex items-center gap-2 text-sm" style={{ color: '#3d59ab' }}>
+              <span className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center text-green-600 text-xs">V</span>
+              Veggies ({veggies.filter(v => v).length}/{mealsPerWeek})
+            </h4>
+            <div className="space-y-2">
+              {veggies.map((veg, idx) => (
+                <select
+                  key={idx}
+                  value={veg}
+                  onChange={(e) => {
+                    const updated = [...veggies];
+                    updated[idx] = e.target.value;
+                    setVeggies(updated);
+                  }}
+                  className="w-full p-2 border-2 rounded-lg text-sm"
+                  style={{ borderColor: veg ? '#22c55e' : '#ebb582' }}
+                >
+                  <option value="">Select veggie #{idx + 1}</option>
+                  {getFilteredOptions(vegOptions, veggies, idx).map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              ))}
+            </div>
+          </div>
+
+          {/* Starches */}
+          <div className="mb-4">
+            <h4 className="font-bold mb-2 flex items-center gap-2 text-sm" style={{ color: '#3d59ab' }}>
+              <span className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 text-xs">S</span>
+              Starches ({starches.filter(s => s).length}/{mealsPerWeek})
+            </h4>
+            <div className="space-y-2">
+              {starches.map((starch, idx) => (
+                <select
+                  key={idx}
+                  value={starch}
+                  onChange={(e) => {
+                    const updated = [...starches];
+                    updated[idx] = e.target.value;
+                    setStarches(updated);
+                  }}
+                  className="w-full p-2 border-2 rounded-lg text-sm"
+                  style={{ borderColor: starch ? '#22c55e' : '#ebb582' }}
+                >
+                  <option value="">Select starch #{idx + 1}</option>
+                  {getFilteredOptions(starchOptions, starches, idx).map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              ))}
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-1">Special requests (optional)</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="E.g., 'Keep chicken mild' or 'Extra sauce'"
+              className="w-full p-2 border-2 rounded-lg text-sm"
+              style={{ borderColor: '#ebb582' }}
+              rows={2}
+            />
+          </div>
+
+          {/* Progress */}
+          <div className="mb-4 p-2 rounded-lg text-sm" style={{ backgroundColor: '#f9f9ed' }}>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600">
+                {isComplete() ? 'All selections complete!' : 'Complete all to submit'}
+              </span>
+              <span className="font-bold" style={{ color: isComplete() ? '#22c55e' : '#3d59ab' }}>
+                {proteins.filter(p => p).length + veggies.filter(v => v).length + starches.filter(s => s).length} / {mealsPerWeek * 3}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 border-t flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg border-2 hover:bg-gray-50"
+            style={{ borderColor: '#ebb582' }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!isComplete()}
+            className="px-4 py-2 rounded-lg text-white disabled:opacity-50"
+            style={{ backgroundColor: '#3d59ab' }}
+          >
+            Save Picks
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
