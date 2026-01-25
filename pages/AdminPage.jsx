@@ -305,25 +305,96 @@ function DashboardSection({
   const difference = actualSpending - weeklyFoodCost;
   const wastePercent = weeklyFoodCost > 0 ? ((difference / weeklyFoodCost) * 100).toFixed(1) : 0;
 
-  // Filter auto tasks to show only relevant ones
-  const filteredAutoTasks = autoTasks.filter(task => {
-    const category = task.category?.toLowerCase() || '';
-    // Show billing tasks, menu tasks, substitution requests
-    if (category.includes('billing') || category.includes('menu') || category.includes('substitution')) {
-      return true;
-    }
-    // Show bags follow-up only if there are missing bags
-    if (category.includes('bags') && task.details?.length > 0) {
-      return true;
-    }
-    return false;
-  });
+  // Group tasks by client name
+  const getTasksByClient = () => {
+    const clientTasks = {};
 
-  // Combine auto tasks and custom tasks for display
-  const allTasks = [
-    ...filteredAutoTasks.map(t => ({ ...t, isAuto: true, id: `auto-${t.title}` })),
-    ...customTasks.map(t => ({ ...t, isAuto: false }))
-  ];
+    // Helper to add task to a client
+    const addClientTask = (clientName, taskType, taskId) => {
+      if (!clientTasks[clientName]) {
+        clientTasks[clientName] = [];
+      }
+      // Check if already completed in customTasks
+      const isCompleted = customTasks.some(t => t.id === `${clientName}-${taskType}` && t.completed);
+      clientTasks[clientName].push({
+        id: `${clientName}-${taskType}`,
+        clientName,
+        type: taskType,
+        completed: isCompleted
+      });
+    };
+
+    // Process auto tasks and extract client-specific tasks
+    autoTasks.forEach(task => {
+      const category = task.category?.toLowerCase() || '';
+
+      if (category.includes('billing') || category.includes('renewal')) {
+        // Billing/renewal tasks
+        (task.details || []).forEach(clientName => {
+          addClientTask(clientName, 'Invoice prepared');
+          addClientTask(clientName, 'Paste Honeybook link');
+        });
+      } else if (category.includes('menu')) {
+        // Menu planning tasks
+        (task.details || []).forEach(clientName => {
+          addClientTask(clientName, 'Plan menu');
+        });
+      } else if (category.includes('dish picks') || category.includes('client picks')) {
+        // Dish picks tasks
+        (task.details || []).forEach(clientName => {
+          addClientTask(clientName, 'Review dish picks');
+        });
+      } else if (category.includes('substitution')) {
+        // Substitution requests
+        (task.details || []).forEach(detail => {
+          const clientName = detail.split(':')[0]?.trim();
+          if (clientName) {
+            addClientTask(clientName, 'Review substitution request');
+          }
+        });
+      } else if (category.includes('bags')) {
+        // Bag follow-ups
+        (task.details || []).forEach(clientName => {
+          addClientTask(clientName, 'Follow up on bags');
+        });
+      } else if (category.includes('grocery')) {
+        // Own groceries
+        (task.details || []).forEach(clientName => {
+          addClientTask(clientName, 'Add grocery costs');
+        });
+      }
+    });
+
+    // Add custom tasks that have a client name
+    customTasks.forEach(task => {
+      if (task.clientName) {
+        if (!clientTasks[task.clientName]) {
+          clientTasks[task.clientName] = [];
+        }
+        clientTasks[task.clientName].push({
+          id: task.id,
+          clientName: task.clientName,
+          type: task.title,
+          completed: task.completed,
+          isCustom: true
+        });
+      }
+    });
+
+    return clientTasks;
+  };
+
+  // Get general tasks (not client-specific)
+  const getGeneralTasks = () => {
+    return customTasks.filter(t => !t.clientName).map(t => ({
+      ...t,
+      isCustom: true
+    }));
+  };
+
+  const tasksByClient = getTasksByClient();
+  const generalTasks = getGeneralTasks();
+  const hasAnyTasks = Object.keys(tasksByClient).length > 0 || generalTasks.length > 0;
 
   return (
     <div className="space-y-6">
@@ -407,13 +478,26 @@ function DashboardSection({
         {/* Add task form */}
         {showAddTask && (
           <div className="mb-4 p-4 rounded-lg border-2" style={{ borderColor: '#ebb582', backgroundColor: '#f9f9ed' }}>
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
+              <select
+                value={newTask.clientName || ''}
+                onChange={(e) => setNewTask({ ...newTask, clientName: e.target.value || undefined })}
+                className="p-2 border-2 rounded-lg"
+                style={{ borderColor: '#ebb582' }}
+              >
+                <option value="">Select client (optional)</option>
+                {clients.filter(c => c.status === 'active').map((client, i) => (
+                  <option key={i} value={client.displayName || client.name}>
+                    {client.displayName || client.name}
+                  </option>
+                ))}
+              </select>
               <input
                 type="text"
                 value={newTask.title}
                 onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
                 placeholder="Task description..."
-                className="flex-1 p-2 border-2 rounded-lg"
+                className="flex-1 p-2 border-2 rounded-lg min-w-48"
                 style={{ borderColor: '#ebb582' }}
               />
               <button
@@ -437,67 +521,124 @@ function DashboardSection({
           </div>
         )}
 
-        {/* Tasks list */}
-        <div className="space-y-2">
-          {allTasks.length === 0 ? (
+        {/* Tasks grouped by client */}
+        <div className="space-y-4">
+          {!hasAnyTasks ? (
             <p className="text-gray-500 text-center py-4">All caught up! No tasks for this week.</p>
           ) : (
-            allTasks.map((task) => (
-              <div
-                key={task.id}
-                className={`p-3 rounded-lg flex items-start gap-3 ${task.completed ? 'opacity-50' : ''}`}
-                style={{ backgroundColor: '#f9f9ed' }}
-              >
-                {/* Checkbox */}
-                <button
-                  onClick={() => {
-                    if (task.isAuto) {
-                      // For auto tasks, add to custom tasks as completed
-                      updateCustomTasks([...customTasks, { ...task, id: Date.now(), completed: true }]);
-                    } else {
-                      toggleTaskComplete(task.id);
-                    }
-                  }}
-                  className={`w-6 h-6 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                    task.completed
-                      ? 'bg-green-500 border-green-500'
-                      : 'border-gray-300 bg-white hover:border-green-400'
-                  }`}
-                >
-                  {task.completed && <Check size={14} className="text-white" />}
-                </button>
-
-                {/* Task content */}
-                <div className="flex-1">
-                  <p className={`font-medium ${task.completed ? 'line-through text-gray-400' : ''}`}>
-                    {task.title}
-                  </p>
-                  {task.category && (
-                    <p className="text-xs text-gray-500">{task.category}</p>
-                  )}
-                  {task.details && task.details.length > 0 && !task.completed && (
-                    <ul className="mt-1 text-sm text-gray-600">
-                      {task.details.slice(0, 3).map((detail, i) => (
-                        <li key={i} className="text-xs">• {detail}</li>
-                      ))}
-                      {task.details.length > 3 && (
-                        <li className="text-xs text-gray-400">+{task.details.length - 3} more</li>
-                      )}
-                    </ul>
-                  )}
-                </div>
-
-                {/* Delete button for custom tasks */}
-                {!task.isAuto && (
-                  <button
-                    onClick={() => deleteCustomTask(task.id)}
-                    className="text-red-500 hover:text-red-700 p-1"
+            <>
+              {/* Client-specific tasks */}
+              {Object.entries(tasksByClient).map(([clientName, tasks]) => {
+                const allCompleted = tasks.every(t => t.completed);
+                return (
+                  <div
+                    key={clientName}
+                    className={`rounded-lg border-2 overflow-hidden ${allCompleted ? 'opacity-60' : ''}`}
+                    style={{ borderColor: '#ebb582' }}
                   >
-                    <Trash2 size={16} />
-                  </button>
-                )}
-              </div>
-            ))
+                    {/* Client header */}
+                    <div
+                      className="px-4 py-2 font-bold"
+                      style={{ backgroundColor: '#3d59ab', color: 'white' }}
+                    >
+                      {clientName}
+                    </div>
+
+                    {/* Client tasks */}
+                    <div className="p-3 space-y-2" style={{ backgroundColor: '#f9f9ed' }}>
+                      {tasks.map((task) => (
+                        <div
+                          key={task.id}
+                          className="flex items-center gap-3"
+                        >
+                          {/* Checkbox */}
+                          <button
+                            onClick={() => {
+                              if (task.isCustom) {
+                                toggleTaskComplete(task.id);
+                              } else {
+                                // For auto-generated tasks, save to customTasks
+                                const existingTask = customTasks.find(t => t.id === task.id);
+                                if (existingTask) {
+                                  toggleTaskComplete(task.id);
+                                } else {
+                                  updateCustomTasks([...customTasks, { ...task, completed: true }]);
+                                }
+                              }
+                            }}
+                            className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                              task.completed
+                                ? 'bg-green-500 border-green-500'
+                                : 'border-gray-300 bg-white hover:border-green-400'
+                            }`}
+                          >
+                            {task.completed && <Check size={12} className="text-white" />}
+                          </button>
+
+                          {/* Task label */}
+                          <span className={`text-sm ${task.completed ? 'line-through text-gray-400' : ''}`}>
+                            {task.type}
+                          </span>
+
+                          {/* Delete button for custom tasks */}
+                          {task.isCustom && (
+                            <button
+                              onClick={() => deleteCustomTask(task.id)}
+                              className="text-red-400 hover:text-red-600 p-1 ml-auto"
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* General tasks (not client-specific) */}
+              {generalTasks.length > 0 && (
+                <div
+                  className="rounded-lg border-2 overflow-hidden"
+                  style={{ borderColor: '#ebb582' }}
+                >
+                  <div
+                    className="px-4 py-2 font-bold"
+                    style={{ backgroundColor: '#6b7280', color: 'white' }}
+                  >
+                    Other Tasks
+                  </div>
+                  <div className="p-3 space-y-2" style={{ backgroundColor: '#f9f9ed' }}>
+                    {generalTasks.map((task) => (
+                      <div
+                        key={task.id}
+                        className="flex items-center gap-3"
+                      >
+                        <button
+                          onClick={() => toggleTaskComplete(task.id)}
+                          className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                            task.completed
+                              ? 'bg-green-500 border-green-500'
+                              : 'border-gray-300 bg-white hover:border-green-400'
+                          }`}
+                        >
+                          {task.completed && <Check size={12} className="text-white" />}
+                        </button>
+                        <span className={`text-sm ${task.completed ? 'line-through text-gray-400' : ''}`}>
+                          {task.title}
+                        </span>
+                        <button
+                          onClick={() => deleteCustomTask(task.id)}
+                          className="text-red-400 hover:text-red-600 p-1 ml-auto"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
