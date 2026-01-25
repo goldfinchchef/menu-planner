@@ -294,16 +294,7 @@ export default function ClientsTab({
           <h2 className="text-2xl font-bold" style={{ color: '#3d59ab' }}>Add Subscription</h2>
           <div className="flex gap-2">
             <button
-              onClick={() => {
-                console.log('Import button clicked');
-                console.log('clientsFileRef:', clientsFileRef);
-                console.log('clientsFileRef.current:', clientsFileRef?.current);
-                if (clientsFileRef?.current) {
-                  clientsFileRef.current.click();
-                } else {
-                  alert('File input not available. Please refresh the page.');
-                }
-              }}
+              onClick={() => clientsFileRef.current?.click()}
               className="flex items-center gap-2 px-4 py-2 rounded-lg border-2"
               style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
             >

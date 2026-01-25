@@ -80,13 +80,8 @@ export default function App() {
 
   // CSV Import handlers
   const importClientsCSV = (e) => {
-    alert('File input changed!'); // Debug alert
     const file = e.target.files[0];
-    if (!file) {
-      alert('No file in selection');
-      return;
-    }
-    alert('File selected: ' + file.name);
+    if (!file) return;
     try {
       parseClientsCSV(
         file,
