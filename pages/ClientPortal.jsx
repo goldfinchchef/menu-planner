@@ -373,6 +373,292 @@ function getStatusMessage(status, client) {
   }
 }
 
+// Billing Section - shows invoice status, due date, and payment link
+function BillingSection({ client }) {
+  const GRACE_PERIOD_DAYS = 7; // Days after due date before pause
+
+  // Calculate invoice status
+  const getInvoiceStatus = () => {
+    if (client.status === 'paused') {
+      return {
+        status: 'paused',
+        label: 'Account Paused',
+        color: '#dc2626',
+        bgColor: '#fef2f2',
+        borderColor: '#fecaca'
+      };
+    }
+
+    if (client.invoicePaid) {
+      return {
+        status: 'paid',
+        label: 'Paid',
+        color: '#22c55e',
+        bgColor: '#dcfce7',
+        borderColor: '#bbf7d0'
+      };
+    }
+
+    if (!client.billDueDate) {
+      return {
+        status: 'none',
+        label: 'No invoice',
+        color: '#6b7280',
+        bgColor: '#f9fafb',
+        borderColor: '#e5e7eb'
+      };
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dueDate = new Date(client.billDueDate + 'T12:00:00');
+    const timeDiff = dueDate - today;
+    const daysDiff = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+
+    if (daysDiff > 7) {
+      return {
+        status: 'not_yet_due',
+        label: 'Not Yet Due',
+        color: '#3d59ab',
+        bgColor: '#eff6ff',
+        borderColor: '#bfdbfe',
+        daysUntilDue: daysDiff
+      };
+    } else if (daysDiff > 0) {
+      return {
+        status: 'due_soon',
+        label: `Due in ${daysDiff} day${daysDiff !== 1 ? 's' : ''}`,
+        color: '#f59e0b',
+        bgColor: '#fffbeb',
+        borderColor: '#fde68a',
+        daysUntilDue: daysDiff
+      };
+    } else if (daysDiff === 0) {
+      return {
+        status: 'due_today',
+        label: 'Due Today',
+        color: '#f59e0b',
+        bgColor: '#fffbeb',
+        borderColor: '#fde68a'
+      };
+    } else {
+      // Overdue
+      const daysOverdue = Math.abs(daysDiff);
+      const daysInGrace = GRACE_PERIOD_DAYS - daysOverdue;
+
+      if (daysInGrace > 0) {
+        return {
+          status: 'grace_period',
+          label: 'Overdue',
+          color: '#dc2626',
+          bgColor: '#fef2f2',
+          borderColor: '#fecaca',
+          daysOverdue,
+          daysRemaining: daysInGrace
+        };
+      } else {
+        return {
+          status: 'overdue',
+          label: 'Overdue',
+          color: '#dc2626',
+          bgColor: '#fef2f2',
+          borderColor: '#fecaca',
+          daysOverdue
+        };
+      }
+    }
+  };
+
+  const invoiceStatus = getInvoiceStatus();
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr + 'T12:00:00');
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
+  // Don't show billing section if no invoice info
+  if (invoiceStatus.status === 'none' && !client.honeyBookLink) {
+    return null;
+  }
+
+  return (
+    <div
+      className="mb-4 p-4 rounded-lg border-2"
+      style={{ backgroundColor: invoiceStatus.bgColor, borderColor: invoiceStatus.borderColor }}
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <CreditCard size={18} style={{ color: invoiceStatus.color }} />
+        <h4 className="font-bold" style={{ color: invoiceStatus.color }}>Billing</h4>
+      </div>
+
+      {/* Paused Account State */}
+      {invoiceStatus.status === 'paused' && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={18} className="text-red-600" />
+            <p className="text-red-700 font-medium">Your account is paused</p>
+          </div>
+          <p className="text-sm text-red-600">
+            Please pay your outstanding invoice to reactivate your subscription and resume deliveries.
+          </p>
+          {client.honeyBookLink && (
+            <a
+              href={client.honeyBookLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium"
+              style={{ backgroundColor: '#dc2626' }}
+            >
+              <CreditCard size={16} />
+              Pay to Reactivate
+              <ExternalLink size={14} />
+            </a>
+          )}
+        </div>
+      )}
+
+      {/* Grace Period Warning */}
+      {invoiceStatus.status === 'grace_period' && (
+        <div className="space-y-3">
+          <div className="p-3 rounded-lg bg-red-100 border border-red-200">
+            <div className="flex items-center gap-2 mb-1">
+              <AlertTriangle size={18} className="text-red-600" />
+              <p className="text-red-700 font-medium">Payment Overdue - Grace Period</p>
+            </div>
+            <p className="text-sm text-red-600">
+              Your invoice is {invoiceStatus.daysOverdue} day{invoiceStatus.daysOverdue !== 1 ? 's' : ''} overdue.
+              You have <strong>{invoiceStatus.daysRemaining} day{invoiceStatus.daysRemaining !== 1 ? 's' : ''}</strong> remaining before your account is paused.
+            </p>
+          </div>
+          {client.billDueDate && (
+            <p className="text-sm text-gray-600">
+              Due date: <span className="font-medium">{formatDate(client.billDueDate)}</span>
+            </p>
+          )}
+          {client.honeyBookLink && (
+            <a
+              href={client.honeyBookLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium"
+              style={{ backgroundColor: '#dc2626' }}
+            >
+              <CreditCard size={16} />
+              Pay Now
+              <ExternalLink size={14} />
+            </a>
+          )}
+        </div>
+      )}
+
+      {/* Regular Overdue (past grace period) */}
+      {invoiceStatus.status === 'overdue' && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={18} className="text-red-600" />
+            <p className="text-red-700 font-medium">
+              Invoice overdue ({invoiceStatus.daysOverdue} day{invoiceStatus.daysOverdue !== 1 ? 's' : ''})
+            </p>
+          </div>
+          {client.billDueDate && (
+            <p className="text-sm text-gray-600">
+              Due date: <span className="font-medium">{formatDate(client.billDueDate)}</span>
+            </p>
+          )}
+          {client.honeyBookLink && (
+            <a
+              href={client.honeyBookLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium"
+              style={{ backgroundColor: '#dc2626' }}
+            >
+              <CreditCard size={16} />
+              Pay Now
+              <ExternalLink size={14} />
+            </a>
+          )}
+        </div>
+      )}
+
+      {/* Due Today or Due Soon */}
+      {(invoiceStatus.status === 'due_today' || invoiceStatus.status === 'due_soon') && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Invoice Status</p>
+              <p className="font-medium" style={{ color: invoiceStatus.color }}>{invoiceStatus.label}</p>
+            </div>
+            {client.billDueDate && (
+              <div className="text-right">
+                <p className="text-sm text-gray-600">Due Date</p>
+                <p className="font-medium">{formatDate(client.billDueDate)}</p>
+              </div>
+            )}
+          </div>
+          {client.honeyBookLink && (
+            <a
+              href={client.honeyBookLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium"
+              style={{ backgroundColor: '#f59e0b' }}
+            >
+              <CreditCard size={16} />
+              View & Pay Invoice
+              <ExternalLink size={14} />
+            </a>
+          )}
+        </div>
+      )}
+
+      {/* Not Yet Due */}
+      {invoiceStatus.status === 'not_yet_due' && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Invoice Status</p>
+              <p className="font-medium" style={{ color: invoiceStatus.color }}>{invoiceStatus.label}</p>
+            </div>
+            {client.billDueDate && (
+              <div className="text-right">
+                <p className="text-sm text-gray-600">Due Date</p>
+                <p className="font-medium">{formatDate(client.billDueDate)}</p>
+              </div>
+            )}
+          </div>
+          {client.honeyBookLink && (
+            <a
+              href={client.honeyBookLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 font-medium"
+              style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
+            >
+              <CreditCard size={16} />
+              View & Pay Invoice
+              <ExternalLink size={14} />
+            </a>
+          )}
+        </div>
+      )}
+
+      {/* Paid */}
+      {invoiceStatus.status === 'paid' && (
+        <div className="flex items-center gap-2">
+          <Check size={18} className="text-green-600" />
+          <p className="text-green-700 font-medium">Invoice Paid - Thank you!</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Subscription Info Card - shows portions, meals, frequency, and upcoming dates
 function SubscriptionInfoCard({ client, onEditDates, clientPortalData = {}, recipes, updateClientPortalData }) {
   const [pickingDate, setPickingDate] = useState(null);
@@ -470,6 +756,9 @@ function SubscriptionInfoCard({ client, onEditDates, clientPortalData = {}, reci
           <p className="text-xs text-gray-500">Frequency</p>
         </div>
       </div>
+
+      {/* Billing Section */}
+      <BillingSection client={client} />
 
       {/* Upcoming delivery dates */}
       {deliveryDates.length > 0 ? (
