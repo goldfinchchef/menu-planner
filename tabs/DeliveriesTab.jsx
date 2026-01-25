@@ -37,6 +37,8 @@ const FormField = ({ label, children }) => (
 const inputStyle = "p-2 border-2 rounded-lg";
 const borderStyle = { borderColor: '#ebb582' };
 
+const ROUTE_ORDER_KEY = 'goldfinchRouteOrder';
+
 export default function DeliveriesTab({
   clients,
   drivers,
@@ -62,6 +64,22 @@ export default function DeliveriesTab({
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [draggedItem, setDraggedItem] = useState(null);
   const [dragOverItem, setDragOverItem] = useState(null);
+
+  // Route order state: { [date]: { [zone]: [stopKey1, stopKey2, ...] } }
+  const [routeOrder, setRouteOrder] = useState(() => {
+    try {
+      const saved = localStorage.getItem(ROUTE_ORDER_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Save route order to localStorage
+  const saveRouteOrder = (newOrder) => {
+    setRouteOrder(newOrder);
+    localStorage.setItem(ROUTE_ORDER_KEY, JSON.stringify(newOrder));
+  };
 
   // Drivers state
   const [editingDriverIndex, setEditingDriverIndex] = useState(null);
@@ -390,23 +408,90 @@ export default function DeliveriesTab({
 
   const zonesWithClients = Object.entries(clientsByZone).filter(([_, clients]) => clients.length > 0);
 
+  // Get ordered clients for a zone (respecting saved route order)
+  const getOrderedClientsForZone = (zone, zoneClients) => {
+    const dateOrder = routeOrder[selectedDate]?.[zone];
+    if (!dateOrder || dateOrder.length === 0) {
+      return zoneClients;
+    }
+
+    // Sort clients by their position in saved order
+    const orderedClients = [...zoneClients].sort((a, b) => {
+      const aKey = a.stopKey || a.name;
+      const bKey = b.stopKey || b.name;
+      const aIndex = dateOrder.indexOf(aKey);
+      const bIndex = dateOrder.indexOf(bKey);
+
+      // If both are in the saved order, sort by that
+      if (aIndex !== -1 && bIndex !== -1) {
+        return aIndex - bIndex;
+      }
+      // Items not in saved order go to the end
+      if (aIndex === -1 && bIndex !== -1) return 1;
+      if (aIndex !== -1 && bIndex === -1) return -1;
+      return 0;
+    });
+
+    return orderedClients;
+  };
+
   // Drag handlers
   const handleDragStart = (e, zone, clientName) => {
     setDraggedItem({ zone, clientName });
     e.dataTransfer.effectAllowed = 'move';
   };
+
   const handleDragOver = (e, zone, clientName) => {
     e.preventDefault();
     if (draggedItem && draggedItem.zone === zone && draggedItem.clientName !== clientName) {
       setDragOverItem({ zone, clientName });
     }
   };
+
   const handleDragLeave = () => setDragOverItem(null);
-  const handleDrop = (e, zone, targetClientName) => {
+
+  const handleDrop = (e, zone, targetStopKey) => {
     e.preventDefault();
+    if (!draggedItem || draggedItem.zone !== zone || draggedItem.clientName === targetStopKey) {
+      setDraggedItem(null);
+      setDragOverItem(null);
+      return;
+    }
+
+    // Get current zone clients in their current order
+    const zoneClients = clientsByZone[zone] || [];
+    const orderedClients = getOrderedClientsForZone(zone, zoneClients);
+    const stopKeys = orderedClients.map(c => c.stopKey || c.name);
+
+    // Find indices
+    const fromIndex = stopKeys.indexOf(draggedItem.clientName);
+    const toIndex = stopKeys.indexOf(targetStopKey);
+
+    if (fromIndex === -1 || toIndex === -1) {
+      setDraggedItem(null);
+      setDragOverItem(null);
+      return;
+    }
+
+    // Reorder
+    const newOrder = [...stopKeys];
+    const [removed] = newOrder.splice(fromIndex, 1);
+    newOrder.splice(toIndex, 0, removed);
+
+    // Save new order
+    const newRouteOrder = {
+      ...routeOrder,
+      [selectedDate]: {
+        ...(routeOrder[selectedDate] || {}),
+        [zone]: newOrder
+      }
+    };
+    saveRouteOrder(newRouteOrder);
+
     setDraggedItem(null);
     setDragOverItem(null);
   };
+
   const handleDragEnd = () => {
     setDraggedItem(null);
     setDragOverItem(null);
@@ -414,9 +499,16 @@ export default function DeliveriesTab({
 
   const generateMapsLink = (zone) => {
     const zoneClients = clientsByZone[zone] || [];
-    const addresses = zoneClients
+    const orderedClients = getOrderedClientsForZone(zone, zoneClients);
+    const addresses = orderedClients
       .filter(c => c.address)
       .map(c => encodeURIComponent(c.address));
+
+    // Prepend starting address if available
+    if (startingAddress) {
+      addresses.unshift(encodeURIComponent(startingAddress));
+    }
+
     if (addresses.length === 0) {
       alert('No addresses found for this zone');
       return;
@@ -485,6 +577,7 @@ export default function DeliveriesTab({
 
           {zonesWithClients.map(([zone, zoneClients]) => {
             const driver = zone !== 'Unassigned' ? getDriverForZone(zone) : null;
+            const orderedClients = getOrderedClientsForZone(zone, zoneClients);
             return (
               <div key={zone} className="bg-white rounded-lg shadow-lg p-6">
                 <div className="flex items-center justify-between mb-4">
@@ -494,8 +587,8 @@ export default function DeliveriesTab({
                       Zone {zone} ({zoneClients.length} stops)
                     </h3>
                     {driver && (
-                      <span className="text-sm text-gray-600 ml-2">
-                        Driver: {driver.name}
+                      <span className="text-sm px-3 py-1 rounded-full text-white ml-2" style={{ backgroundColor: '#3d59ab' }}>
+                        {driver.name}
                       </span>
                     )}
                   </div>
@@ -508,8 +601,11 @@ export default function DeliveriesTab({
                     Google Maps
                   </button>
                 </div>
+                <p className="text-sm text-gray-500 mb-3 flex items-center gap-2">
+                  <GripVertical size={16} /> Drag to reorder stops
+                </p>
                 <div className="space-y-2">
-                  {zoneClients.map((client, index) => {
+                  {orderedClients.map((client, index) => {
                     const stopKey = client.stopKey || client.name;
                     const status = getDeliveryStatus(selectedDate, client.name, client.contactIndex || 0);
                     const isDragging = draggedItem?.zone === zone && draggedItem?.clientName === stopKey;
@@ -1017,6 +1113,21 @@ export default function DeliveriesTab({
                 const readyOrders = getReadyForDate(day.date);
                 const readyClientNames = [...new Set(readyOrders.map(o => o.clientName))];
 
+                // Group day's clients by zone
+                const clientsByZoneForDay = {};
+                ZONES.forEach(zone => {
+                  const zoneClients = dayClients.filter(c => c.zone === zone);
+                  if (zoneClients.length > 0) {
+                    clientsByZoneForDay[zone] = zoneClients;
+                  }
+                });
+                const unassignedForDay = dayClients.filter(c => !c.zone || !ZONES.includes(c.zone));
+                if (unassignedForDay.length > 0) {
+                  clientsByZoneForDay['Unassigned'] = unassignedForDay;
+                }
+
+                const zonesForDay = Object.keys(clientsByZoneForDay);
+
                 return (
                   <div key={day.name} className="bg-white rounded-lg shadow-lg p-4">
                     <div className="flex items-center justify-between mb-3">
@@ -1037,39 +1148,55 @@ export default function DeliveriesTab({
                       </div>
                     </div>
 
-                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                    <div className="space-y-3 max-h-80 overflow-y-auto">
                       {dayClients.length === 0 ? (
                         <p className="text-gray-400 text-sm italic">No deliveries</p>
                       ) : (
-                        dayClients.map((client, idx) => {
-                          const isReady = readyClientNames.includes(client.name);
-                          const isDelivered = deliveryLog.some(
-                            e => e.date === day.date && e.clientName === client.name
-                          );
+                        zonesForDay.map(zone => {
+                          const zoneClientsForDay = clientsByZoneForDay[zone];
+                          const driver = zone !== 'Unassigned' ? drivers.find(d => d.zone === zone) : null;
 
                           return (
-                            <div
-                              key={idx}
-                              className={`p-2 rounded text-sm flex items-center justify-between ${
-                                isDelivered ? 'bg-green-50' : isReady ? 'bg-amber-50' : ''
-                              }`}
-                              style={{ backgroundColor: isDelivered ? undefined : isReady ? undefined : '#f9f9ed' }}
-                            >
-                              <span className={isDelivered ? 'line-through text-gray-400' : ''}>
-                                {client.displayName || client.name}
-                              </span>
-                              <div className="flex items-center gap-1">
-                                {client.zone && (
-                                  <span className="text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">
-                                    {client.zone}
+                            <div key={zone} className="border-l-4 pl-3" style={{ borderColor: '#3d59ab' }}>
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="font-bold text-sm" style={{ color: '#3d59ab' }}>
+                                  Zone {zone}
+                                </span>
+                                {driver && (
+                                  <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                                    {driver.name}
                                   </span>
                                 )}
-                                {isDelivered && (
-                                  <Check size={14} className="text-green-600" />
-                                )}
-                                {isReady && !isDelivered && (
-                                  <Truck size={14} className="text-amber-600" />
-                                )}
+                              </div>
+                              <div className="space-y-1">
+                                {zoneClientsForDay.map((client, idx) => {
+                                  const isReady = readyClientNames.includes(client.name);
+                                  const isDelivered = deliveryLog.some(
+                                    e => e.date === day.date && e.clientName === client.name
+                                  );
+
+                                  return (
+                                    <div
+                                      key={idx}
+                                      className={`p-2 rounded text-sm flex items-center justify-between ${
+                                        isDelivered ? 'bg-green-50' : isReady ? 'bg-amber-50' : ''
+                                      }`}
+                                      style={{ backgroundColor: isDelivered ? undefined : isReady ? undefined : '#f9f9ed' }}
+                                    >
+                                      <span className={isDelivered ? 'line-through text-gray-400' : ''}>
+                                        {client.displayName || client.name}
+                                      </span>
+                                      <div className="flex items-center gap-1">
+                                        {isDelivered && (
+                                          <Check size={14} className="text-green-600" />
+                                        )}
+                                        {isReady && !isDelivered && (
+                                          <Truck size={14} className="text-amber-600" />
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             </div>
                           );

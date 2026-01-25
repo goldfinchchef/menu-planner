@@ -335,8 +335,8 @@ export default function MenuTab({
     noMenu: activeClients.filter(c => getClientStatus(c).status === 'none').length
   };
 
-  // Get clients who pick their own ingredients (chefChoice = false)
-  const ingredientPickerClients = activeClients.filter(c => c.chefChoice === false);
+  // Get clients who pick their own dishes (chefChoice = false)
+  const dishPickerClients = activeClients.filter(c => c.chefChoice === false);
 
   return (
     <div className="space-y-6">
@@ -576,21 +576,52 @@ export default function MenuTab({
         </div>
       </div>
 
-      {/* Ingredient Pairing for Client Picks */}
-      {ingredientPickerClients.length > 0 && (
+      {/* Dish Selections from Clients */}
+      {dishPickerClients.length > 0 && (
         <div className="bg-white rounded-lg shadow-lg p-6">
           <h3 className="text-xl font-bold mb-4" style={{ color: '#3d59ab' }}>
             <Users size={20} className="inline mr-2" />
-            Client Ingredient Selections
+            Client Dish Selections
           </h3>
           <p className="text-gray-600 mb-4">
-            These clients pick their own ingredients. Review their selections and pair with meals.
+            These clients pick their own dishes. Review their selections and create menus.
           </p>
           <div className="space-y-3">
-            {ingredientPickerClients.map((client, i) => {
-              const clientName = client.displayName || client.name;
-              const portalData = clientPortalData[clientName];
-              const selectedIngredients = portalData?.selectedIngredients || [];
+            {dishPickerClients.map((client, i) => {
+              // Portal data is stored by client.name, not displayName
+              const portalData = clientPortalData[client.name];
+              const clientDisplayName = client.displayName || client.name;
+
+              // Check for general ingredient picks (legacy)
+              const generalPicks = portalData?.ingredientPicks;
+
+              // Check for per-date picks
+              const datePicks = portalData?.dateIngredientPicks || {};
+              const datePickEntries = Object.entries(datePicks);
+
+              // Combine all dish names for display
+              const getAllDishes = () => {
+                const dishes = [];
+
+                // From general picks
+                if (generalPicks) {
+                  if (generalPicks.proteins) dishes.push(...generalPicks.proteins.filter(Boolean));
+                  if (generalPicks.veggies) dishes.push(...generalPicks.veggies.filter(Boolean));
+                  if (generalPicks.starches) dishes.push(...generalPicks.starches.filter(Boolean));
+                }
+
+                // From date-specific picks
+                datePickEntries.forEach(([date, picks]) => {
+                  if (picks.proteins) dishes.push(...picks.proteins.filter(Boolean));
+                  if (picks.veggies) dishes.push(...picks.veggies.filter(Boolean));
+                  if (picks.starches) dishes.push(...picks.starches.filter(Boolean));
+                });
+
+                return [...new Set(dishes)]; // Remove duplicates
+              };
+
+              const allDishes = getAllDishes();
+              const hasPicks = allDishes.length > 0 || datePickEntries.length > 0;
 
               return (
                 <div
@@ -598,19 +629,8 @@ export default function MenuTab({
                   className="border-2 rounded-lg p-4"
                   style={{ borderColor: '#ebb582' }}
                 >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium">{clientName}</h4>
-                      {selectedIngredients.length > 0 ? (
-                        <p className="text-sm text-gray-600">
-                          Selected: {selectedIngredients.join(', ')}
-                        </p>
-                      ) : (
-                        <p className="text-sm text-gray-400 italic">
-                          No ingredients selected yet
-                        </p>
-                      )}
-                    </div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-medium">{clientDisplayName}</h4>
                     <button
                       onClick={() => {
                         setSelectedClients([client.name]);
@@ -622,6 +642,45 @@ export default function MenuTab({
                       Create Menu
                     </button>
                   </div>
+
+                  {hasPicks ? (
+                    <div className="space-y-2">
+                      {/* Per-date picks */}
+                      {datePickEntries.length > 0 && (
+                        <div>
+                          {datePickEntries.map(([date, picks]) => (
+                            <div key={date} className="text-sm p-2 rounded bg-green-50 mb-1">
+                              <p className="font-medium text-green-700">
+                                {new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}:
+                              </p>
+                              <p className="text-gray-600">
+                                <span className="text-red-600">P:</span> {picks.proteins?.filter(Boolean).join(', ') || 'none'} •{' '}
+                                <span className="text-green-600">V:</span> {picks.veggies?.filter(Boolean).join(', ') || 'none'} •{' '}
+                                <span className="text-amber-600">S:</span> {picks.starches?.filter(Boolean).join(', ') || 'none'}
+                              </p>
+                              {picks.notes && <p className="text-xs text-gray-500 mt-1">Notes: {picks.notes}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* General picks (if no date-specific ones) */}
+                      {generalPicks && datePickEntries.length === 0 && (
+                        <div className="text-sm p-2 rounded bg-blue-50">
+                          <p className="text-gray-600">
+                            <span className="text-red-600">P:</span> {generalPicks.proteins?.filter(Boolean).join(', ') || 'none'} •{' '}
+                            <span className="text-green-600">V:</span> {generalPicks.veggies?.filter(Boolean).join(', ') || 'none'} •{' '}
+                            <span className="text-amber-600">S:</span> {generalPicks.starches?.filter(Boolean).join(', ') || 'none'}
+                          </p>
+                          {generalPicks.notes && <p className="text-xs text-gray-500 mt-1">Notes: {generalPicks.notes}</p>}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-400 italic">
+                      No dishes selected yet
+                    </p>
+                  )}
                 </div>
               );
             })}
@@ -701,6 +760,16 @@ export default function MenuTab({
                 className="px-4 py-2 rounded-lg bg-red-100 text-red-700"
               >
                 Remove Menu
+              </button>
+              <button
+                onClick={() => {
+                  setSelectedClient(previewClient);
+                  setPreviewClient(null);
+                }}
+                className="px-4 py-2 rounded-lg border-2 flex items-center gap-2"
+                style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
+              >
+                <Edit2 size={18} /> Edit
               </button>
               <button
                 onClick={() => {

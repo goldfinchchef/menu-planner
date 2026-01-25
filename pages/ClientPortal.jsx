@@ -11,7 +11,7 @@ import { useClientPortalData } from '../hooks/useClientPortalData';
 // Client status types
 const STATUS = {
   PICK_DATES: 'pick_dates',
-  PICK_INGREDIENTS: 'pick_ingredients', // For clients with chefChoice = false (they pick dishes)
+  PICK_DISHES: 'pick_dishes', // For clients with chefChoice = false (they pick dishes)
   NEEDS_PAYMENT: 'needs_payment',
   MENU_READY: 'menu_ready',
   DELIVERY_DAY: 'delivery_day',
@@ -249,8 +249,8 @@ export default function ClientPortal() {
         )}
 
         {/* PRIORITY 3.5: Dish selection for non-Chef Choice clients */}
-        {portalStatus === STATUS.PICK_INGREDIENTS && (
-          <IngredientPickerView
+        {portalStatus === STATUS.PICK_DISHES && (
+          <DishPickerView
             client={client}
             recipes={recipes}
             clientPortalData={clientPortalData}
@@ -356,7 +356,7 @@ function getStatusMessage(status, client) {
       return "Please complete your payment to continue.";
     case STATUS.PICK_DATES:
       return "Let's schedule your upcoming deliveries.";
-    case STATUS.PICK_INGREDIENTS:
+    case STATUS.PICK_DISHES:
       return "Pick your protein, veggie, and starch dishes for this week!";
     case STATUS.MENU_READY:
       // Show different message for chefChoice=false clients
@@ -645,7 +645,7 @@ function DateDishPickerModal({ client, dateStr, recipes, existingPicks, onSave, 
 
         <div className="p-4">
           <p className="text-gray-600 mb-4">
-            Select {mealsPerWeek} protein, veggie, and starch dishes. Chef Paula will pair them into delicious meals!
+            Select {mealsPerWeek} proteins, veggies, and starches. Chef Paula will pair them into delicious meals!
           </p>
 
           {/* Show message if no recipes available */}
@@ -1389,8 +1389,8 @@ function DatePickerView({ client, selectedDates, setSelectedDates, blockedDates 
   );
 }
 
-// Dish Picker View - for clients with chefChoice = false
-function IngredientPickerView({ client, recipes, clientPortalData, onSubmit }) {
+// Dish Picker View - for clients with chefChoice = false (they pick their own dishes)
+function DishPickerView({ client, recipes, clientPortalData, onSubmit }) {
   const mealsPerWeek = client.mealsPerWeek || 3;
   const numPicks = mealsPerWeek; // 3 or 4 of each category
 
@@ -1470,7 +1470,7 @@ function IngredientPickerView({ client, recipes, clientPortalData, onSubmit }) {
       </div>
 
       <p className="text-gray-600 mb-4">
-        Select {numPicks} protein dishes, {numPicks} veggie dishes, and {numPicks} starch dishes for your meals this week.
+        Select {numPicks} proteins, {numPicks} veggies, and {numPicks} starches for your meals this week.
         Chef Paula will pair them into delicious meals!
       </p>
 
@@ -1483,7 +1483,7 @@ function IngredientPickerView({ client, recipes, clientPortalData, onSubmit }) {
               Deadline: {formatDeadline(saturdayDeadline)}
             </p>
             <p className="text-xs mt-1">
-              If not submitted by Saturday, Chef Paula will pick for you.
+              If not submitted by Saturday, Chef Paula will choose your dishes.
             </p>
           </div>
         </div>

@@ -3,7 +3,7 @@ import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   ChefHat, Home, Calendar, Truck, AlertTriangle, RefreshCw,
   Plus, Trash2, Edit2, Edit3, Check, X, Settings, ClipboardList,
-  LayoutDashboard, Users, MapPin, ChevronLeft, ChevronRight,
+  LayoutDashboard, Users, MapPin, ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
   Package, CreditCard, FileText, ShoppingBag, ShoppingCart, Eye, Utensils,
   ExternalLink, Copy, DollarSign, TrendingUp, Receipt
 } from 'lucide-react';
@@ -671,6 +671,347 @@ function DashboardSection({
                 )}
               </div>
             </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Billing & Dates Section Component
+function BillingDatesSection({ clients, updateClients, blockedDates, updateBlockedDates }) {
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [showCalendar, setShowCalendar] = useState(false);
+  const today = new Date();
+
+  const activeClients = clients.filter(c => c.status === 'active');
+  const pausedClients = clients.filter(c => c.status === 'paused');
+
+  const updateClientField = (clientName, field, value) => {
+    const updated = clients.map(c =>
+      c.name === clientName ? { ...c, [field]: value } : c
+    );
+    updateClients(updated);
+  };
+
+  const updateDeliveryDate = (clientName, index, value) => {
+    const client = clients.find(c => c.name === clientName);
+    const dates = [...(client.deliveryDates || ['', '', '', ''])];
+    // Ensure we have 4 slots
+    while (dates.length < 4) dates.push('');
+    dates[index] = value;
+    // Sort non-empty dates and filter out empty ones, then pad back to 4
+    const sortedDates = dates.filter(d => d).sort();
+    while (sortedDates.length < 4) sortedDates.push('');
+    updateClientField(clientName, 'deliveryDates', sortedDates);
+  };
+
+  const handleInvoicePaid = (clientName, isPaid) => {
+    const updated = clients.map(c => {
+      if (c.name === clientName) {
+        if (isPaid) {
+          // When marking as paid, clear the honeybook link for next invoice
+          return { ...c, invoicePaid: true, honeyBookLink: '' };
+        } else {
+          return { ...c, invoicePaid: false };
+        }
+      }
+      return c;
+    });
+    updateClients(updated);
+  };
+
+  const getDaysInMonth = (date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const days = [];
+
+    for (let i = 0; i < firstDay.getDay(); i++) {
+      days.push(null);
+    }
+    for (let d = 1; d <= lastDay.getDate(); d++) {
+      days.push(new Date(year, month, d));
+    }
+    return days;
+  };
+
+  const toggleBlockedDate = (date) => {
+    const dateStr = date.toISOString().split('T')[0];
+    if (blockedDates.includes(dateStr)) {
+      updateBlockedDates(blockedDates.filter(d => d !== dateStr));
+    } else {
+      updateBlockedDates([...blockedDates, dateStr]);
+    }
+  };
+
+  const prevMonth = () => {
+    setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1));
+  };
+
+  const nextMonth = () => {
+    setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1));
+  };
+
+  const formatDate = (dateStr) => {
+    return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* All Clients - Billing & Dates */}
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <h2 className="text-2xl font-bold mb-2" style={{ color: '#3d59ab' }}>
+          <Calendar className="inline mr-2" size={28} />
+          Client Billing & Dates
+        </h2>
+        <p className="text-gray-600 mb-6">
+          Set delivery dates, bill due dates, and invoice links for each client
+        </p>
+
+        <div className="space-y-4">
+          {activeClients.map((client, idx) => {
+            const deliveryDates = client.deliveryDates || ['', '', '', ''];
+            // Ensure we have exactly 4 slots for display
+            const displayDates = [...deliveryDates];
+            while (displayDates.length < 4) displayDates.push('');
+
+            return (
+              <div
+                key={idx}
+                className="p-4 rounded-lg border-2"
+                style={{ borderColor: '#ebb582', backgroundColor: '#f9f9ed' }}
+              >
+                {/* Client Name Row */}
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-bold text-lg" style={{ color: '#3d59ab' }}>
+                    {client.displayName || client.name}
+                  </h3>
+                  <span className="text-sm text-gray-500">
+                    {client.mealsPerWeek} meals/week • {client.portions || 1} portions
+                  </span>
+                </div>
+
+                {/* Delivery Dates Row */}
+                <div className="mb-3">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Next 4 Delivery Dates
+                  </label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {displayDates.slice(0, 4).map((date, i) => (
+                      <input
+                        key={i}
+                        type="date"
+                        value={date || ''}
+                        onChange={(e) => updateDeliveryDate(client.name, i, e.target.value)}
+                        className="px-3 py-2 border-2 rounded-lg text-sm"
+                        style={{ borderColor: '#ebb582' }}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Bill Due Date & Invoice Row */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {/* Bill Due Date */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Bill Due Date
+                    </label>
+                    <input
+                      type="date"
+                      value={client.billDueDate || ''}
+                      onChange={(e) => updateClientField(client.name, 'billDueDate', e.target.value)}
+                      className="w-full px-3 py-2 border-2 rounded-lg text-sm"
+                      style={{ borderColor: '#ebb582' }}
+                    />
+                  </div>
+
+                  {/* Honeybook Link */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Invoice Link (Honeybook)
+                    </label>
+                    <input
+                      type="url"
+                      value={client.honeyBookLink || ''}
+                      onChange={(e) => updateClientField(client.name, 'honeyBookLink', e.target.value)}
+                      placeholder="Paste invoice link..."
+                      className="w-full px-3 py-2 border-2 rounded-lg text-sm"
+                      style={{ borderColor: '#ebb582' }}
+                    />
+                  </div>
+
+                  {/* Invoice Paid Checkbox */}
+                  <div className="flex items-end">
+                    <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-white">
+                      <input
+                        type="checkbox"
+                        checked={client.invoicePaid || false}
+                        onChange={(e) => handleInvoicePaid(client.name, e.target.checked)}
+                        className="w-5 h-5 rounded border-2"
+                        style={{ accentColor: '#22c55e' }}
+                      />
+                      <span className="text-sm font-medium">
+                        {client.invoicePaid ? (
+                          <span className="text-green-600 flex items-center gap-1">
+                            <Check size={16} /> Invoice Paid
+                          </span>
+                        ) : (
+                          <span className="text-gray-600">Mark as Paid</span>
+                        )}
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Status indicators */}
+                {client.billDueDate && new Date(client.billDueDate + 'T12:00:00') < today && !client.invoicePaid && (
+                  <div className="mt-2 p-2 rounded bg-red-100 text-red-700 text-sm flex items-center gap-2">
+                    <AlertTriangle size={16} />
+                    Invoice overdue!
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Paused Clients */}
+      {pausedClients.length > 0 && (
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <h2 className="text-xl font-bold mb-2" style={{ color: '#3d59ab' }}>
+            Paused Clients ({pausedClients.length})
+          </h2>
+          <div className="space-y-2">
+            {pausedClients.map((client, idx) => (
+              <div
+                key={idx}
+                className="p-3 rounded-lg flex items-center justify-between bg-gray-50 border border-gray-200"
+              >
+                <div>
+                  <h3 className="font-medium">{client.displayName || client.name}</h3>
+                  {client.pausedDate && (
+                    <p className="text-sm text-gray-500">
+                      Paused: {new Date(client.pausedDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </p>
+                  )}
+                  {client.billingNotes && (
+                    <p className="text-sm text-gray-500">{client.billingNotes}</p>
+                  )}
+                </div>
+                <span className="text-xs px-2 py-1 rounded bg-gray-200 text-gray-600">
+                  Paused
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Availability Calendar - Collapsed */}
+      <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+        <button
+          onClick={() => setShowCalendar(!showCalendar)}
+          className="w-full p-4 flex items-center justify-between hover:bg-gray-50"
+        >
+          <div className="flex items-center gap-2">
+            <Calendar size={24} style={{ color: '#3d59ab' }} />
+            <span className="text-lg font-bold" style={{ color: '#3d59ab' }}>
+              Availability Calendar
+            </span>
+            {blockedDates.length > 0 && (
+              <span className="text-sm px-2 py-1 rounded bg-red-100 text-red-700">
+                {blockedDates.length} blocked
+              </span>
+            )}
+          </div>
+          {showCalendar ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
+        </button>
+
+        {showCalendar && (
+          <div className="p-6 border-t">
+            <p className="text-gray-600 mb-4">
+              Click dates to block them from client selection
+            </p>
+
+            {/* Calendar navigation */}
+            <div className="flex items-center justify-between mb-4">
+              <button
+                onClick={prevMonth}
+                className="p-2 rounded hover:bg-gray-100"
+              >
+                <ChevronLeft size={20} />
+              </button>
+              <span className="font-bold">
+                {calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+              </span>
+              <button
+                onClick={nextMonth}
+                className="p-2 rounded hover:bg-gray-100"
+              >
+                <ChevronRight size={20} />
+              </button>
+            </div>
+
+            {/* Calendar grid */}
+            <div className="grid grid-cols-7 gap-1 mb-4">
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                <div key={day} className="text-center text-sm font-medium text-gray-500 py-2">
+                  {day}
+                </div>
+              ))}
+              {getDaysInMonth(calendarMonth).map((date, idx) => {
+                if (!date) return <div key={`empty-${idx}`} />;
+                const dateStr = date.toISOString().split('T')[0];
+                const isBlocked = blockedDates.includes(dateStr);
+                const isPast = date < new Date(today.toISOString().split('T')[0]);
+                const isToday = dateStr === today.toISOString().split('T')[0];
+
+                return (
+                  <button
+                    key={dateStr}
+                    onClick={() => !isPast && toggleBlockedDate(date)}
+                    disabled={isPast}
+                    className={`p-2 rounded-lg text-center transition-colors ${
+                      isPast
+                        ? 'text-gray-300 cursor-not-allowed'
+                        : isBlocked
+                        ? 'bg-red-500 text-white hover:bg-red-600'
+                        : isToday
+                        ? 'bg-blue-100 hover:bg-blue-200'
+                        : 'hover:bg-gray-100'
+                    }`}
+                  >
+                    {date.getDate()}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Blocked dates list */}
+            {blockedDates.length > 0 && (
+              <div className="p-3 rounded-lg bg-red-50 border border-red-200">
+                <p className="text-sm font-medium text-red-700 mb-2">
+                  {blockedDates.length} date{blockedDates.length > 1 ? 's' : ''} blocked:
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {blockedDates.sort().map(date => (
+                    <span
+                      key={date}
+                      className="text-xs px-2 py-1 rounded bg-red-100 text-red-700 flex items-center gap-1"
+                    >
+                      {formatDate(date)}
+                      <button onClick={() => updateBlockedDates(blockedDates.filter(d => d !== date))}>
+                        <X size={12} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -2555,190 +2896,12 @@ export default function AdminPage() {
 
         {/* Billing & Dates Section */}
         {activeSection === 'billing' && (
-          <div className="space-y-6">
-            {/* Bills Due Soon */}
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <h2 className="text-2xl font-bold mb-2" style={{ color: '#3d59ab' }}>
-                <CreditCard className="inline mr-2" size={28} />
-                Bills Due (Next 7 Days)
-              </h2>
-              <p className="text-gray-600 mb-6">
-                Clients with payment due within the next week
-              </p>
-
-              {getRenewalsThisWeek().length === 0 ? (
-                <div className="text-center py-8 text-gray-400">
-                  <CreditCard size={48} className="mx-auto mb-3 opacity-50" />
-                  <p>No bills due in the next 7 days</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {getRenewalsThisWeek().map((client, idx) => {
-                    const dueDate = client.billDueDate ? new Date(client.billDueDate + 'T12:00:00') : null;
-                    const isOverdue = dueDate && dueDate < new Date();
-                    return (
-                      <div
-                        key={idx}
-                        className={`p-4 rounded-lg border-2 ${isOverdue ? 'bg-red-50 border-red-300' : 'border-amber-200 bg-amber-50'}`}
-                      >
-                        <div className="flex items-center justify-between flex-wrap gap-2">
-                          <div className="flex-1">
-                            <h3 className="font-bold">{client.displayName || client.name}</h3>
-                            <p className="text-sm text-gray-600">
-                              ${client.planPrice || 0} + ${client.serviceFee || 0} service fee
-                            </p>
-                            {dueDate && (
-                              <p className={`text-sm font-medium ${isOverdue ? 'text-red-600' : 'text-amber-700'}`}>
-                                Due: {dueDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                                {isOverdue && ' (OVERDUE)'}
-                              </p>
-                            )}
-                            {client.deliveryDates?.length > 0 && (
-                              <p className="text-xs text-gray-500 mt-1">
-                                Deliveries: {client.deliveryDates.slice(0, 2).map(d =>
-                                  new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                                ).join(', ')}
-                                {client.deliveryDates.length > 2 && ` +${client.deliveryDates.length - 2} more`}
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => setSelectedClientForDetail(client)}
-                              className="px-3 py-2 rounded-lg border-2 text-sm font-medium hover:bg-white"
-                              style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
-                            >
-                              Set Dates
-                            </button>
-                            <button
-                              onClick={() => setSelectedClientForDetail(client)}
-                              className="px-3 py-2 rounded-lg text-white text-sm font-medium"
-                              style={{ backgroundColor: '#3d59ab' }}
-                            >
-                              Set Due Date
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* All Clients - Set Dates */}
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <h2 className="text-2xl font-bold mb-2" style={{ color: '#3d59ab' }}>
-                <Calendar className="inline mr-2" size={28} />
-                All Client Dates
-              </h2>
-              <p className="text-gray-600 mb-6">
-                Set delivery dates and bill due dates for each client
-              </p>
-
-              <div className="space-y-3">
-                {clients.filter(c => c.status === 'active').map((client, idx) => {
-                  const portalDates = clientPortalData[client.name]?.selectedDates || [];
-                  const hasPortalDates = portalDates.length > 0;
-                  const hasDates = client.deliveryDates?.length > 0;
-                  const hasDueDate = !!client.billDueDate;
-
-                  return (
-                    <div
-                      key={idx}
-                      className="p-4 rounded-lg border-2 flex items-center justify-between flex-wrap gap-3"
-                      style={{ borderColor: '#ebb582' }}
-                    >
-                      <div className="flex-1">
-                        <h3 className="font-bold">{client.displayName || client.name}</h3>
-                        <div className="text-sm text-gray-600 space-y-1">
-                          {hasDates ? (
-                            <p>
-                              <span className="text-green-600">Delivery dates:</span>{' '}
-                              {client.deliveryDates.slice(0, 2).map(d =>
-                                new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                              ).join(', ')}
-                              {client.deliveryDates.length > 2 && ` +${client.deliveryDates.length - 2} more`}
-                            </p>
-                          ) : hasPortalDates ? (
-                            <p className="text-purple-600">
-                              Portal dates pending sync ({portalDates.length} selected)
-                            </p>
-                          ) : (
-                            <p className="text-gray-400">No delivery dates set</p>
-                          )}
-                          {hasDueDate ? (
-                            <p>
-                              <span className="text-amber-600">Bill due:</span>{' '}
-                              {new Date(client.billDueDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                            </p>
-                          ) : (
-                            <p className="text-gray-400">No bill due date set</p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setSelectedClientForDetail(client)}
-                          className="px-3 py-2 rounded-lg border-2 text-sm font-medium hover:bg-gray-50"
-                          style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
-                        >
-                          Set Dates
-                        </button>
-                        <button
-                          onClick={() => setSelectedClientForDetail(client)}
-                          className="px-3 py-2 rounded-lg text-sm font-medium text-white"
-                          style={{ backgroundColor: '#f59e0b' }}
-                        >
-                          Set Due Date
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Paused Clients */}
-            {(() => {
-              const pausedClients = clients.filter(c => c.status === 'paused');
-              if (pausedClients.length === 0) return null;
-
-              return (
-                <div className="bg-white rounded-lg shadow-lg p-6">
-                  <h2 className="text-2xl font-bold mb-2" style={{ color: '#3d59ab' }}>
-                    Paused Clients ({pausedClients.length})
-                  </h2>
-                  <p className="text-gray-600 mb-4">
-                    Clients with paused subscriptions
-                  </p>
-                  <div className="space-y-2">
-                    {pausedClients.map((client, idx) => (
-                      <div
-                        key={idx}
-                        className="p-3 rounded-lg flex items-center justify-between bg-gray-50 border border-gray-200"
-                      >
-                        <div>
-                          <h3 className="font-medium">{client.displayName || client.name}</h3>
-                          {client.pausedDate && (
-                            <p className="text-sm text-gray-500">
-                              Paused: {new Date(client.pausedDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                            </p>
-                          )}
-                          {client.billingNotes && (
-                            <p className="text-sm text-gray-500">{client.billingNotes}</p>
-                          )}
-                        </div>
-                        <span className="text-xs px-2 py-1 rounded bg-gray-200 text-gray-600">
-                          Paused
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
+          <BillingDatesSection
+            clients={clients}
+            updateClients={updateClients}
+            blockedDates={blockedDates}
+            updateBlockedDates={updateBlockedDates}
+          />
         )}
 
         {/* Subscriptions Section - Removed, keeping for backwards compatibility */}
