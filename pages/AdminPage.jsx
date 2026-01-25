@@ -210,6 +210,474 @@ function formatDate(date) {
   return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+// Dashboard Section Component
+function DashboardSection({
+  weekStart,
+  weekEnd,
+  thisWeekDeliveries,
+  thisWeekCompleted,
+  renewalsThisWeek,
+  problemsThisWeek,
+  autoTasks,
+  customTasks,
+  updateCustomTasks,
+  newTask,
+  setNewTask,
+  addCustomTask,
+  toggleTaskComplete,
+  deleteCustomTask,
+  groceryBills,
+  newGroceryBill,
+  setNewGroceryBill,
+  addGroceryBill,
+  deleteGroceryBill,
+  menuItems,
+  recipes,
+  getRecipeCost,
+  clients,
+  clientPortalData
+}) {
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [showGroceryAnalysis, setShowGroceryAnalysis] = useState(false);
+
+  // Calculate weekly food cost from menu items
+  const calculateWeeklyFoodCost = () => {
+    let totalCost = 0;
+    const approvedItems = menuItems.filter(item => item.approved);
+
+    approvedItems.forEach(item => {
+      const portions = item.portions || 1;
+      ['protein', 'veg', 'starch'].forEach(type => {
+        if (item[type]) {
+          const recipe = recipes[type]?.find(r => r.name === item[type]);
+          if (recipe) {
+            totalCost += getRecipeCost(recipe) * portions;
+          }
+        }
+      });
+      if (item.extras) {
+        item.extras.forEach(extra => {
+          const category = ['sauces', 'breakfast', 'soups'].find(cat =>
+            recipes[cat]?.find(r => r.name === extra)
+          );
+          if (category) {
+            const recipe = recipes[category].find(r => r.name === extra);
+            if (recipe) {
+              totalCost += getRecipeCost(recipe) * portions;
+            }
+          }
+        });
+      }
+    });
+
+    return totalCost;
+  };
+
+  // Get this week's grocery spending
+  const getThisWeekGrocerySpending = () => {
+    const weekStartDate = new Date(weekStart);
+    const weekEndDate = new Date(weekEnd);
+
+    return groceryBills
+      .filter(bill => {
+        const billDate = new Date(bill.date);
+        return billDate >= weekStartDate && billDate <= weekEndDate;
+      })
+      .reduce((sum, bill) => sum + (bill.amount || 0), 0);
+  };
+
+  // Get monthly grocery data for trend
+  const getMonthlyGroceryData = () => {
+    const months = {};
+    groceryBills.forEach(bill => {
+      const date = new Date(bill.date);
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      if (!months[monthKey]) {
+        months[monthKey] = { spending: 0, calculated: 0 };
+      }
+      months[monthKey].spending += bill.amount || 0;
+    });
+    return months;
+  };
+
+  const weeklyFoodCost = calculateWeeklyFoodCost();
+  const actualSpending = getThisWeekGrocerySpending();
+  const difference = actualSpending - weeklyFoodCost;
+  const wastePercent = weeklyFoodCost > 0 ? ((difference / weeklyFoodCost) * 100).toFixed(1) : 0;
+
+  // Filter auto tasks to show only relevant ones
+  const filteredAutoTasks = autoTasks.filter(task => {
+    const category = task.category?.toLowerCase() || '';
+    // Show billing tasks, menu tasks, substitution requests
+    if (category.includes('billing') || category.includes('menu') || category.includes('substitution')) {
+      return true;
+    }
+    // Show bags follow-up only if there are missing bags
+    if (category.includes('bags') && task.details?.length > 0) {
+      return true;
+    }
+    return false;
+  });
+
+  // Combine auto tasks and custom tasks for display
+  const allTasks = [
+    ...filteredAutoTasks.map(t => ({ ...t, isAuto: true, id: `auto-${t.title}` })),
+    ...customTasks.map(t => ({ ...t, isAuto: false }))
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* 1. This Week at a Glance */}
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <h2 className="text-2xl font-bold mb-4" style={{ color: '#3d59ab' }}>
+          This Week at a Glance
+        </h2>
+        <p className="text-gray-500 mb-6">
+          {formatDate(weekStart)} - {formatDate(weekEnd)}
+        </p>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {/* Pending Deliveries */}
+          <div className="p-4 rounded-lg" style={{ backgroundColor: '#dbeafe' }}>
+            <div className="flex items-center gap-2 mb-2">
+              <Truck size={24} style={{ color: '#3d59ab' }} />
+              <span className="text-sm font-medium text-gray-600">Pending</span>
+            </div>
+            <p className="text-3xl font-bold" style={{ color: '#3d59ab' }}>
+              {thisWeekDeliveries.length}
+            </p>
+            <p className="text-sm text-gray-500">deliveries</p>
+          </div>
+
+          {/* Completed */}
+          <div className="p-4 rounded-lg" style={{ backgroundColor: '#dcfce7' }}>
+            <div className="flex items-center gap-2 mb-2">
+              <Check size={24} className="text-green-600" />
+              <span className="text-sm font-medium text-gray-600">Completed</span>
+            </div>
+            <p className="text-3xl font-bold text-green-600">
+              {thisWeekCompleted.length}
+            </p>
+            <p className="text-sm text-gray-500">deliveries</p>
+          </div>
+
+          {/* Renewals */}
+          <div className="p-4 rounded-lg" style={{ backgroundColor: '#fef3c7' }}>
+            <div className="flex items-center gap-2 mb-2">
+              <RefreshCw size={24} className="text-amber-600" />
+              <span className="text-sm font-medium text-gray-600">Renewals</span>
+            </div>
+            <p className="text-3xl font-bold text-amber-600">
+              {renewalsThisWeek.length}
+            </p>
+            <p className="text-sm text-gray-500">due</p>
+          </div>
+
+          {/* Problems */}
+          <div className="p-4 rounded-lg" style={{ backgroundColor: problemsThisWeek.length > 0 ? '#fee2e2' : '#f3f4f6' }}>
+            <div className="flex items-center gap-2 mb-2">
+              <AlertTriangle size={24} className={problemsThisWeek.length > 0 ? 'text-red-600' : 'text-gray-400'} />
+              <span className="text-sm font-medium text-gray-600">Problems</span>
+            </div>
+            <p className={`text-3xl font-bold ${problemsThisWeek.length > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+              {problemsThisWeek.length}
+            </p>
+            <p className="text-sm text-gray-500">flagged</p>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. To Do This Week */}
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-2xl font-bold flex items-center gap-2" style={{ color: '#3d59ab' }}>
+            <ClipboardList size={28} />
+            To Do This Week
+          </h2>
+          <button
+            onClick={() => setShowAddTask(!showAddTask)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-white"
+            style={{ backgroundColor: '#3d59ab' }}
+          >
+            <Plus size={18} />
+            Add Task
+          </button>
+        </div>
+
+        {/* Add task form */}
+        {showAddTask && (
+          <div className="mb-4 p-4 rounded-lg border-2" style={{ borderColor: '#ebb582', backgroundColor: '#f9f9ed' }}>
+            <div className="flex gap-3">
+              <input
+                type="text"
+                value={newTask.title}
+                onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
+                placeholder="Task description..."
+                className="flex-1 p-2 border-2 rounded-lg"
+                style={{ borderColor: '#ebb582' }}
+              />
+              <button
+                onClick={() => {
+                  addCustomTask();
+                  setShowAddTask(false);
+                }}
+                className="px-4 py-2 rounded-lg text-white"
+                style={{ backgroundColor: '#3d59ab' }}
+              >
+                Add
+              </button>
+              <button
+                onClick={() => setShowAddTask(false)}
+                className="px-4 py-2 rounded-lg border-2"
+                style={{ borderColor: '#ebb582' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Tasks list */}
+        <div className="space-y-2">
+          {allTasks.length === 0 ? (
+            <p className="text-gray-500 text-center py-4">All caught up! No tasks for this week.</p>
+          ) : (
+            allTasks.map((task) => (
+              <div
+                key={task.id}
+                className={`p-3 rounded-lg flex items-start gap-3 ${task.completed ? 'opacity-50' : ''}`}
+                style={{ backgroundColor: '#f9f9ed' }}
+              >
+                {/* Checkbox */}
+                <button
+                  onClick={() => {
+                    if (task.isAuto) {
+                      // For auto tasks, add to custom tasks as completed
+                      updateCustomTasks([...customTasks, { ...task, id: Date.now(), completed: true }]);
+                    } else {
+                      toggleTaskComplete(task.id);
+                    }
+                  }}
+                  className={`w-6 h-6 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                    task.completed
+                      ? 'bg-green-500 border-green-500'
+                      : 'border-gray-300 bg-white hover:border-green-400'
+                  }`}
+                >
+                  {task.completed && <Check size={14} className="text-white" />}
+                </button>
+
+                {/* Task content */}
+                <div className="flex-1">
+                  <p className={`font-medium ${task.completed ? 'line-through text-gray-400' : ''}`}>
+                    {task.title}
+                  </p>
+                  {task.category && (
+                    <p className="text-xs text-gray-500">{task.category}</p>
+                  )}
+                  {task.details && task.details.length > 0 && !task.completed && (
+                    <ul className="mt-1 text-sm text-gray-600">
+                      {task.details.slice(0, 3).map((detail, i) => (
+                        <li key={i} className="text-xs">• {detail}</li>
+                      ))}
+                      {task.details.length > 3 && (
+                        <li className="text-xs text-gray-400">+{task.details.length - 3} more</li>
+                      )}
+                    </ul>
+                  )}
+                </div>
+
+                {/* Delete button for custom tasks */}
+                {!task.isAuto && (
+                  <button
+                    onClick={() => deleteCustomTask(task.id)}
+                    className="text-red-500 hover:text-red-700 p-1"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* 3. Grocery Input & 4. Weekly Food Cost */}
+      <div className="grid md:grid-cols-2 gap-6">
+        {/* Grocery Input */}
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <h3 className="text-xl font-bold mb-4 flex items-center gap-2" style={{ color: '#3d59ab' }}>
+            <Receipt size={24} />
+            Grocery Input
+          </h3>
+          <div className="space-y-3">
+            <div className="grid grid-cols-3 gap-2">
+              <input
+                type="date"
+                value={newGroceryBill.date}
+                onChange={(e) => setNewGroceryBill({ ...newGroceryBill, date: e.target.value })}
+                className="p-2 border-2 rounded-lg text-sm"
+                style={{ borderColor: '#ebb582' }}
+              />
+              <input
+                type="number"
+                value={newGroceryBill.amount}
+                onChange={(e) => setNewGroceryBill({ ...newGroceryBill, amount: e.target.value })}
+                placeholder="Amount"
+                className="p-2 border-2 rounded-lg text-sm"
+                style={{ borderColor: '#ebb582' }}
+              />
+              <input
+                type="text"
+                value={newGroceryBill.store || ''}
+                onChange={(e) => setNewGroceryBill({ ...newGroceryBill, store: e.target.value })}
+                placeholder="Store"
+                className="p-2 border-2 rounded-lg text-sm"
+                style={{ borderColor: '#ebb582' }}
+              />
+            </div>
+            <button
+              onClick={addGroceryBill}
+              className="w-full py-2 rounded-lg text-white"
+              style={{ backgroundColor: '#3d59ab' }}
+            >
+              Add Bill
+            </button>
+
+            {/* Recent bills */}
+            {groceryBills.length > 0 && (
+              <div className="mt-4 pt-4 border-t">
+                <p className="text-sm font-medium text-gray-600 mb-2">Recent Bills</p>
+                <div className="space-y-1 max-h-32 overflow-y-auto">
+                  {groceryBills.slice(-5).reverse().map(bill => (
+                    <div key={bill.id} className="flex justify-between items-center text-sm p-2 rounded" style={{ backgroundColor: '#f9f9ed' }}>
+                      <span>{formatDate(bill.date)} - {bill.store || 'N/A'}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">${bill.amount?.toFixed(2)}</span>
+                        <button
+                          onClick={() => deleteGroceryBill(bill.id)}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Weekly Food Cost */}
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <h3 className="text-xl font-bold mb-4 flex items-center gap-2" style={{ color: '#3d59ab' }}>
+            <DollarSign size={24} />
+            Weekly Food Cost
+          </h3>
+          <div className="space-y-4">
+            <div className="p-4 rounded-lg" style={{ backgroundColor: '#f9f9ed' }}>
+              <p className="text-sm text-gray-600">Calculated from Menu</p>
+              <p className="text-3xl font-bold" style={{ color: '#3d59ab' }}>
+                ${weeklyFoodCost.toFixed(2)}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Based on approved menu items × portions
+              </p>
+            </div>
+            <div className="p-4 rounded-lg" style={{ backgroundColor: actualSpending > 0 ? '#dcfce7' : '#f3f4f6' }}>
+              <p className="text-sm text-gray-600">This Week's Spending</p>
+              <p className={`text-3xl font-bold ${actualSpending > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                ${actualSpending.toFixed(2)}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 5. Grocery Analysis (Collapsible) */}
+      <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+        <button
+          onClick={() => setShowGroceryAnalysis(!showGroceryAnalysis)}
+          className="w-full p-4 flex justify-between items-center hover:bg-gray-50"
+        >
+          <h3 className="text-xl font-bold flex items-center gap-2" style={{ color: '#3d59ab' }}>
+            <TrendingUp size={24} />
+            Grocery Analysis
+          </h3>
+          <span className="text-2xl text-gray-400">
+            {showGroceryAnalysis ? '−' : '+'}
+          </span>
+        </button>
+
+        {showGroceryAnalysis && (
+          <div className="p-6 pt-0 border-t">
+            <div className="grid md:grid-cols-4 gap-4 mb-6">
+              {/* Actual vs Calculated */}
+              <div className="p-4 rounded-lg" style={{ backgroundColor: '#f9f9ed' }}>
+                <p className="text-sm text-gray-600">Actual Spending</p>
+                <p className="text-2xl font-bold" style={{ color: '#3d59ab' }}>
+                  ${actualSpending.toFixed(2)}
+                </p>
+              </div>
+              <div className="p-4 rounded-lg" style={{ backgroundColor: '#f9f9ed' }}>
+                <p className="text-sm text-gray-600">Calculated Cost</p>
+                <p className="text-2xl font-bold" style={{ color: '#3d59ab' }}>
+                  ${weeklyFoodCost.toFixed(2)}
+                </p>
+              </div>
+              <div className="p-4 rounded-lg" style={{ backgroundColor: difference > 0 ? '#fee2e2' : '#dcfce7' }}>
+                <p className="text-sm text-gray-600">Difference</p>
+                <p className={`text-2xl font-bold ${difference > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  {difference > 0 ? '+' : ''}${difference.toFixed(2)}
+                </p>
+              </div>
+              <div className="p-4 rounded-lg" style={{ backgroundColor: parseFloat(wastePercent) > 10 ? '#fee2e2' : '#dcfce7' }}>
+                <p className="text-sm text-gray-600">Waste %</p>
+                <p className={`text-2xl font-bold ${parseFloat(wastePercent) > 10 ? 'text-red-600' : 'text-green-600'}`}>
+                  {wastePercent}%
+                </p>
+              </div>
+            </div>
+
+            {/* Monthly Trend */}
+            <div>
+              <h4 className="font-bold mb-3" style={{ color: '#3d59ab' }}>Monthly Trend</h4>
+              <div className="space-y-2">
+                {Object.entries(getMonthlyGroceryData())
+                  .sort((a, b) => b[0].localeCompare(a[0]))
+                  .slice(0, 6)
+                  .map(([month, data]) => {
+                    const monthDate = new Date(month + '-01');
+                    const monthName = monthDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+                    return (
+                      <div key={month} className="flex items-center gap-4 p-2 rounded" style={{ backgroundColor: '#f9f9ed' }}>
+                        <span className="w-24 text-sm font-medium">{monthName}</span>
+                        <div className="flex-1 h-4 bg-gray-200 rounded overflow-hidden">
+                          <div
+                            className="h-full rounded"
+                            style={{
+                              width: `${Math.min((data.spending / 1000) * 100, 100)}%`,
+                              backgroundColor: '#3d59ab'
+                            }}
+                          />
+                        </div>
+                        <span className="w-24 text-right font-bold">${data.spending.toFixed(0)}</span>
+                      </div>
+                    );
+                  })}
+                {Object.keys(getMonthlyGroceryData()).length === 0 && (
+                  <p className="text-gray-500 text-center py-4">No grocery data yet</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Styled Menu Card Component - matches client portal
 function StyledMenuCard({ client, date, menuItems }) {
   const displayDate = new Date(date + 'T12:00:00').toLocaleDateString('en-US', {
@@ -1949,201 +2417,34 @@ export default function AdminPage() {
           ))}
         </div>
 
-        {/* Overview Section (Combined Dashboard + Tasks) */}
+        {/* Dashboard Section */}
         {activeSection === 'overview' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <h2 className="text-2xl font-bold mb-4" style={{ color: '#3d59ab' }}>
-                This Week at a Glance
-              </h2>
-              <p className="text-gray-500 mb-6">
-                {formatDate(weekStart)} - {formatDate(weekEnd)}
-              </p>
-
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                {/* Pending Deliveries */}
-                <div className="p-4 rounded-lg" style={{ backgroundColor: '#dbeafe' }}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Truck size={24} style={{ color: '#3d59ab' }} />
-                    <span className="text-sm font-medium text-gray-600">Pending</span>
-                  </div>
-                  <p className="text-3xl font-bold" style={{ color: '#3d59ab' }}>
-                    {thisWeekDeliveries.length}
-                  </p>
-                  <p className="text-sm text-gray-500">deliveries</p>
-                </div>
-
-                {/* Completed */}
-                <div className="p-4 rounded-lg" style={{ backgroundColor: '#dcfce7' }}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Check size={24} className="text-green-600" />
-                    <span className="text-sm font-medium text-gray-600">Completed</span>
-                  </div>
-                  <p className="text-3xl font-bold text-green-600">
-                    {thisWeekCompleted.length}
-                  </p>
-                  <p className="text-sm text-gray-500">deliveries</p>
-                </div>
-
-                {/* Renewals */}
-                <div className="p-4 rounded-lg" style={{ backgroundColor: '#fef3c7' }}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <RefreshCw size={24} className="text-amber-600" />
-                    <span className="text-sm font-medium text-gray-600">Renewals</span>
-                  </div>
-                  <p className="text-3xl font-bold text-amber-600">
-                    {renewalsThisWeek.length}
-                  </p>
-                  <p className="text-sm text-gray-500">due</p>
-                </div>
-
-                {/* Pending Approvals */}
-                <div
-                  className="p-4 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                  style={{ backgroundColor: pendingApprovals > 0 ? '#ede9fe' : '#f3f4f6' }}
-                  onClick={() => pendingApprovals > 0 && setActiveSection('approvals')}
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <Eye size={24} className={pendingApprovals > 0 ? 'text-purple-600' : 'text-gray-400'} />
-                    <span className="text-sm font-medium text-gray-600">Approvals</span>
-                  </div>
-                  <p className={`text-3xl font-bold ${pendingApprovals > 0 ? 'text-purple-600' : 'text-gray-400'}`}>
-                    {pendingApprovals}
-                  </p>
-                  <p className="text-sm text-gray-500">pending</p>
-                </div>
-
-                {/* Problems */}
-                <div className="p-4 rounded-lg" style={{ backgroundColor: problemsThisWeek.length > 0 ? '#fee2e2' : '#f3f4f6' }}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <AlertTriangle size={24} className={problemsThisWeek.length > 0 ? 'text-red-600' : 'text-gray-400'} />
-                    <span className="text-sm font-medium text-gray-600">Problems</span>
-                  </div>
-                  <p className={`text-3xl font-bold ${problemsThisWeek.length > 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                    {problemsThisWeek.length}
-                  </p>
-                  <p className="text-sm text-gray-500">flagged</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Problems list if any */}
-            {problemsThisWeek.length > 0 && (
-              <div className="bg-white rounded-lg shadow-lg p-6">
-                <h3 className="text-lg font-bold mb-4 text-red-600 flex items-center gap-2">
-                  <AlertTriangle size={20} />
-                  Flagged Problems
-                </h3>
-                <div className="space-y-2">
-                  {problemsThisWeek.map((entry, idx) => (
-                    <div key={idx} className="p-3 rounded-lg bg-red-50 border border-red-200">
-                      <p className="font-medium">{entry.clientName}</p>
-                      <p className="text-sm text-gray-600">{formatDate(entry.date)} - {entry.problem}</p>
-                      {entry.problemNotes && <p className="text-sm text-gray-500 mt-1">{entry.problemNotes}</p>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Auto-generated To Do List */}
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <h2 className="text-2xl font-bold mb-4" style={{ color: '#3d59ab' }}>
-                <ClipboardList size={28} className="inline mr-2" />
-                To Do This Week
-              </h2>
-              <div className="space-y-4">
-                {autoTasks.length === 0 ? (
-                  <p className="text-gray-500 text-center py-4">All caught up! No tasks for this week.</p>
-                ) : (
-                  autoTasks.map((task, idx) => (
-                    <div
-                      key={idx}
-                      className="p-4 rounded-lg border-2"
-                      style={{ borderColor: task.color, backgroundColor: `${task.color}10` }}
-                    >
-                      <div className="flex items-start gap-3">
-                        <task.icon size={24} style={{ color: task.color }} />
-                        <div className="flex-1">
-                          <h3 className="font-bold">{task.title}</h3>
-                          <p className="text-sm text-gray-500">{task.category}</p>
-                          {task.details && task.details.length > 0 && (
-                            <ul className="mt-2 text-sm text-gray-600">
-                              {task.details.slice(0, 3).map((detail, i) => (
-                                <li key={i}>• {detail}</li>
-                              ))}
-                              {task.details.length > 3 && (
-                                <li className="text-gray-400">...and {task.details.length - 3} more</li>
-                              )}
-                            </ul>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            {/* Custom Tasks */}
-            {customTasks.length > 0 && (
-              <div className="bg-white rounded-lg shadow-lg p-6">
-                <h3 className="text-xl font-bold mb-4" style={{ color: '#3d59ab' }}>Custom Tasks</h3>
-                <div className="space-y-2">
-                  {customTasks.map((task, idx) => (
-                    <div
-                      key={idx}
-                      className="p-3 rounded-lg flex items-center justify-between"
-                      style={{ backgroundColor: '#f9f9ed' }}
-                    >
-                      <div>
-                        <p className="font-medium">{task.title}</p>
-                        {task.notes && <p className="text-sm text-gray-500">{task.notes}</p>}
-                      </div>
-                      <button
-                        onClick={() => updateCustomTasks(customTasks.filter((_, i) => i !== idx))}
-                        className="text-red-500 hover:text-red-700"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Quick links */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Link
-                to="/"
-                className="p-4 bg-white rounded-lg shadow hover:shadow-md transition-shadow text-center"
-              >
-                <ChefHat size={32} className="mx-auto mb-2" style={{ color: '#3d59ab' }} />
-                <p className="font-medium">Menu Planning</p>
-              </Link>
-              <Link
-                to="/driver"
-                className="p-4 bg-white rounded-lg shadow hover:shadow-md transition-shadow text-center"
-              >
-                <Truck size={32} className="mx-auto mb-2" style={{ color: '#3d59ab' }} />
-                <p className="font-medium">Driver View</p>
-              </Link>
-              <button
-                onClick={() => setActiveSection('billing')}
-                className="p-4 bg-white rounded-lg shadow hover:shadow-md transition-shadow text-center"
-              >
-                <CreditCard size={32} className="mx-auto mb-2" style={{ color: '#3d59ab' }} />
-                <p className="font-medium">Billing & Dates</p>
-              </button>
-              <button
-                onClick={() => setActiveSection('settings')}
-                className="p-4 bg-white rounded-lg shadow hover:shadow-md transition-shadow text-center"
-              >
-                <Settings size={32} className="mx-auto mb-2" style={{ color: '#3d59ab' }} />
-                <p className="font-medium">Settings</p>
-              </button>
-            </div>
-          </div>
+          <DashboardSection
+            weekStart={weekStart}
+            weekEnd={weekEnd}
+            thisWeekDeliveries={thisWeekDeliveries}
+            thisWeekCompleted={thisWeekCompleted}
+            renewalsThisWeek={renewalsThisWeek}
+            problemsThisWeek={problemsThisWeek}
+            autoTasks={autoTasks}
+            customTasks={customTasks}
+            updateCustomTasks={updateCustomTasks}
+            newTask={newTask}
+            setNewTask={setNewTask}
+            addCustomTask={addCustomTask}
+            toggleTaskComplete={toggleTaskComplete}
+            deleteCustomTask={deleteCustomTask}
+            groceryBills={groceryBills}
+            newGroceryBill={newGroceryBill}
+            setNewGroceryBill={setNewGroceryBill}
+            addGroceryBill={addGroceryBill}
+            deleteGroceryBill={deleteGroceryBill}
+            menuItems={menuItems}
+            recipes={recipes}
+            getRecipeCost={getRecipeCost}
+            clients={clients}
+            clientPortalData={clientPortalData}
+          />
         )}
 
         {/* Menu Planner Section */}
