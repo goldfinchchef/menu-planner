@@ -1157,6 +1157,14 @@ export default function AdminPage() {
   const [menuDate, setMenuDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedClients, setSelectedClients] = useState([]);
   const [newMenuItem, setNewMenuItem] = useState(DEFAULT_NEW_MENU_ITEM);
+  const [selectedWeekId, setSelectedWeekId] = useState(() => getWeekIdFromDate(new Date().toISOString().split('T')[0]));
+
+  // Unlock week by ID
+  const unlockWeekById = (weekId) => {
+    if (!weeks[weekId]) return;
+    const updated = { ...weeks[weekId], status: 'unlocked' };
+    updateWeeks({ ...weeks, [weekId]: updated });
+  };
 
   // Recipe editing state
   const [newRecipe, setNewRecipe] = useState(DEFAULT_NEW_RECIPE);
@@ -1919,12 +1927,11 @@ export default function AdminPage() {
         {/* Navigation */}
         <div className="flex gap-2 mb-6 overflow-x-auto">
           {[
-            { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+            { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
+            { id: 'menu', label: 'Menu Planner', icon: Utensils },
             { id: 'billing', label: 'Billing & Dates', icon: CreditCard },
-            { id: 'recipes', label: 'Recipes', icon: FileText },
-            { id: 'ingredients', label: 'Ingredients', icon: Package },
             { id: 'clients', label: 'Clients', icon: Users },
-            { id: 'settings', label: 'Settings', icon: Settings }
+            { id: 'ingredients', label: 'Ingredients', icon: Package }
           ].map(section => (
             <button
               key={section.id}
@@ -2145,17 +2152,25 @@ export default function AdminPage() {
             menuDate={menuDate}
             setMenuDate={setMenuDate}
             clients={clients.filter(c => c.status === 'active')}
+            allClients={clients}
             selectedClients={selectedClients}
             setSelectedClients={setSelectedClients}
             recipes={recipes}
             newMenuItem={newMenuItem}
             setNewMenuItem={setNewMenuItem}
             menuItems={menuItems}
+            setMenuItems={updateMenuItems}
             addMenuItem={addMenuItem}
             clearMenu={clearMenu}
             deleteMenuItem={deleteMenuItem}
             getOrdersByClient={getOrdersByClient}
-            onFinishReview={() => setActiveSection('approvals')}
+            clientPortalData={clientPortalData}
+            weeklyTasks={weeklyTasks}
+            weeks={weeks}
+            selectedWeekId={selectedWeekId}
+            setSelectedWeekId={setSelectedWeekId}
+            lockWeekAndSnapshot={lockWeekWithSnapshot}
+            unlockWeekById={unlockWeekById}
           />
         )}
 
