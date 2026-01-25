@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { Check, Clock, ChevronDown, ChevronUp } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Check, ChevronDown, ChevronUp, Utensils } from 'lucide-react';
 
 export default function KDSTab({
   menuItems,
@@ -9,8 +8,7 @@ export default function KDSTab({
   toggleDishComplete,
   allDishesComplete,
   completeAllOrders,
-  getKDSView,
-  pendingApprovalCount = 0
+  getKDSView
 }) {
   const [expandedTiles, setExpandedTiles] = useState({});
   const kdsView = getKDSView();
@@ -36,30 +34,6 @@ export default function KDSTab({
           </button>
         )}
       </div>
-
-      {/* Show pending approvals notice */}
-      {pendingApprovalCount > 0 && Object.keys(kdsView).length === 0 && (
-        <div className="mb-6 p-4 rounded-lg border-2 border-amber-300 bg-amber-50">
-          <div className="flex items-start gap-3">
-            <Clock size={24} className="text-amber-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="font-medium text-amber-800">
-                {pendingApprovalCount} menu{pendingApprovalCount > 1 ? 's' : ''} waiting for approval
-              </p>
-              <p className="text-sm text-amber-700 mt-1">
-                Menus need to be approved before they appear here for cooking.
-              </p>
-              <Link
-                to="/admin?section=menu-approval"
-                className="inline-flex items-center gap-2 mt-3 px-4 py-2 rounded-lg text-white text-sm font-medium"
-                style={{ backgroundColor: '#3d59ab' }}
-              >
-                Go to Menu Approval
-              </Link>
-            </div>
-          </div>
-        </div>
-      )}
 
       {Object.keys(kdsView).length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -159,9 +133,13 @@ export default function KDSTab({
           })}
         </div>
       ) : (
-        pendingApprovalCount === 0 && (
-          <p className="text-gray-500">No orders yet. Create menus in the Menu tab and approve them to see dishes here.</p>
-        )
+        <div className="text-center py-12">
+          <Utensils size={48} className="mx-auto mb-4 text-gray-300" />
+          <p className="text-gray-500 text-lg">No dishes to cook yet</p>
+          <p className="text-gray-400 text-sm mt-2">
+            Approved menus will appear here when ready for cooking.
+          </p>
+        </div>
       )}
     </div>
   );

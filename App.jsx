@@ -575,7 +575,6 @@ export default function App() {
             allDishesComplete={allDishesComplete}
             completeAllOrders={completeAllOrders}
             getKDSView={getKDSView}
-            pendingApprovalCount={menuItems.filter(item => !item.approved).length}
           />
         )}
 
