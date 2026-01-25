@@ -409,6 +409,17 @@ export default function ClientsTab({
               Pickup (exclude from delivery routes)
             </label>
           </div>
+          <FormField label="Menu Selection">
+            <select
+              value={newClient.chefChoice === false ? 'client' : 'chef'}
+              onChange={(e) => setNewClient({ ...newClient, chefChoice: e.target.value === 'chef' })}
+              className={inputStyle}
+              style={borderStyle}
+            >
+              <option value="chef">Chef Choice (Chef Paula picks)</option>
+              <option value="client">Client Picks (Client selects ingredients)</option>
+            </select>
+          </FormField>
         </div>
 
         {/* Contacts Section */}
@@ -638,6 +649,17 @@ export default function ClientsTab({
                           Pickup
                         </label>
                       </div>
+                      <FormField label="Menu Selection">
+                        <select
+                          value={editingClient.chefChoice === false ? 'client' : 'chef'}
+                          onChange={(e) => setEditingClient({ ...editingClient, chefChoice: e.target.value === 'chef' })}
+                          className={inputStyle}
+                          style={borderStyle}
+                        >
+                          <option value="chef">Chef Choice (Chef Paula picks)</option>
+                          <option value="client">Client Picks (Client selects ingredients)</option>
+                        </select>
+                      </FormField>
                     </div>
 
                     {/* Contacts Section for Edit */}

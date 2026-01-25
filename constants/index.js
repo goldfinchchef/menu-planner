@@ -71,7 +71,8 @@ export const DEFAULT_NEW_SUBSCRIPTION = {
   honeyBookLink: '',
   contacts: [{ ...DEFAULT_CONTACT }],
   deliveryDates: [],  // Next 4 delivery dates
-  billDueDate: ''     // When payment is due
+  billDueDate: '',    // When payment is due
+  chefChoice: true    // true = Chef picks menu, false = client picks ingredients
 };
 
 // Legacy alias for backwards compatibility

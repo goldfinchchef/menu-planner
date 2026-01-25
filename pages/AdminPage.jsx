@@ -4,7 +4,7 @@ import {
   ChefHat, Home, Calendar, Truck, AlertTriangle, RefreshCw,
   Plus, Trash2, Edit2, Edit3, Check, X, Settings, ClipboardList,
   LayoutDashboard, Users, MapPin, ChevronLeft, ChevronRight,
-  Package, CreditCard, FileText, ShoppingBag, Eye, Utensils,
+  Package, CreditCard, FileText, ShoppingBag, ShoppingCart, Eye, Utensils,
   ExternalLink, Copy, DollarSign, TrendingUp, Receipt
 } from 'lucide-react';
 import { ZONES, DEFAULT_NEW_DRIVER, DEFAULT_NEW_MENU_ITEM, DEFAULT_NEW_INGREDIENT, DEFAULT_NEW_RECIPE, STORE_SECTIONS } from '../constants';
@@ -389,9 +389,12 @@ function StyledMenuCard({ client, date, menuItems }) {
 }
 
 // Menu Approval Section Component
-function MenuApprovalSection({ clients, menuItems, updateMenuItems, lockWeekWithSnapshot, weeklyTasks = {} }) {
+function MenuApprovalSection({ clients, menuItems, updateMenuItems, lockWeekWithSnapshot, weeklyTasks = {}, clientPortalData = {}, recipes = {} }) {
   const navigate = useNavigate();
   const today = new Date().toISOString().split('T')[0];
+
+  // State for meal pairing for clients who picked ingredients
+  const [mealPairings, setMealPairings] = useState({});
 
   // Get the Monday of current week as the week identifier
   const getWeekStart = () => {
@@ -500,6 +503,117 @@ function MenuApprovalSection({ clients, menuItems, updateMenuItems, lockWeekWith
       blocked: false
     };
   };
+
+  // Get clients with ingredient picks (chefChoice = false who submitted picks)
+  const getClientsWithPicks = () => {
+    return clients.filter(client => {
+      if (client.status !== 'active' || client.chefChoice !== false) return false;
+      const portalInfo = clientPortalData[client.name];
+      return portalInfo?.ingredientPicks?.submittedAt;
+    }).map(client => {
+      const picks = clientPortalData[client.name]?.ingredientPicks || {};
+      return {
+        client,
+        picks,
+        mealsPerWeek: picks.mealsPerWeek || client.mealsPerWeek || 3
+      };
+    });
+  };
+
+  // Initialize meal pairing for a client
+  const initializePairing = (clientName, mealsPerWeek) => {
+    if (mealPairings[clientName]) return;
+    const meals = Array(mealsPerWeek).fill(null).map(() => ({
+      protein: '',
+      veg: '',
+      starch: ''
+    }));
+    setMealPairings(prev => ({ ...prev, [clientName]: meals }));
+  };
+
+  // Update a meal pairing
+  const updateMealPairing = (clientName, mealIndex, field, value) => {
+    setMealPairings(prev => {
+      const meals = [...(prev[clientName] || [])];
+      meals[mealIndex] = { ...meals[mealIndex], [field]: value };
+      return { ...prev, [clientName]: meals };
+    });
+  };
+
+  // Check if all meals are paired for a client
+  const areAllMealsPaired = (clientName) => {
+    const meals = mealPairings[clientName];
+    if (!meals) return false;
+    return meals.every(m => m.protein && m.veg && m.starch);
+  };
+
+  // Get available options for a field (items not yet used in other meals)
+  const getAvailableOptions = (clientName, picks, field, currentMealIndex) => {
+    const meals = mealPairings[clientName] || [];
+    // Map field names to picks array names
+    const fieldToPicksKey = {
+      'protein': 'proteins',
+      'veg': 'veggies',
+      'veggie': 'veggies',
+      'starch': 'starches'
+    };
+    const allOptions = picks[fieldToPicksKey[field]] || [];
+    const usedInOtherMeals = meals
+      .filter((_, idx) => idx !== currentMealIndex)
+      .map(m => m[field === 'veggie' ? 'veg' : field])
+      .filter(Boolean);
+    return allOptions.filter(opt => !usedInOtherMeals.includes(opt));
+  };
+
+  // Convert paired meals to menu items
+  const createMenuItemsFromPairing = (client, meals, date) => {
+    const portions = client.portions || client.persons || 1;
+    return meals.map((meal, idx) => ({
+      id: `${client.name}-${date}-${idx}-${Date.now()}`,
+      clientName: client.name,
+      date,
+      portions,
+      protein: meal.protein,
+      veg: meal.veg,
+      starch: meal.starch,
+      extras: [],
+      approved: false,
+      fromClientPicks: true
+    }));
+  };
+
+  // Approve paired meals for a client
+  const approvePairedMeals = (client) => {
+    const meals = mealPairings[client.name];
+    if (!meals || !areAllMealsPaired(client.name)) {
+      alert('Please pair all meals before approving.');
+      return;
+    }
+
+    // Get the next delivery date for this client
+    const portalDates = clientPortalData[client.name]?.selectedDates || [];
+    const clientDates = portalDates.length > 0 ? portalDates : (client.deliveryDates || []);
+    const nextDate = clientDates.find(d => d >= today);
+
+    if (!nextDate) {
+      alert('No upcoming delivery date found for this client.');
+      return;
+    }
+
+    const newItems = createMenuItemsFromPairing(client, meals, nextDate);
+    updateMenuItems([...menuItems, ...newItems]);
+
+    // Clear the pairing state for this client
+    setMealPairings(prev => {
+      const updated = { ...prev };
+      delete updated[client.name];
+      return updated;
+    });
+
+    alert(`Menu created for ${client.displayName || client.name}! It will appear in the approval queue below.`);
+  };
+
+  const clientsWithPicks = getClientsWithPicks();
 
   // Get unapproved menu items grouped by date, then by client
   const getUnapprovedMenus = () => {
@@ -691,7 +805,7 @@ function MenuApprovalSection({ clients, menuItems, updateMenuItems, lockWeekWith
           )}
         </div>
 
-        {unapprovedMenus.length === 0 ? (
+        {unapprovedMenus.length === 0 && clientsWithPicks.length === 0 ? (
           <div className="text-center py-12">
             <Check size={48} className="mx-auto mb-4 text-green-500" />
             <p className="text-gray-600">All menus have been approved!</p>
@@ -709,10 +823,142 @@ function MenuApprovalSection({ clients, menuItems, updateMenuItems, lockWeekWith
           </div>
         ) : (
           <p className="text-sm text-gray-500">
-            {totalMenus} menu{totalMenus > 1 ? 's' : ''} pending approval
+            {totalMenus > 0 && `${totalMenus} menu${totalMenus > 1 ? 's' : ''} pending approval`}
+            {totalMenus > 0 && clientsWithPicks.length > 0 && ' • '}
+            {clientsWithPicks.length > 0 && `${clientsWithPicks.length} client${clientsWithPicks.length > 1 ? 's' : ''} with ingredient picks to pair`}
           </p>
         )}
       </div>
+
+      {/* Client Ingredient Picks Section */}
+      {clientsWithPicks.length > 0 && (
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <h3 className="text-xl font-bold mb-4 flex items-center gap-2" style={{ color: '#3d59ab' }}>
+            <ShoppingCart size={24} />
+            Client Ingredient Picks
+          </h3>
+          <p className="text-gray-600 mb-6">
+            These clients picked their ingredients. Pair them into meals, then create their menu.
+          </p>
+
+          <div className="space-y-6">
+            {clientsWithPicks.map(({ client, picks, mealsPerWeek }) => {
+              // Initialize pairing state if needed
+              if (!mealPairings[client.name]) {
+                initializePairing(client.name, mealsPerWeek);
+              }
+              const meals = mealPairings[client.name] || [];
+              const allPaired = areAllMealsPaired(client.name);
+
+              return (
+                <div
+                  key={client.name}
+                  className="border-2 rounded-lg overflow-hidden"
+                  style={{ borderColor: '#ebb582' }}
+                >
+                  {/* Client header */}
+                  <div className="p-4" style={{ backgroundColor: '#f9f9ed' }}>
+                    <h4 className="font-bold text-lg" style={{ color: '#3d59ab' }}>
+                      {client.displayName || client.name}
+                    </h4>
+                    <p className="text-sm text-gray-600">
+                      {mealsPerWeek} meals • {client.portions || client.persons || 1} portions
+                    </p>
+                    {picks.notes && (
+                      <p className="text-sm text-amber-700 mt-2 bg-amber-50 p-2 rounded">
+                        Note: {picks.notes}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Client's picks summary */}
+                  <div className="p-4 border-t grid grid-cols-3 gap-4 text-sm" style={{ borderColor: '#ebb582' }}>
+                    <div>
+                      <p className="font-medium text-red-600 mb-1">Proteins</p>
+                      {picks.proteins?.map((p, i) => (
+                        <p key={i} className="text-gray-700">{p}</p>
+                      ))}
+                    </div>
+                    <div>
+                      <p className="font-medium text-green-600 mb-1">Veggies</p>
+                      {picks.veggies?.map((v, i) => (
+                        <p key={i} className="text-gray-700">{v}</p>
+                      ))}
+                    </div>
+                    <div>
+                      <p className="font-medium text-amber-600 mb-1">Starches</p>
+                      {picks.starches?.map((s, i) => (
+                        <p key={i} className="text-gray-700">{s}</p>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Meal pairing interface */}
+                  <div className="p-4 border-t" style={{ borderColor: '#ebb582' }}>
+                    <p className="font-medium mb-3" style={{ color: '#3d59ab' }}>Pair into Meals:</p>
+                    <div className="space-y-3">
+                      {meals.map((meal, mealIdx) => (
+                        <div key={mealIdx} className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium text-gray-500 w-16">Meal {mealIdx + 1}:</span>
+                          <select
+                            value={meal.protein}
+                            onChange={(e) => updateMealPairing(client.name, mealIdx, 'protein', e.target.value)}
+                            className="flex-1 min-w-[120px] p-2 border rounded text-sm"
+                            style={{ borderColor: meal.protein ? '#22c55e' : '#ebb582' }}
+                          >
+                            <option value="">Protein</option>
+                            {getAvailableOptions(client.name, picks, 'protein', mealIdx).map(opt => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={meal.veg}
+                            onChange={(e) => updateMealPairing(client.name, mealIdx, 'veg', e.target.value)}
+                            className="flex-1 min-w-[120px] p-2 border rounded text-sm"
+                            style={{ borderColor: meal.veg ? '#22c55e' : '#ebb582' }}
+                          >
+                            <option value="">Veggie</option>
+                            {getAvailableOptions(client.name, picks, 'veggie', mealIdx).map(opt => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={meal.starch}
+                            onChange={(e) => updateMealPairing(client.name, mealIdx, 'starch', e.target.value)}
+                            className="flex-1 min-w-[120px] p-2 border rounded text-sm"
+                            style={{ borderColor: meal.starch ? '#22c55e' : '#ebb582' }}
+                          >
+                            <option value="">Starch</option>
+                            {getAvailableOptions(client.name, picks, 'starch', mealIdx).map(opt => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Create menu button */}
+                  <div className="p-4 border-t flex justify-end" style={{ borderColor: '#ebb582' }}>
+                    <button
+                      onClick={() => approvePairedMeals(client)}
+                      disabled={!allPaired}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                        allPaired
+                          ? 'bg-blue-500 text-white hover:bg-blue-600'
+                          : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      }`}
+                    >
+                      <Plus size={16} />
+                      Create Menu
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Group by date */}
       {unapprovedMenus.map(({ date, weekId, menus }) => (
@@ -975,22 +1221,11 @@ export default function AdminPage() {
     return clients.filter(client => {
       if (client.status !== 'active') return false;
 
-      // Use billDueDate if set
-      if (client.billDueDate) {
-        const dueDate = new Date(client.billDueDate + 'T12:00:00');
-        return dueDate >= now && dueDate <= sevenDaysFromNow;
-      }
-
-      // Fallback: calculate from last delivery (legacy behavior)
-      const lastDelivery = deliveryLog
-        .filter(d => d.clientName === client.name || d.clientName === client.displayName)
-        .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
-      if (!lastDelivery) return false;
-      const deliveryDate = new Date(lastDelivery.date + 'T12:00:00');
-      const renewalDate = new Date(deliveryDate);
-      renewalDate.setDate(renewalDate.getDate() + 28);
-      return renewalDate >= now && renewalDate <= sevenDaysFromNow;
-    });
+      // Only show clients with billDueDate set and within next 7 days
+      if (!client.billDueDate) return false;
+      const dueDate = new Date(client.billDueDate + 'T12:00:00');
+      return dueDate <= sevenDaysFromNow;
+    }).sort((a, b) => new Date(a.billDueDate) - new Date(b.billDueDate));
   };
 
   const getSubstitutionRequests = () => {
@@ -1870,6 +2105,8 @@ export default function AdminPage() {
             updateMenuItems={updateMenuItems}
             lockWeekWithSnapshot={lockWeekWithSnapshot}
             weeklyTasks={weeklyTasks}
+            clientPortalData={clientPortalData}
+            recipes={recipes}
           />
         )}
 
@@ -1967,7 +2204,7 @@ export default function AdminPage() {
                         className={`p-4 rounded-lg border-2 ${isOverdue ? 'bg-red-50 border-red-300' : 'border-amber-200 bg-amber-50'}`}
                       >
                         <div className="flex items-center justify-between flex-wrap gap-2">
-                          <div>
+                          <div className="flex-1">
                             <h3 className="font-bold">{client.displayName || client.name}</h3>
                             <p className="text-sm text-gray-600">
                               ${client.planPrice || 0} + ${client.serviceFee || 0} service fee
@@ -1978,14 +2215,31 @@ export default function AdminPage() {
                                 {isOverdue && ' (OVERDUE)'}
                               </p>
                             )}
+                            {client.deliveryDates?.length > 0 && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                Deliveries: {client.deliveryDates.slice(0, 2).map(d =>
+                                  new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                                ).join(', ')}
+                                {client.deliveryDates.length > 2 && ` +${client.deliveryDates.length - 2} more`}
+                              </p>
+                            )}
                           </div>
-                          <button
-                            onClick={() => setSelectedClientForDetail(client)}
-                            className="px-4 py-2 rounded-lg text-white text-sm"
-                            style={{ backgroundColor: '#3d59ab' }}
-                          >
-                            Set Dates
-                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setSelectedClientForDetail(client)}
+                              className="px-3 py-2 rounded-lg border-2 text-sm font-medium hover:bg-white"
+                              style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
+                            >
+                              Set Dates
+                            </button>
+                            <button
+                              onClick={() => setSelectedClientForDetail(client)}
+                              className="px-3 py-2 rounded-lg text-white text-sm font-medium"
+                              style={{ backgroundColor: '#3d59ab' }}
+                            >
+                              Set Due Date
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -2052,6 +2306,13 @@ export default function AdminPage() {
                           style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
                         >
                           Set Dates
+                        </button>
+                        <button
+                          onClick={() => setSelectedClientForDetail(client)}
+                          className="px-3 py-2 rounded-lg text-sm font-medium text-white"
+                          style={{ backgroundColor: '#f59e0b' }}
+                        >
+                          Set Due Date
                         </button>
                       </div>
                     </div>

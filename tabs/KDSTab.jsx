@@ -85,7 +85,7 @@ export default function KDSTab({
                       <h3 className="text-lg font-bold truncate" style={{ color: '#3d59ab' }}>
                         {dishName}
                       </h3>
-                      <p className="text-2xl font-bold" style={{ color: isComplete ? '#22c55e' : '#ffd700' }}>
+                      <p className="text-2xl font-bold" style={{ color: isComplete ? '#22c55e' : '#3d59ab' }}>
                         {data.totalPortions} <span className="text-sm font-normal text-gray-500">portions</span>
                       </p>
                     </div>

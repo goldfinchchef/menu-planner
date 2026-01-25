@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Truck, MapPin, Camera, AlertTriangle, Check, ChevronLeft,
-  ChevronRight, List, LogOut, Package, ShoppingBag, Home, User
+  ChevronRight, List, LogOut, Package, ShoppingBag, Home, User,
+  Calendar, Eye
 } from 'lucide-react';
 import { useDriverData } from '../hooks/useDriverData';
 import { DELIVERY_PROBLEMS } from '../constants';
@@ -59,21 +60,44 @@ export default function DriverView() {
   const [showAllStops, setShowAllStops] = useState(false);
   const [completedStops, setCompletedStops] = useState([]);
   const [isComplete, setIsComplete] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(null); // null = today
 
   const fileInputRef = useRef(null);
   const today = new Date().toISOString().split('T')[0];
+  const viewingDate = selectedDate || today;
+  const isViewingFuture = viewingDate !== today;
 
-  // Get stops for this driver's zone
-  const getDriverStops = () => {
+  // Get upcoming delivery dates for this driver's zone
+  const getUpcomingDeliveryDates = () => {
     if (!driver) return [];
-    const ordersToday = readyForDelivery.filter(order => order.date === today);
-    const clientNames = [...new Set(ordersToday.map(o => o.clientName))];
+    const dates = new Set();
+
+    readyForDelivery.forEach(order => {
+      if (order.date >= today) {
+        const client = clients.find(c => c.name === order.clientName);
+        if (client && client.zone === driver.zone && !client.pickup) {
+          dates.add(order.date);
+        }
+      }
+    });
+
+    return Array.from(dates).sort();
+  };
+
+  const upcomingDates = getUpcomingDeliveryDates();
+
+  // Get stops for this driver's zone on a specific date
+  const getDriverStops = (date) => {
+    if (!driver) return [];
+    const ordersForDate = readyForDelivery.filter(order => order.date === date);
+    const clientNames = [...new Set(ordersForDate.map(o => o.clientName))];
 
     return clientNames
       .map(name => {
         const client = clients.find(c => c.name === name);
         if (!client || client.zone !== driver.zone || client.pickup) return null;
-        const orders = ordersToday.filter(o => o.clientName === name);
+        const orders = ordersForDate.filter(o => o.clientName === name);
         return {
           clientName: name,
           displayName: client.displayName || name,
@@ -85,7 +109,8 @@ export default function DriverView() {
       .filter(Boolean);
   };
 
-  const stops = getDriverStops();
+  const stops = getDriverStops(viewingDate);
+  const todayStops = getDriverStops(today);
   const remainingStops = stops.filter(s => !completedStops.includes(s.clientName));
   const currentStop = remainingStops[currentStopIndex];
 
@@ -96,15 +121,15 @@ export default function DriverView() {
     );
   };
 
-  // Filter out already delivered stops on mount
+  // Filter out already delivered stops on mount (only for today)
   useEffect(() => {
-    if (driver && isLoaded) {
-      const alreadyDeliveredToday = stops
+    if (driver && isLoaded && !isViewingFuture) {
+      const alreadyDeliveredToday = todayStops
         .filter(s => isAlreadyDelivered(s.clientName))
         .map(s => s.clientName);
       setCompletedStops(alreadyDeliveredToday);
     }
-  }, [driver, isLoaded, stops.length]);
+  }, [driver, isLoaded, todayStops.length, isViewingFuture]);
 
   // Check if all stops are done
   useEffect(() => {

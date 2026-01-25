@@ -11,6 +11,7 @@ import { useClientPortalData } from '../hooks/useClientPortalData';
 // Client status types
 const STATUS = {
   PICK_DATES: 'pick_dates',
+  PICK_INGREDIENTS: 'pick_ingredients', // For clients with chefChoice = false
   NEEDS_PAYMENT: 'needs_payment',
   MENU_READY: 'menu_ready',
   DELIVERY_DAY: 'delivery_day',
@@ -67,6 +68,7 @@ export default function ClientPortal() {
     getClientHistory,
     clientPortalData,
     blockedDates,
+    recipes,
     updateClientPortalData
   } = useClientPortalData();
 
@@ -122,6 +124,23 @@ export default function ClientPortal() {
     // Check if needs to pick dates
     if (portalInfo.needsDateSelection) {
       return STATUS.PICK_DATES;
+    }
+
+    // Check if client has chefChoice = false and needs to pick ingredients
+    // They can pick until Saturday EOD
+    if (client.chefChoice === false) {
+      const portalPicks = portalInfo.ingredientPicks;
+      const hasSubmittedPicks = portalPicks?.submittedAt;
+      const isPastDeadline = isPastSaturdayDeadline();
+
+      // Show picker if they haven't submitted picks and deadline hasn't passed
+      if (!hasSubmittedPicks && !isPastDeadline) {
+        // Only show if they have upcoming dates set
+        const hasDates = (client.deliveryDates?.length > 0) || (portalInfo.selectedDates?.length > 0);
+        if (hasDates) {
+          return STATUS.PICK_INGREDIENTS;
+        }
+      }
     }
 
     return STATUS.NO_UPCOMING;
@@ -236,6 +255,23 @@ export default function ClientPortal() {
           />
         )}
 
+        {/* PRIORITY 3.5: Ingredient selection for non-Chef Choice clients */}
+        {portalStatus === STATUS.PICK_INGREDIENTS && (
+          <IngredientPickerView
+            client={client}
+            recipes={recipes}
+            clientPortalData={clientPortalData}
+            onSubmit={(picks) => {
+              updateClientPortalData(client.name, {
+                ingredientPicks: {
+                  ...picks,
+                  submittedAt: new Date().toISOString()
+                }
+              });
+            }}
+          />
+        )}
+
         {/* Paused state */}
         {portalStatus === STATUS.PAUSED && (
           <PausedView client={client} />
@@ -325,6 +361,8 @@ function getStatusMessage(status) {
       return "Please complete your payment to continue.";
     case STATUS.PICK_DATES:
       return "Let's schedule your upcoming deliveries.";
+    case STATUS.PICK_INGREDIENTS:
+      return "Pick your proteins, veggies, and starches for this week!";
     case STATUS.MENU_READY:
       return "Your menu is ready! Here's what's coming.";
     case STATUS.DELIVERY_DAY:
@@ -1033,6 +1071,217 @@ function DatePickerView({ client, selectedDates, setSelectedDates, blockedDates 
         style={{ backgroundColor: '#3d59ab' }}
       >
         Confirm {selectedDates.length} Date{selectedDates.length !== 1 ? 's' : ''}
+      </button>
+    </div>
+  );
+}
+
+// Ingredient Picker View - for clients with chefChoice = false
+function IngredientPickerView({ client, recipes, clientPortalData, onSubmit }) {
+  const mealsPerWeek = client.mealsPerWeek || 3;
+  const numPicks = mealsPerWeek; // 3 or 4 of each category
+
+  // Initialize picks state
+  const [proteins, setProteins] = useState(Array(numPicks).fill(''));
+  const [veggies, setVeggies] = useState(Array(numPicks).fill(''));
+  const [starches, setStarches] = useState(Array(numPicks).fill(''));
+  const [notes, setNotes] = useState('');
+
+  // Get recipe options by category
+  const proteinOptions = recipes?.protein?.map(r => r.name) || [];
+  const vegOptions = recipes?.veg?.map(r => r.name) || [];
+  const starchOptions = recipes?.starch?.map(r => r.name) || [];
+
+  // Saturday deadline
+  const saturdayDeadline = getThisWeekSaturdayDeadline();
+
+  const handleProteinChange = (index, value) => {
+    const updated = [...proteins];
+    updated[index] = value;
+    setProteins(updated);
+  };
+
+  const handleVegChange = (index, value) => {
+    const updated = [...veggies];
+    updated[index] = value;
+    setVeggies(updated);
+  };
+
+  const handleStarchChange = (index, value) => {
+    const updated = [...starches];
+    updated[index] = value;
+    setStarches(updated);
+  };
+
+  const isComplete = () => {
+    return proteins.every(p => p !== '') &&
+           veggies.every(v => v !== '') &&
+           starches.every(s => s !== '');
+  };
+
+  const handleSubmit = () => {
+    if (!isComplete()) {
+      alert(`Please select ${numPicks} of each: proteins, veggies, and starches.`);
+      return;
+    }
+    onSubmit({
+      proteins,
+      veggies,
+      starches,
+      notes,
+      mealsPerWeek: numPicks
+    });
+  };
+
+  const formatDeadline = (date) => {
+    return date.toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric'
+    }) + ' at 11:59 PM';
+  };
+
+  // Get already-selected values to filter from options (no duplicates)
+  const getFilteredOptions = (options, selectedValues, currentIndex) => {
+    const otherSelections = selectedValues.filter((_, i) => i !== currentIndex);
+    return options.filter(opt => !otherSelections.includes(opt));
+  };
+
+  return (
+    <div className="bg-white rounded-lg shadow-lg p-6">
+      <div className="flex items-center gap-3 mb-4">
+        <Utensils size={24} style={{ color: '#3d59ab' }} />
+        <h3 className="text-xl font-bold" style={{ color: '#3d59ab' }}>
+          Pick Your Ingredients
+        </h3>
+      </div>
+
+      <p className="text-gray-600 mb-4">
+        Select {numPicks} proteins, {numPicks} veggies, and {numPicks} starches for your meals this week.
+        Chef Paula will pair them into delicious meals!
+      </p>
+
+      {/* Deadline warning */}
+      <div className="mb-6 p-3 rounded-lg bg-amber-50 border border-amber-200">
+        <div className="flex items-start gap-2 text-amber-700">
+          <AlertTriangle size={18} className="flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium">
+              Deadline: {formatDeadline(saturdayDeadline)}
+            </p>
+            <p className="text-xs mt-1">
+              If not submitted by Saturday, Chef Paula will pick for you.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Proteins */}
+      <div className="mb-6">
+        <h4 className="font-bold mb-3 flex items-center gap-2" style={{ color: '#3d59ab' }}>
+          <span className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center text-red-600 text-sm">P</span>
+          Proteins ({proteins.filter(p => p).length}/{numPicks})
+        </h4>
+        <div className="space-y-2">
+          {proteins.map((protein, idx) => (
+            <select
+              key={idx}
+              value={protein}
+              onChange={(e) => handleProteinChange(idx, e.target.value)}
+              className="w-full p-3 border-2 rounded-lg"
+              style={{ borderColor: protein ? '#22c55e' : '#ebb582' }}
+            >
+              <option value="">Select protein #{idx + 1}</option>
+              {getFilteredOptions(proteinOptions, proteins, idx).map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+          ))}
+        </div>
+      </div>
+
+      {/* Veggies */}
+      <div className="mb-6">
+        <h4 className="font-bold mb-3 flex items-center gap-2" style={{ color: '#3d59ab' }}>
+          <span className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center text-green-600 text-sm">V</span>
+          Veggies ({veggies.filter(v => v).length}/{numPicks})
+        </h4>
+        <div className="space-y-2">
+          {veggies.map((veg, idx) => (
+            <select
+              key={idx}
+              value={veg}
+              onChange={(e) => handleVegChange(idx, e.target.value)}
+              className="w-full p-3 border-2 rounded-lg"
+              style={{ borderColor: veg ? '#22c55e' : '#ebb582' }}
+            >
+              <option value="">Select veggie #{idx + 1}</option>
+              {getFilteredOptions(vegOptions, veggies, idx).map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+          ))}
+        </div>
+      </div>
+
+      {/* Starches */}
+      <div className="mb-6">
+        <h4 className="font-bold mb-3 flex items-center gap-2" style={{ color: '#3d59ab' }}>
+          <span className="w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 text-sm">S</span>
+          Starches ({starches.filter(s => s).length}/{numPicks})
+        </h4>
+        <div className="space-y-2">
+          {starches.map((starch, idx) => (
+            <select
+              key={idx}
+              value={starch}
+              onChange={(e) => handleStarchChange(idx, e.target.value)}
+              className="w-full p-3 border-2 rounded-lg"
+              style={{ borderColor: starch ? '#22c55e' : '#ebb582' }}
+            >
+              <option value="">Select starch #{idx + 1}</option>
+              {getFilteredOptions(starchOptions, starches, idx).map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+          ))}
+        </div>
+      </div>
+
+      {/* Notes */}
+      <div className="mb-6">
+        <label className="block text-sm font-medium mb-2">
+          Special requests (optional)
+        </label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="E.g., 'Keep chicken mild' or 'Extra sauce on the side'"
+          className="w-full p-3 border-2 rounded-lg"
+          style={{ borderColor: '#ebb582' }}
+          rows={2}
+        />
+      </div>
+
+      {/* Progress indicator */}
+      <div className="mb-4 p-3 rounded-lg" style={{ backgroundColor: '#f9f9ed' }}>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-gray-600">
+            {isComplete() ? 'All selections complete!' : 'Complete all selections to submit'}
+          </span>
+          <span className="font-bold" style={{ color: isComplete() ? '#22c55e' : '#3d59ab' }}>
+            {proteins.filter(p => p).length + veggies.filter(v => v).length + starches.filter(s => s).length} / {numPicks * 3}
+          </span>
+        </div>
+      </div>
+
+      <button
+        onClick={handleSubmit}
+        disabled={!isComplete()}
+        className="w-full py-3 rounded-lg text-white font-medium disabled:opacity-50"
+        style={{ backgroundColor: '#3d59ab' }}
+      >
+        Submit My Picks
       </button>
     </div>
   );
