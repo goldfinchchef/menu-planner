@@ -391,73 +391,68 @@ export default function MenuTab({
         )}
       </div>
 
-      {/* 2. Current Orders - Menus planned but not approved */}
+      {/* 2. Current Orders - Shows styled menu cards for approval */}
       {menuItems.length > 0 && (
         <div className="bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-xl font-bold mb-4" style={{ color: '#3d59ab' }}>
-            Current Orders ({menuItems.length})
-          </h2>
-          <div className="space-y-3">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold" style={{ color: '#3d59ab' }}>
+              Current Orders ({Object.keys(ordersByClient).length} clients)
+            </h2>
+            {menuItems.some(item => !item.approved) && (
+              <button
+                onClick={approveAllReady}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm"
+                style={{ backgroundColor: '#22c55e' }}
+              >
+                <Check size={16} /> Approve All
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {Object.entries(ordersByClient).map(([clientName, orders]) => {
               const allApproved = orders.every(o => o.approved);
-              const client = activeClients.find(c => (c.displayName || c.name) === clientName);
+              const client = activeClients.find(c => (c.displayName || c.name) === clientName) ||
+                             activeClients.find(c => c.name === clientName) ||
+                             { name: clientName, displayName: clientName };
 
               return (
-                <div
-                  key={clientName}
-                  className="border-2 rounded-lg p-4"
-                  style={{ borderColor: allApproved ? '#22c55e' : '#ebb582', backgroundColor: allApproved ? '#f0fdf4' : 'white' }}
-                >
-                  <div className="flex items-center justify-between mb-2">
+                <div key={clientName} className="flex flex-col">
+                  {/* Styled Menu Card */}
+                  <StyledMenuCard
+                    client={client}
+                    date={orders[0]?.date || menuDate}
+                    menuItems={orders}
+                  />
+
+                  {/* Approval Controls */}
+                  <div className="mt-3 flex items-center justify-between p-3 rounded-lg" style={{ backgroundColor: '#f9f9ed' }}>
                     <div className="flex items-center gap-2">
-                      <h3 className="font-bold" style={{ color: '#3d59ab' }}>{clientName}</h3>
                       {allApproved ? (
-                        <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700 flex items-center gap-1">
-                          <Check size={12} /> Approved
+                        <span className="text-sm text-green-700 flex items-center gap-1 font-medium">
+                          <Check size={16} /> Approved
                         </span>
                       ) : (
-                        <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-600">
-                          Pending
-                        </span>
+                        <span className="text-sm text-blue-600">Pending approval</span>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
-                      {client && (
-                        <button
-                          onClick={() => setPreviewClient(client)}
-                          className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-white border"
-                          style={{ borderColor: '#ebb582' }}
-                        >
-                          <Eye size={12} /> Preview
-                        </button>
-                      )}
                       {!allApproved && (
                         <button
                           onClick={() => approveClientMenu(clientName)}
-                          className="flex items-center gap-1 px-2 py-1 rounded text-xs text-white"
+                          className="flex items-center gap-1 px-3 py-1.5 rounded text-sm text-white"
                           style={{ backgroundColor: '#22c55e' }}
                         >
-                          <Check size={12} /> Approve
+                          <Check size={14} /> Approve
                         </button>
                       )}
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    {orders.map(item => (
-                      <div
-                        key={item.id}
-                        className="flex justify-between items-center p-2 rounded text-sm"
-                        style={{ backgroundColor: '#f9f9ed' }}
+                      <button
+                        onClick={() => denyClientMenu(clientName)}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded text-sm bg-red-100 text-red-700"
                       >
-                        <div>
-                          <span className="text-gray-500">{item.date} • {item.portions}p:</span>{' '}
-                          <span>{[item.protein, item.veg, item.starch, ...(item.extras || [])].filter(Boolean).join(', ')}</span>
-                        </div>
-                        <button onClick={() => deleteMenuItem(item.id)} className="text-red-500 hover:text-red-700 p-1">
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    ))}
+                        <Trash2 size={14} /> Remove
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
