@@ -465,8 +465,18 @@ export default function ClientsTab({
               style={borderStyle}
             >
               <option value="chef">Chef Choice (Chef Paula picks)</option>
-              <option value="client">Client Picks (Client selects ingredients)</option>
+              <option value="client">Client Picks (Client selects dishes)</option>
             </select>
+          </FormField>
+          <FormField label="HoneyBook Invoice Link">
+            <input
+              type="url"
+              value={newClient.honeyBookLink || ''}
+              onChange={(e) => setNewClient({ ...newClient, honeyBookLink: e.target.value })}
+              className={inputStyle}
+              style={borderStyle}
+              placeholder="https://..."
+            />
           </FormField>
         </div>
 
@@ -705,8 +715,18 @@ export default function ClientsTab({
                           style={borderStyle}
                         >
                           <option value="chef">Chef Choice (Chef Paula picks)</option>
-                          <option value="client">Client Picks (Client selects ingredients)</option>
+                          <option value="client">Client Picks (Client selects dishes)</option>
                         </select>
+                      </FormField>
+                      <FormField label="HoneyBook Invoice Link">
+                        <input
+                          type="url"
+                          value={editingClient.honeyBookLink || ''}
+                          onChange={(e) => setEditingClient({ ...editingClient, honeyBookLink: e.target.value })}
+                          className={inputStyle}
+                          style={borderStyle}
+                          placeholder="https://..."
+                        />
                       </FormField>
                     </div>
 
