@@ -26,9 +26,9 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
-          <h1 style={{ color: '#dc2626' }}>Something went wrong</h1>
-          <p>The app encountered an error. This is often caused by corrupted saved data.</p>
+        <div style={{ padding: '40px', fontFamily: 'sans-serif', backgroundColor: '#ffffff', minHeight: '100vh', color: '#000000' }}>
+          <h1 style={{ color: '#dc2626', fontSize: '24px', marginBottom: '20px' }}>Something went wrong</h1>
+          <p style={{ color: '#333333', fontSize: '16px', marginBottom: '20px' }}>The app encountered an error. This is often caused by corrupted saved data.</p>
           <button
             onClick={() => {
               localStorage.removeItem('goldfinchChefData');
@@ -39,23 +39,25 @@ class ErrorBoundary extends React.Component {
             }}
             style={{
               marginTop: '10px',
-              padding: '10px 20px',
+              padding: '15px 30px',
               backgroundColor: '#3d59ab',
               color: 'white',
               border: 'none',
               borderRadius: '5px',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              fontSize: '16px',
+              fontWeight: 'bold'
             }}
           >
             Clear Data & Reload
           </button>
-          <details style={{ marginTop: '20px' }}>
-            <summary style={{ cursor: 'pointer' }}>Error Details</summary>
-            <pre style={{ backgroundColor: '#f5f5f5', padding: '10px', overflow: 'auto' }}>
-              {this.state.error?.toString()}
-              {this.state.errorInfo?.componentStack}
+          <div style={{ marginTop: '30px', padding: '20px', backgroundColor: '#fee2e2', borderRadius: '8px', border: '2px solid #dc2626' }}>
+            <h2 style={{ color: '#dc2626', fontSize: '18px', marginBottom: '10px' }}>Error Details:</h2>
+            <pre style={{ backgroundColor: '#ffffff', padding: '15px', overflow: 'auto', color: '#000000', fontSize: '14px', border: '1px solid #ccc', borderRadius: '4px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+{this.state.error?.toString()}
+{this.state.errorInfo?.componentStack}
             </pre>
-          </details>
+          </div>
         </div>
       );
     }
