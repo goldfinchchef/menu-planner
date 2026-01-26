@@ -606,6 +606,36 @@ export default function MenuTab({
               </div>
             </div>
 
+            {/* Show dietary restrictions for selected clients */}
+            {selectedClients.length > 0 && (
+              <div className="mb-4 p-3 rounded-lg" style={{ backgroundColor: '#fff8e7', border: '1px solid #ebb582' }}>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#423d3c' }}>
+                  Dietary Restrictions
+                </label>
+                <div className="space-y-1">
+                  {selectedClients.map(clientName => {
+                    const client = activeClients.find(c => c.name === clientName);
+                    const restrictions = client?.dietaryRestrictions;
+                    if (!restrictions) return null;
+                    return (
+                      <div key={clientName} className="text-sm">
+                        <span className="font-medium" style={{ color: '#3d59ab' }}>
+                          {client.displayName || client.name}:
+                        </span>{' '}
+                        <span style={{ color: '#b45309' }}>{restrictions}</span>
+                      </div>
+                    );
+                  })}
+                  {selectedClients.every(clientName => {
+                    const client = activeClients.find(c => c.name === clientName);
+                    return !client?.dietaryRestrictions;
+                  }) && (
+                    <p className="text-sm text-gray-500 italic">No dietary restrictions noted</p>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
               {['protein', 'veg', 'starch'].map(type => (
                 <div key={type}>

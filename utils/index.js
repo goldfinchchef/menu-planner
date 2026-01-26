@@ -155,6 +155,7 @@ export const parseClientsCSV = (file, onSuccess, onError) => {
               newClientFeePaid: parseBoolean(getField(row, 'newClientFeePaid', 'NewClientFeePaid')),
               paysOwnGroceries: parseBoolean(getField(row, 'paysOwnGroceries', 'PaysOwnGroceries')),
               billingNotes: getField(row, 'billingNotes', 'BillingNotes', 'notes', 'Notes'),
+              dietaryRestrictions: getField(row, 'dietaryRestrictions', 'DietaryRestrictions', 'dietary', 'Dietary', 'allergies', 'Allergies'),
               accessCode: getField(row, 'accessCode', 'AccessCode'),
               honeyBookLink: getField(row, 'honeyBookLink', 'HoneyBookLink'),
               contacts: []
@@ -209,6 +210,7 @@ export const parseClientsCSV = (file, onSuccess, onError) => {
               newClientFeePaid: parseBoolean(row.newClientFeePaid || row.NewClientFeePaid),
               paysOwnGroceries: parseBoolean(row.paysOwnGroceries || row.PaysOwnGroceries),
               billingNotes: row.billingNotes || row.BillingNotes || row.notes || '',
+              dietaryRestrictions: row.dietaryRestrictions || row.DietaryRestrictions || row.dietary || row.Dietary || row.allergies || row.Allergies || '',
               accessCode: row.accessCode || row.AccessCode || '',
               honeyBookLink: row.honeyBookLink || row.HoneyBookLink || '',
               contacts: [{

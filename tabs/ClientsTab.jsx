@@ -129,6 +129,7 @@ const migrateToSubscription = (client) => {
     billingNotes: client.billingNotes || '',
     accessCode: client.accessCode || '',
     honeyBookLink: client.honeyBookLink || '',
+    dietaryRestrictions: client.dietaryRestrictions || '',
     contacts
   };
 };
@@ -290,7 +291,7 @@ export default function ClientsTab({
     const headers = [
       'subscriptionId', 'subscriptionDisplayName', 'portions', 'mealsPerWeek', 'frequency',
       'status', 'zone', 'deliveryDay', 'pickup', 'planPrice', 'serviceFee',
-      'prepayDiscount', 'newClientFeePaid', 'paysOwnGroceries', 'billingNotes', 'accessCode',
+      'prepayDiscount', 'newClientFeePaid', 'paysOwnGroceries', 'billingNotes', 'dietaryRestrictions', 'accessCode',
       'contactFullName', 'contactDisplayName', 'email', 'phone', 'address'
     ];
 
@@ -316,6 +317,7 @@ export default function ClientsTab({
           idx === 0 ? sub.newClientFeePaid : '',
           idx === 0 ? sub.paysOwnGroceries : '',
           idx === 0 ? sub.billingNotes : '',
+          idx === 0 ? sub.dietaryRestrictions : '',
           idx === 0 ? sub.accessCode : '',
           contact.fullName || '',
           contact.displayName || '',
@@ -592,6 +594,18 @@ export default function ClientsTab({
               />
             </FormField>
           </div>
+          <div className="mt-4">
+            <FormField label="Dietary Restrictions">
+              <textarea
+                value={newClient.dietaryRestrictions || ''}
+                onChange={(e) => setNewClient({ ...newClient, dietaryRestrictions: e.target.value })}
+                placeholder="Allergies, preferences, dietary needs..."
+                className={inputStyle + " w-full"}
+                style={borderStyle}
+                rows="2"
+              />
+            </FormField>
+          </div>
         </div>
 
         <button
@@ -836,6 +850,18 @@ export default function ClientsTab({
                           />
                         </FormField>
                       </div>
+                      <div className="mt-4">
+                        <FormField label="Dietary Restrictions">
+                          <textarea
+                            value={editingClient.dietaryRestrictions || ''}
+                            onChange={(e) => setEditingClient({ ...editingClient, dietaryRestrictions: e.target.value })}
+                            placeholder="Allergies, preferences, dietary needs..."
+                            className={inputStyle + " w-full"}
+                            style={borderStyle}
+                            rows="2"
+                          />
+                        </FormField>
+                      </div>
                     </div>
 
                     <div className="flex gap-2 mt-4">
@@ -910,6 +936,12 @@ export default function ClientsTab({
                         {subscription.billingNotes && (
                           <p className="text-sm text-amber-700 mt-2 bg-amber-50 px-2 py-1 rounded">
                             Billing: {subscription.billingNotes}
+                          </p>
+                        )}
+
+                        {subscription.dietaryRestrictions && (
+                          <p className="text-sm text-red-700 mt-2 bg-red-50 px-2 py-1 rounded">
+                            Diet: {subscription.dietaryRestrictions}
                           </p>
                         )}
 

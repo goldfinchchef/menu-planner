@@ -72,7 +72,8 @@ export const DEFAULT_NEW_SUBSCRIPTION = {
   contacts: [{ ...DEFAULT_CONTACT }],
   deliveryDates: [],  // Next 4 delivery dates
   billDueDate: '',    // When payment is due
-  chefChoice: true    // true = Chef picks menu, false = client picks dishes
+  chefChoice: true,   // true = Chef picks menu, false = client picks dishes
+  dietaryRestrictions: ''  // Allergies, preferences, restrictions
 };
 
 // Legacy alias for backwards compatibility
