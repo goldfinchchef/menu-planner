@@ -1088,21 +1088,31 @@ export default function DeliveriesTab({
         const weekDates = getWeekDates();
 
         // Get client status for a specific date
-        const getClientStatus = (clientName, date) => {
+        const getClientStatus = (client, date) => {
+          // Helper to check if menu item matches this client
+          const matchesClient = (m) => {
+            const clientName = client.name;
+            const displayName = client.displayName;
+            return m.clientName === clientName || m.clientName === displayName;
+          };
+
+          // Get menu items for this client on this date
+          const clientMenuItems = menuItems.filter(m => matchesClient(m) && m.date === date);
+
           // Check if delivered
-          if (deliveryLog.some(e => e.clientName === clientName && e.date === date)) {
+          if (deliveryLog.some(e => (e.clientName === client.name || e.clientName === client.displayName) && e.date === date)) {
             return { status: 'delivered', label: 'Delivered', color: '#22c55e', bgColor: '#dcfce7' };
           }
           // Check if ready for delivery
-          if (readyForDelivery.some(o => o.clientName === clientName && o.date === date)) {
+          if (readyForDelivery.some(o => (o.clientName === client.name || o.clientName === client.displayName) && o.date === date)) {
             return { status: 'ready', label: 'Ready', color: '#f59e0b', bgColor: '#fef3c7' };
           }
           // Check if has approved menu (in KDS)
-          if (menuItems.some(m => m.clientName === clientName && m.approved && m.date === date)) {
+          if (clientMenuItems.some(m => m.approved)) {
             return { status: 'kds', label: 'In KDS', color: '#3b82f6', bgColor: '#dbeafe' };
           }
           // Check if has menu pending approval
-          if (menuItems.some(m => m.clientName === clientName && !m.approved && m.date === date)) {
+          if (clientMenuItems.some(m => !m.approved)) {
             return { status: 'pending', label: 'Menu Pending', color: '#6b7280', bgColor: '#f3f4f6' };
           }
           // No menu yet
@@ -1110,10 +1120,26 @@ export default function DeliveriesTab({
         };
 
         // Get ALL scheduled clients for a specific date
-        // Checks: 1) client.deliveryDay matches day name, 2) admin-set deliveryDates, 3) client-set selectedDates
+        // Checks: 1) has menu items for date, 2) client.deliveryDay matches day name, 3) admin-set deliveryDates, 4) client-set selectedDates
         const getScheduledClientsForDay = (dayName, date) => {
           const scheduledClients = [];
           const addedClients = new Set();
+
+          // Helper to check if client has menu items for this date
+          const hasMenuForDate = (client) => {
+            return menuItems.some(m =>
+              (m.clientName === client.name || m.clientName === client.displayName) &&
+              m.date === date
+            );
+          };
+
+          // Helper to check if client has ready orders for this date
+          const hasReadyOrdersForDate = (client) => {
+            return readyForDelivery.some(o =>
+              (o.clientName === client.name || o.clientName === client.displayName) &&
+              o.date === date
+            );
+          };
 
           clients.forEach(client => {
             if (client.status !== 'active' || client.pickup) return;
@@ -1121,19 +1147,24 @@ export default function DeliveriesTab({
 
             let isScheduled = false;
 
-            // Check 1: Regular delivery day matches
-            if (client.deliveryDay === dayName) {
+            // Check 1: Has menu items or ready orders for this date (most important)
+            if (hasMenuForDate(client) || hasReadyOrdersForDate(client)) {
               isScheduled = true;
             }
 
-            // Check 2: Admin-set specific delivery dates
+            // Check 2: Regular delivery day matches
+            if (!isScheduled && client.deliveryDay === dayName) {
+              isScheduled = true;
+            }
+
+            // Check 3: Admin-set specific delivery dates
             if (!isScheduled && client.deliveryDates?.length > 0) {
               if (client.deliveryDates.includes(date)) {
                 isScheduled = true;
               }
             }
 
-            // Check 3: Client-set delivery dates from portal
+            // Check 4: Client-set delivery dates from portal
             const portalData = clientPortalData[client.name];
             if (!isScheduled && portalData?.selectedDates?.length > 0) {
               if (portalData.selectedDates.includes(date)) {
@@ -1145,19 +1176,27 @@ export default function DeliveriesTab({
               addedClients.add(client.name);
               const contacts = client.contacts || [];
               const firstAddr = contacts.find(ct => ct.address)?.address || client.address || '';
-              const statusInfo = getClientStatus(client.name, date);
-              const readyOrders = readyForDelivery.filter(o => o.clientName === client.name && o.date === date);
+              const statusInfo = getClientStatus(client, date);
+              const readyOrders = readyForDelivery.filter(o => (o.clientName === client.name || o.clientName === client.displayName) && o.date === date);
 
-              scheduledClients.push({
-                clientName: client.name,
-                displayName: client.displayName || client.name,
-                zone: client.zone || 'Unassigned',
-                address: firstAddr,
-                phone: contacts[0]?.phone || client.phone || '',
-                orders: readyOrders,
-                stopKey: client.name,
-                ...statusInfo
-              });
+              // Only add if they have menu items, ready orders, or scheduled delivery
+              // Skip clients with "No Menu" status unless they have a scheduled delivery day
+              const hasDeliverySchedule = client.deliveryDay === dayName ||
+                client.deliveryDates?.includes(date) ||
+                portalData?.selectedDates?.includes(date);
+
+              if (statusInfo.status !== 'none' || hasDeliverySchedule) {
+                scheduledClients.push({
+                  clientName: client.name,
+                  displayName: client.displayName || client.name,
+                  zone: client.zone || 'Unassigned',
+                  address: firstAddr,
+                  phone: contacts[0]?.phone || client.phone || '',
+                  orders: readyOrders,
+                  stopKey: client.name,
+                  ...statusInfo
+                });
+              }
             }
           });
 
