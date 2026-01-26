@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { Plus, Trash2, Check, AlertTriangle, Circle, Eye, X, ChevronDown, ChevronUp, Edit2, Printer } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Plus, Trash2, Check, AlertTriangle, Circle, Eye, X, ChevronDown, ChevronUp, Edit2, Printer, Calendar } from 'lucide-react';
 import WeekSelector from '../components/WeekSelector';
-import { getWeekIdFromDate } from '../utils/weekUtils';
+import { getWeekIdFromDate, getWeekStartDate } from '../utils/weekUtils';
 
 // Styled Menu Card Component - matches client portal
 function StyledMenuCard({ client, date, menuItems }) {
@@ -214,6 +214,62 @@ export default function MenuTab({
 
   // Get active clients only
   const activeClients = (allClients || clients || []).filter(c => c.status === 'active');
+
+  // Calculate delivery dates for the selected week
+  const weekDeliveryDates = useMemo(() => {
+    if (!selectedWeekId) return { Monday: '', Tuesday: '', Thursday: '' };
+    const weekStart = getWeekStartDate(selectedWeekId);
+    const monday = new Date(weekStart + 'T12:00:00');
+    const tuesday = new Date(monday);
+    tuesday.setDate(monday.getDate() + 1);
+    const thursday = new Date(monday);
+    thursday.setDate(monday.getDate() + 3);
+    return {
+      Monday: monday.toISOString().split('T')[0],
+      Tuesday: tuesday.toISOString().split('T')[0],
+      Thursday: thursday.toISOString().split('T')[0]
+    };
+  }, [selectedWeekId]);
+
+  // Get a client's scheduled delivery date for this week
+  const getClientDeliveryDate = (client) => {
+    const clientName = client.displayName || client.name;
+
+    // Check 1: Client-selected dates from portal
+    const portalDates = clientPortalData?.[clientName]?.selectedDates || [];
+    const weekDatesArray = Object.values(weekDeliveryDates);
+    const portalDateInWeek = portalDates.find(d => weekDatesArray.includes(d));
+    if (portalDateInWeek) return portalDateInWeek;
+
+    // Check 2: Admin-set specific deliveryDates
+    const specificDates = client.deliveryDates || [];
+    const specificDateInWeek = specificDates.find(d => weekDatesArray.includes(d));
+    if (specificDateInWeek) return specificDateInWeek;
+
+    // Check 3: Regular deliveryDay setting (Monday, Tuesday, Thursday)
+    if (client.deliveryDay && weekDeliveryDates[client.deliveryDay]) {
+      return weekDeliveryDates[client.deliveryDay];
+    }
+
+    return null;
+  };
+
+  // Get clients scheduled for delivery this week (based on their delivery settings)
+  const scheduledClients = useMemo(() => {
+    return activeClients.filter(client => getClientDeliveryDate(client) !== null);
+  }, [activeClients, weekDeliveryDates, clientPortalData]);
+
+  // Group scheduled clients by delivery day
+  const clientsByDeliveryDay = useMemo(() => {
+    const grouped = { Monday: [], Tuesday: [], Thursday: [] };
+    scheduledClients.forEach(client => {
+      const deliveryDate = getClientDeliveryDate(client);
+      if (deliveryDate === weekDeliveryDates.Monday) grouped.Monday.push(client);
+      else if (deliveryDate === weekDeliveryDates.Tuesday) grouped.Tuesday.push(client);
+      else if (deliveryDate === weekDeliveryDates.Thursday) grouped.Thursday.push(client);
+    });
+    return grouped;
+  }, [scheduledClients, weekDeliveryDates]);
 
   // Filter menu items to only show items for the selected week
   const weekMenuItems = menuItems.filter(item => {
@@ -485,10 +541,15 @@ export default function MenuTab({
         />
       )}
 
-      {/* 1. Delivering This Week - Compact client list with checkmarks */}
+      {/* 1. Delivering This Week - Clients grouped by delivery day */}
       <div className="bg-white rounded-lg shadow-lg p-6">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-2xl font-bold" style={{ color: '#3d59ab' }}>Delivering This Week</h2>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-2xl font-bold" style={{ color: '#3d59ab' }}>Delivering This Week</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              {scheduledClients.length} clients scheduled • Based on delivery settings in Billing & Dates
+            </p>
+          </div>
           {weekMenuItems.filter(item => !item.approved).length > 0 && (
             <button
               onClick={approveAllReady}
@@ -500,31 +561,66 @@ export default function MenuTab({
           )}
         </div>
 
-        {activeClients.length > 0 ? (
-          <div className="flex flex-wrap gap-x-1 gap-y-1 text-sm">
-            {activeClients.map((client, i) => {
-              const clientName = client.displayName || client.name;
-              const hasMenu = weekMenuItems.some(item => item.clientName === clientName);
-              const isApproved = hasMenu && weekMenuItems.filter(item => item.clientName === clientName).every(item => item.approved);
+        {scheduledClients.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {['Monday', 'Tuesday', 'Thursday'].map(day => {
+              const dayClients = clientsByDeliveryDay[day];
+              const dayDate = weekDeliveryDates[day];
+              const formattedDate = new Date(dayDate + 'T12:00:00').toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric'
+              });
 
               return (
-                <span key={i} className="inline-flex items-center">
-                  {hasMenu && (
-                    <Check
-                      size={14}
-                      className={isApproved ? 'text-green-600 mr-0.5' : 'text-blue-500 mr-0.5'}
-                    />
+                <div key={day} className="rounded-lg p-3" style={{ backgroundColor: '#f9f9ed' }}>
+                  <div className="flex items-center gap-2 mb-2 pb-2 border-b" style={{ borderColor: '#ebb582' }}>
+                    <Calendar size={16} style={{ color: '#3d59ab' }} />
+                    <span className="font-bold text-sm" style={{ color: '#3d59ab' }}>{day}</span>
+                    <span className="text-xs text-gray-500">{formattedDate}</span>
+                  </div>
+                  {dayClients.length > 0 ? (
+                    <div className="space-y-1">
+                      {dayClients.map((client, i) => {
+                        const clientName = client.displayName || client.name;
+                        const hasMenu = weekMenuItems.some(item => item.clientName === clientName);
+                        const isApproved = hasMenu && weekMenuItems.filter(item => item.clientName === clientName).every(item => item.approved);
+
+                        return (
+                          <div key={i} className="flex items-center gap-1.5 text-sm">
+                            {hasMenu ? (
+                              <Check
+                                size={14}
+                                className={isApproved ? 'text-green-600' : 'text-blue-500'}
+                              />
+                            ) : (
+                              <Circle size={14} className="text-gray-300" />
+                            )}
+                            <span className={
+                              hasMenu
+                                ? (isApproved ? 'text-green-700 font-medium' : 'text-blue-600')
+                                : 'text-gray-600'
+                            }>
+                              {clientName}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-400 italic">No deliveries</p>
                   )}
-                  <span className={hasMenu ? (isApproved ? 'text-green-700 font-medium' : 'text-blue-600') : 'text-gray-500'}>
-                    {clientName}
-                  </span>
-                  {i < activeClients.length - 1 && <span className="text-gray-300 mx-1">,</span>}
-                </span>
+                </div>
               );
             })}
           </div>
         ) : (
-          <p className="text-gray-500">No active clients</p>
+          <div className="text-center py-6 rounded-lg" style={{ backgroundColor: '#f9f9ed' }}>
+            <Calendar size={32} className="mx-auto mb-2 text-gray-300" />
+            <p className="text-gray-500">No clients scheduled for this week</p>
+            <p className="text-sm text-gray-400 mt-1">
+              Set delivery days in Clients → Edit or Billing & Dates
+            </p>
+          </div>
         )}
       </div>
 
@@ -652,41 +748,142 @@ export default function MenuTab({
 
         {showMenuBuilder && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: '#423d3c' }}>Menu Date</label>
-                <input
-                  type="date"
-                  value={menuDate}
-                  onChange={(e) => setMenuDate(e.target.value)}
-                  className="w-full p-2 border-2 rounded-lg"
-                  style={{ borderColor: '#ebb582' }}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: '#423d3c' }}>Select Clients</label>
-                <div className="flex flex-wrap gap-1">
-                  {activeClients.map((client, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setSelectedClients(prev =>
-                        prev.includes(client.name)
-                          ? prev.filter(c => c !== client.name)
-                          : [...prev, client.name]
-                      )}
-                      className={`px-2 py-1 rounded-full border text-xs transition-colors ${
-                        selectedClients.includes(client.name) ? 'text-white' : 'bg-white'
-                      }`}
-                      style={selectedClients.includes(client.name)
-                        ? { backgroundColor: '#3d59ab', borderColor: '#3d59ab' }
-                        : { borderColor: '#ebb582', color: '#423d3c' }}
-                    >
-                      {client.displayName || client.name}
-                    </button>
-                  ))}
+            {/* Client Selection - grouped by delivery day */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2" style={{ color: '#423d3c' }}>
+                Select Clients for Menu
+              </label>
+              {scheduledClients.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {['Monday', 'Tuesday', 'Thursday'].map(day => {
+                    const dayClients = clientsByDeliveryDay[day];
+                    const dayDate = weekDeliveryDates[day];
+                    if (dayClients.length === 0) return null;
+
+                    return (
+                      <div key={day} className="rounded-lg p-3 border-2" style={{ borderColor: '#ebb582', backgroundColor: '#fefefe' }}>
+                        <div className="flex items-center justify-between mb-2 pb-1 border-b" style={{ borderColor: '#f0d5bc' }}>
+                          <span className="font-bold text-xs" style={{ color: '#3d59ab' }}>{day}</span>
+                          <button
+                            onClick={() => {
+                              const dayClientNames = dayClients.map(c => c.name);
+                              const allSelected = dayClientNames.every(n => selectedClients.includes(n));
+                              if (allSelected) {
+                                setSelectedClients(prev => prev.filter(n => !dayClientNames.includes(n)));
+                              } else {
+                                setSelectedClients(prev => [...new Set([...prev, ...dayClientNames])]);
+                                setMenuDate(dayDate);
+                              }
+                            }}
+                            className="text-xs px-2 py-0.5 rounded"
+                            style={{ backgroundColor: '#3d59ab', color: 'white' }}
+                          >
+                            {dayClients.every(c => selectedClients.includes(c.name)) ? 'Deselect All' : 'Select All'}
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {dayClients.map((client, i) => {
+                            const isSelected = selectedClients.includes(client.name);
+                            const hasMenu = weekMenuItems.some(item => item.clientName === (client.displayName || client.name));
+
+                            return (
+                              <button
+                                key={i}
+                                onClick={() => {
+                                  if (isSelected) {
+                                    setSelectedClients(prev => prev.filter(c => c !== client.name));
+                                  } else {
+                                    setSelectedClients(prev => [...prev, client.name]);
+                                    setMenuDate(dayDate); // Auto-set date based on client's delivery day
+                                  }
+                                }}
+                                className={`px-2 py-1 rounded-full border text-xs transition-colors ${
+                                  isSelected ? 'text-white' : 'bg-white'
+                                }`}
+                                style={isSelected
+                                  ? { backgroundColor: '#3d59ab', borderColor: '#3d59ab' }
+                                  : { borderColor: hasMenu ? '#22c55e' : '#ebb582', color: hasMenu ? '#22c55e' : '#423d3c' }}
+                              >
+                                {hasMenu && <Check size={10} className="inline mr-0.5" />}
+                                {client.displayName || client.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-4 rounded-lg" style={{ backgroundColor: '#f9f9ed' }}>
+                  <p className="text-gray-500 text-sm">No clients scheduled for this week</p>
+                  <p className="text-xs text-gray-400 mt-1">Set delivery days in Clients or Billing & Dates first</p>
+                </div>
+              )}
+
+              {/* Show unscheduled active clients if any */}
+              {activeClients.length > scheduledClients.length && (
+                <div className="mt-3 pt-3 border-t" style={{ borderColor: '#ebb582' }}>
+                  <p className="text-xs text-gray-500 mb-2">
+                    Clients without scheduled delivery ({activeClients.length - scheduledClients.length}):
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {activeClients
+                      .filter(c => !scheduledClients.includes(c))
+                      .map((client, i) => (
+                        <button
+                          key={i}
+                          onClick={() => {
+                            setSelectedClients(prev =>
+                              prev.includes(client.name)
+                                ? prev.filter(c => c !== client.name)
+                                : [...prev, client.name]
+                            );
+                          }}
+                          className={`px-2 py-1 rounded-full border text-xs transition-colors ${
+                            selectedClients.includes(client.name) ? 'text-white' : 'bg-white'
+                          }`}
+                          style={selectedClients.includes(client.name)
+                            ? { backgroundColor: '#9ca3af', borderColor: '#9ca3af' }
+                            : { borderColor: '#d1d5db', color: '#6b7280' }}
+                        >
+                          {client.displayName || client.name}
+                        </button>
+                      ))
+                    }
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Delivery Date - Auto-filled based on selected clients, but can be overridden */}
+            {selectedClients.length > 0 && (
+              <div className="mb-4 p-3 rounded-lg" style={{ backgroundColor: '#e8f4fd', border: '1px solid #3d59ab33' }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Calendar size={16} style={{ color: '#3d59ab' }} />
+                    <span className="text-sm font-medium" style={{ color: '#3d59ab' }}>
+                      Delivery Date:
+                    </span>
+                    <span className="font-bold" style={{ color: '#3d59ab' }}>
+                      {new Date(menuDate + 'T12:00:00').toLocaleDateString('en-US', {
+                        weekday: 'long',
+                        month: 'short',
+                        day: 'numeric'
+                      })}
+                    </span>
+                  </div>
+                  <input
+                    type="date"
+                    value={menuDate}
+                    onChange={(e) => setMenuDate(e.target.value)}
+                    className="text-sm p-1.5 border rounded"
+                    style={{ borderColor: '#3d59ab33' }}
+                    title="Override delivery date if needed"
+                  />
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Show dietary restrictions for selected clients */}
             {selectedClients.length > 0 && (
