@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Upload, Download, Save, X, Edit2, Check, Trash2, AlertCircle, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Upload, Download, Save, X, Edit2, Check, Trash2, AlertCircle, RefreshCw, AlertTriangle, Copy } from 'lucide-react';
 import { STORE_SECTIONS, RECIPE_CATEGORIES } from '../constants';
 
 export default function RecipesTab({
@@ -26,7 +26,8 @@ export default function RecipesTab({
   updateMasterIngredientCost,
   syncRecipeIngredientsFromMaster,
   units = ['oz', 'lb', 'each', 'bunch', 'cup', 'tbsp', 'tsp'],
-  addUnit
+  addUnit,
+  duplicateRecipe
 }) {
   const [showNewVendorInput, setShowNewVendorInput] = useState({});
   const [editShowNewVendorInput, setEditShowNewVendorInput] = useState({});
@@ -587,10 +588,15 @@ export default function RecipesTab({
                           )}
                         </div>
                         <div className="flex gap-2">
-                          <button onClick={() => startEditingRecipe(category, index)} className="text-blue-600">
+                          <button onClick={() => startEditingRecipe(category, index)} className="text-blue-600" title="Edit">
                             <Edit2 size={18} />
                           </button>
-                          <button onClick={() => deleteRecipe(category, index)} className="text-red-600">
+                          {duplicateRecipe && (
+                            <button onClick={() => duplicateRecipe(category, index)} className="text-green-600" title="Duplicate">
+                              <Copy size={18} />
+                            </button>
+                          )}
+                          <button onClick={() => deleteRecipe(category, index)} className="text-red-600" title="Delete">
                             <Trash2 size={18} />
                           </button>
                         </div>

@@ -165,6 +165,16 @@ export default function App() {
     }
   };
 
+  const duplicateRecipe = (category, index) => {
+    const recipe = recipes[category][index];
+    const duplicated = {
+      ...recipe,
+      name: `${recipe.name} (Copy)`,
+      ingredients: recipe.ingredients.map(ing => ({ ...ing })) // Deep copy ingredients
+    };
+    setRecipes({ ...recipes, [category]: [...recipes[category], duplicated] });
+  };
+
   const startEditingRecipe = (category, index) => {
     const recipe = recipes[category][index];
     setEditingRecipe({
@@ -674,6 +684,7 @@ export default function App() {
             syncRecipeIngredientsFromMaster={syncRecipeIngredientsFromMaster}
             units={units}
             addUnit={addUnit}
+            duplicateRecipe={duplicateRecipe}
           />
         )}
 
