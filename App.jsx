@@ -263,6 +263,25 @@ export default function App() {
     return menuItems.filter(item => item.approved);
   };
 
+  // Week-related helpers (moved here to be available for KDS functions)
+  const currentWeek = weeks[selectedWeekId] || null;
+
+  // Get data for selected week (from week record if locked, otherwise from global state)
+  const getWeekMenuItems = () => {
+    if (currentWeek?.status === 'locked' && currentWeek.snapshot?.menu) {
+      // Reconstruct menu items from snapshot
+      const items = [];
+      Object.entries(currentWeek.snapshot.menu).forEach(([clientName, clientItems]) => {
+        clientItems.forEach(item => {
+          items.push({ ...item, clientName, approved: true });
+        });
+      });
+      return items;
+    }
+    // Filter global menuItems to selected week
+    return menuItems.filter(item => getWeekIdFromDate(item.date) === selectedWeekId);
+  };
+
   // Get approved menu items filtered to selected week
   const getWeekApprovedMenuItems = () => {
     const weekItems = getWeekMenuItems();
@@ -535,8 +554,7 @@ export default function App() {
 
   const prepList = getPrepList();
 
-  // Week-related helpers
-  const currentWeek = weeks[selectedWeekId] || null;
+  // Additional week-related helpers
   const isCurrentWeekReadOnly = isWeekReadOnly(selectedWeekId);
 
   // Save driver routes to main storage (so driver portal can access them)
@@ -556,22 +574,6 @@ export default function App() {
       lastSaved: new Date().toISOString()
     };
     localStorage.setItem('goldfinchChefData', JSON.stringify(merged));
-  };
-
-  // Get data for selected week (from week record if locked, otherwise from global state)
-  const getWeekMenuItems = () => {
-    if (currentWeek?.status === 'locked' && currentWeek.snapshot?.menu) {
-      // Reconstruct menu items from snapshot
-      const items = [];
-      Object.entries(currentWeek.snapshot.menu).forEach(([clientName, clientItems]) => {
-        clientItems.forEach(item => {
-          items.push({ ...item, clientName, approved: true });
-        });
-      });
-      return items;
-    }
-    // Filter global menuItems to selected week
-    return menuItems.filter(item => getWeekIdFromDate(item.date) === selectedWeekId);
   };
 
   const getWeekReadyForDelivery = () => {
