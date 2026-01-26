@@ -1,29 +1,24 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import './index.css'
 
-// Lazy load components to isolate initialization issues
-const App = React.lazy(() => import('./App.jsx'))
-const DriverView = React.lazy(() => import('./pages/DriverView.jsx'))
-const ClientPortal = React.lazy(() => import('./pages/ClientPortal.jsx'))
-const AdminPage = React.lazy(() => import('./pages/AdminPage.jsx'))
-
-const Loading = () => (
-  <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>
-)
+// Minimal test - no router, no components
+function TestApp() {
+  return (
+    <div style={{ padding: '40px', fontFamily: 'sans-serif' }}>
+      <h1 style={{ color: '#3d59ab' }}>App is working!</h1>
+      <p>If you see this, React is loading correctly.</p>
+      <p>Click a link to test routing:</p>
+      <ul>
+        <li><a href="/">Home</a></li>
+        <li><a href="/admin">Admin</a></li>
+        <li><a href="/driver">Driver</a></li>
+      </ul>
+    </div>
+  )
+}
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <React.Suspense fallback={<Loading />}>
-        <Routes>
-          <Route path="/" element={<App />} />
-          <Route path="/driver" element={<DriverView />} />
-          <Route path="/client/:id" element={<ClientPortal />} />
-          <Route path="/admin" element={<AdminPage />} />
-        </Routes>
-      </React.Suspense>
-    </BrowserRouter>
+    <TestApp />
   </React.StrictMode>,
 )
