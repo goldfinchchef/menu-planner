@@ -14,8 +14,7 @@ import RecipesTab from '../tabs/RecipesTab';
 import IngredientsTab from '../tabs/IngredientsTab';
 import ClientsTab from '../tabs/ClientsTab';
 import SubscriptionDetailModal from '../components/SubscriptionDetailModal';
-import { normalizeName, similarity, exportIngredientsCSV, exportRecipesCSV, parseIngredientsCSV, parseRecipesCSV, parseClientsCSV, categorizeIngredient } from '../utils';
-import { getWeekIdFromDate, createWeekRecord, lockWeek } from '../utils/weekUtils';
+import { normalizeName, similarity, exportIngredientsCSV, exportRecipesCSV, parseIngredientsCSV, parseRecipesCSV, parseClientsCSV, categorizeIngredient, getWeekIdFromDate, createWeekRecord, lockWeek } from '../utils';
 
 const STORAGE_KEY = 'goldfinchChefData';
 

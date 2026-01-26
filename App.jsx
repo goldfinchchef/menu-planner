@@ -5,7 +5,6 @@ import Tabs from './components/Tabs';
 import WorkflowStatus from './components/WorkflowStatus';
 import WeekSelector from './components/WeekSelector';
 import { useAppData } from './hooks/useAppData';
-import { getWeekId, getWeekIdFromDate } from './utils/weekUtils';
 import {
   RecipesTab,
   KDSTab,
@@ -13,6 +12,8 @@ import {
   DeliveriesTab
 } from './tabs';
 import {
+  getWeekId,
+  getWeekIdFromDate,
   categorizeIngredient,
   exportClientsCSV,
   exportIngredientsCSV,

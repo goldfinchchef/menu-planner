@@ -1,10 +1,6 @@
 import React from 'react';
 import { ChevronLeft, ChevronRight, Lock, Unlock, Calendar } from 'lucide-react';
-import {
-  getWeekId,
-  formatWeekRange,
-  getAdjacentWeekId
-} from '../utils/weekUtils';
+import { getWeekId, formatWeekRange, getAdjacentWeekId } from '../utils';
 
 export default function WeekSelector({
   selectedWeekId,
