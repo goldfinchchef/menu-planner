@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, Trash2, Check, Plus, ChevronRight, X, RefreshCw, MoveRight, FolderOpen } from 'lucide-react';
+import { Download, Trash2, Check, Plus, ChevronRight, X, RefreshCw, MoveRight, FolderOpen, GripVertical } from 'lucide-react';
 
 const SHOP_DATA_KEY = 'goldfinchShopData';
 const SHOP_CHECKED_KEY = 'goldfinchShopChecked';
@@ -65,6 +65,10 @@ export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepL
   const [newItemText, setNewItemText] = useState('');
   const [addingToDay, setAddingToDay] = useState(null);
   const [movingItem, setMovingItem] = useState(null); // { day, item }
+
+  // Drag and drop state
+  const [draggedItem, setDraggedItem] = useState(null); // { day, item }
+  const [dragOverDay, setDragOverDay] = useState(null);
 
   // Item overrides for section/source (persisted)
   // Key format: `${day}-${itemId}` -> { section?, source? }
@@ -287,6 +291,47 @@ export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepL
     setMovingItem(null);
   };
 
+  // Drag and drop handlers
+  const handleDragStart = (e, day, item) => {
+    setDraggedItem({ day, item });
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', item.name); // Required for Firefox
+    // Add a slight delay to show the drag visual
+    setTimeout(() => {
+      e.target.style.opacity = '0.5';
+    }, 0);
+  };
+
+  const handleDragEnd = (e) => {
+    e.target.style.opacity = '1';
+    setDraggedItem(null);
+    setDragOverDay(null);
+  };
+
+  const handleDragOver = (e, day) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (draggedItem && draggedItem.day !== day) {
+      setDragOverDay(day);
+    }
+  };
+
+  const handleDragLeave = (e) => {
+    // Only clear if leaving the column entirely
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setDragOverDay(null);
+    }
+  };
+
+  const handleDrop = (e, toDay) => {
+    e.preventDefault();
+    if (draggedItem && draggedItem.day !== toDay) {
+      moveItemToDay(draggedItem.day, draggedItem.item, toDay);
+    }
+    setDraggedItem(null);
+    setDragOverDay(null);
+  };
+
   const clearChecked = (day) => {
     const items = getItemsForDay(day);
     const checkedDayItemIds = items.filter(i => i.checked).map(i => i.dayItemId);
@@ -399,8 +444,16 @@ export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepL
             return (
               <div
                 key={day}
-                className="border-2 rounded-lg overflow-hidden"
-                style={{ borderColor: '#ebb582' }}
+                className={`border-2 rounded-lg overflow-hidden transition-all ${
+                  dragOverDay === day ? 'ring-2 ring-blue-400 ring-offset-2' : ''
+                }`}
+                style={{
+                  borderColor: dragOverDay === day ? '#3d59ab' : '#ebb582',
+                  backgroundColor: dragOverDay === day ? '#e8f0fe' : undefined
+                }}
+                onDragOver={(e) => handleDragOver(e, day)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, day)}
               >
                 {/* Day header */}
                 <div
@@ -445,11 +498,22 @@ export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepL
                             {sectionItems.map((item) => (
                               <div
                                 key={item.dayItemId}
+                                draggable={!item.checked}
+                                onDragStart={(e) => handleDragStart(e, day, item)}
+                                onDragEnd={handleDragEnd}
                                 className={`flex items-center gap-2 p-2 rounded mb-1 group ${
                                   item.checked ? 'opacity-50' : ''
-                                }`}
+                                } ${!item.checked ? 'cursor-grab active:cursor-grabbing' : ''}`}
                                 style={{ backgroundColor: 'white' }}
                               >
+                                {/* Drag handle */}
+                                {!item.checked && (
+                                  <GripVertical
+                                    size={14}
+                                    className="text-gray-300 flex-shrink-0 opacity-0 group-hover:opacity-100"
+                                  />
+                                )}
+
                                 {/* Checkbox */}
                                 <button
                                   onClick={() => toggleItem(item.dayItemId)}
