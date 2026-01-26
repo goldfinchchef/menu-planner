@@ -165,7 +165,8 @@ function ProductionDaySection({
       {/* Category Columns */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {['protein', 'veg', 'starch', 'extras'].map(category => {
-          const categoryDishes = Object.entries(data[category] || {});
+          const categoryDishes = Object.entries(data[category] || {})
+            .sort((a, b) => b[1].totalPortions - a[1].totalPortions); // Sort high to low by quantity
           const catConfig = CATEGORY_CONFIG[category];
 
           if (categoryDishes.length === 0) return null;
