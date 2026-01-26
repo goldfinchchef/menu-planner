@@ -120,9 +120,13 @@ export const parseClientsCSV = (file, onSuccess, onError) => {
       const headers = results.meta.fields || [];
       const isMultiRowFormat = headers.includes('subscriptionId') || headers.includes('subscriptionDisplayName');
 
-      // Check for common column name variations
-      const hasNameCol = headers.includes('Name') || headers.includes('name');
-      const hasDisplayNameCol = headers.includes('Display Name') || headers.includes('displayName');
+      // Helper to get field value with case variations
+      const getField = (row, ...keys) => {
+        for (const key of keys) {
+          if (row[key] !== undefined && row[key] !== '') return row[key];
+        }
+        return '';
+      };
 
       if (isMultiRowFormat) {
         // Multi-row subscription/contacts format - group rows by subscription
@@ -130,38 +134,47 @@ export const parseClientsCSV = (file, onSuccess, onError) => {
         let currentSubscription = null;
 
         results.data.forEach(row => {
-          if (row.subscriptionId || row.subscriptionDisplayName) {
-            const subId = row.subscriptionId || Date.now().toString() + Math.random();
+          const subDisplayName = getField(row, 'subscriptionDisplayName', 'SubscriptionDisplayName', 'Subscription Display Name');
+          const subId = getField(row, 'subscriptionId', 'SubscriptionId') || (subDisplayName ? Date.now().toString() + Math.random() : null);
+
+          if (subId && subDisplayName) {
+            const zone = getField(row, 'zone', 'Zone').toUpperCase();
             currentSubscription = {
               subscriptionId: subId,
-              displayName: row.subscriptionDisplayName || '',
-              portions: parseInt(row.portions) || 1,
-              mealsPerWeek: parseInt(row.mealsPerWeek) || 0,
-              frequency: (row.frequency || 'weekly').toLowerCase(),
-              status: (row.status || 'active').toLowerCase(),
-              zone: (row.zone || '').toUpperCase(),
-              deliveryDay: row.deliveryDay || '',
-              pickup: parseBoolean(row.pickup),
-              planPrice: parsePrice(row.planPrice),
-              serviceFee: parsePrice(row.serviceFee),
-              prepayDiscount: parseBoolean(row.prepayDiscount),
-              newClientFeePaid: parseBoolean(row.newClientFeePaid),
-              paysOwnGroceries: parseBoolean(row.paysOwnGroceries),
-              billingNotes: row.billingNotes || '',
-              accessCode: row.accessCode || '',
-              honeyBookLink: row.honeyBookLink || '',
+              displayName: subDisplayName,
+              portions: parseInt(getField(row, 'portions', 'Portions')) || 1,
+              mealsPerWeek: parseInt(getField(row, 'mealsPerWeek', 'MealsPerWeek', 'meals', 'Meals')) || 0,
+              frequency: (getField(row, 'frequency', 'Frequency') || 'weekly').toLowerCase(),
+              status: (getField(row, 'status', 'Status') || 'active').toLowerCase(),
+              zone: zone === 'UNASSIGNED' ? '' : zone,
+              deliveryDay: getField(row, 'deliveryDay', 'DeliveryDay'),
+              pickup: parseBoolean(getField(row, 'pickup', 'Pickup')),
+              planPrice: parsePrice(getField(row, 'planPrice', 'PlanPrice')),
+              serviceFee: parsePrice(getField(row, 'serviceFee', 'ServiceFee')),
+              prepayDiscount: parseBoolean(getField(row, 'prepayDiscount', 'PrepayDiscount')),
+              newClientFeePaid: parseBoolean(getField(row, 'newClientFeePaid', 'NewClientFeePaid')),
+              paysOwnGroceries: parseBoolean(getField(row, 'paysOwnGroceries', 'PaysOwnGroceries')),
+              billingNotes: getField(row, 'billingNotes', 'BillingNotes', 'notes', 'Notes'),
+              accessCode: getField(row, 'accessCode', 'AccessCode'),
+              honeyBookLink: getField(row, 'honeyBookLink', 'HoneyBookLink'),
               contacts: []
             };
             subscriptionMap[subId] = currentSubscription;
           }
 
-          if (currentSubscription && (row.contactFullName || row.email || row.address)) {
+          // Check for contact data (can be on same row as subscription or separate rows)
+          const contactFullName = getField(row, 'contactFullName', 'ContactFullName', 'Contact Full Name');
+          const contactEmail = getField(row, 'email', 'Email');
+          const contactPhone = getField(row, 'phone', 'Phone');
+          const contactAddress = getField(row, 'address', 'Address');
+
+          if (currentSubscription && (contactFullName || contactEmail || contactAddress)) {
             currentSubscription.contacts.push({
-              fullName: row.contactFullName || '',
-              displayName: row.contactDisplayName || '',
-              email: row.email || '',
-              phone: row.phone || '',
-              address: row.address || ''
+              fullName: contactFullName,
+              displayName: getField(row, 'contactDisplayName', 'ContactDisplayName', 'Contact Display Name'),
+              email: contactEmail,
+              phone: contactPhone,
+              address: contactAddress
             });
           }
         });
