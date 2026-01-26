@@ -2149,6 +2149,20 @@ export default function AdminPage() {
   const [duplicateWarnings, setDuplicateWarnings] = useState([]);
   const ingredientsFileRef = React.useRef();
 
+  // Import handler for ingredients
+  const importIngredientsCSV = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    parseIngredientsCSV(file, (imported) => {
+      // Merge with existing, avoiding duplicates by name
+      const existingNames = new Set(masterIngredients.map(i => i.name.toLowerCase()));
+      const newIngredients = imported.filter(i => !existingNames.has(i.name.toLowerCase()));
+      updateMasterIngredients([...masterIngredients, ...newIngredients]);
+      alert(`Imported ${newIngredients.length} new ingredient(s). ${imported.length - newIngredients.length} duplicate(s) skipped.`);
+    }, (err) => alert('Error parsing CSV: ' + err.message));
+    e.target.value = '';
+  };
+
   // Client management state
   const clientsFileRef = React.useRef();
   const [selectedClientForDetail, setSelectedClientForDetail] = useState(null);
@@ -2895,6 +2909,9 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#f9f9ed' }}>
+      {/* Hidden file inputs */}
+      <input type="file" ref={ingredientsFileRef} onChange={importIngredientsCSV} accept=".csv" className="hidden" />
+
       {/* Header */}
       <header className="text-white p-4" style={{ backgroundColor: '#3d59ab' }}>
         <div className="max-w-6xl mx-auto flex items-center justify-between">
