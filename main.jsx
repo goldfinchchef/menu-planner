@@ -7,6 +7,8 @@ import ClientPortal from './pages/ClientPortal.jsx'
 import AdminPage from './pages/AdminPage.jsx'
 import './index.css'
 
+// v2 - all routes restored
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
