@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, Trash2, Check, AlertTriangle, Circle, Eye, X, ChevronDown, ChevronUp, Edit2 } from 'lucide-react';
 import WeekSelector from '../components/WeekSelector';
+import { getWeekIdFromDate } from '../utils/weekUtils';
 
 // Styled Menu Card Component - matches client portal
 function StyledMenuCard({ client, date, menuItems }) {
@@ -213,17 +214,6 @@ export default function MenuTab({
 
   // Get active clients only
   const activeClients = (allClients || clients || []).filter(c => c.status === 'active');
-
-  // Helper to get week ID from a date string (matches the format used elsewhere)
-  const getWeekIdFromDate = (dateStr) => {
-    if (!dateStr) return null;
-    const date = new Date(dateStr + 'T12:00:00');
-    const day = date.getDay();
-    const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-    const monday = new Date(date);
-    monday.setDate(diff);
-    return monday.toISOString().split('T')[0];
-  };
 
   // Filter menu items to only show items for the selected week
   const weekMenuItems = menuItems.filter(item => {
