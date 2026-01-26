@@ -230,15 +230,26 @@ export const parseClientsCSV = (file, onSuccess, onError) => {
 export const parseIngredientsCSV = (file, onSuccess, onError) => {
   Papa.parse(file, {
     header: true,
+    skipEmptyLines: true,
     complete: (results) => {
-      const imported = results.data.filter(row => row.name).map(row => ({
-        id: Date.now() + Math.random(),
-        name: row.name || '',
-        cost: row.cost || '',
-        unit: row.unit || 'oz',
-        source: row.source || '',
-        section: row.section || 'Other'
-      }));
+      // Helper to get field value with case variations
+      const getField = (row, ...keys) => {
+        for (const key of keys) {
+          if (row[key] !== undefined && row[key] !== '') return row[key];
+        }
+        return '';
+      };
+
+      const imported = results.data
+        .filter(row => getField(row, 'name', 'Name', 'ingredient', 'Ingredient'))
+        .map(row => ({
+          id: Date.now() + Math.random(),
+          name: getField(row, 'name', 'Name', 'ingredient', 'Ingredient'),
+          cost: getField(row, 'cost', 'Cost', 'price', 'Price'),
+          unit: getField(row, 'unit', 'Unit', 'units', 'Units') || 'oz',
+          source: getField(row, 'source', 'Source', 'vendor', 'Vendor', 'store', 'Store'),
+          section: getField(row, 'section', 'Section', 'category', 'Category', 'aisle', 'Aisle') || 'Other'
+        }));
       onSuccess(imported);
     },
     error: onError
