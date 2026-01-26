@@ -18,17 +18,6 @@
         localStorage.clear();
         window.location.href = window.location.pathname;
       }
-      // Catch module initialization errors
-      window.onerror = function(msg, url, line, col, error) {
-        if (msg.includes('before initialization') || msg.includes('Cannot access')) {
-          document.body.innerHTML = '<div style="padding:40px;font-family:sans-serif;background:#fff;min-height:100vh;">' +
-            '<h1 style="color:#dc2626;">App Error - Data Reset Required</h1>' +
-            '<p>The app data is corrupted and needs to be reset.</p>' +
-            '<button onclick="localStorage.clear();location.reload();" style="padding:15px 30px;background:#3d59ab;color:white;border:none;border-radius:5px;cursor:pointer;font-size:16px;margin-top:20px;">Reset Data & Reload</button>' +
-            '<p style="margin-top:20px;color:#666;">Error: ' + msg + '</p></div>';
-          return true;
-        }
-      };
     </script>
     <script type="module" src="/main.jsx"></script>
   </body>
