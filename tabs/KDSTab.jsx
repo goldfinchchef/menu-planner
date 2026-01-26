@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Check, ChevronDown, ChevronUp, Utensils, Calendar } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Check, ChevronDown, ChevronUp, Utensils, Calendar, Printer } from 'lucide-react';
 
 // Category display config
 const CATEGORY_CONFIG = {
@@ -242,6 +242,69 @@ export default function KDSTab({
     }));
   };
 
+  // Print function for collapsed KDS view
+  const printKDS = () => {
+    const printWindow = window.open('', '_blank');
+
+    let content = `
+      <html>
+      <head>
+        <title>KDS - Kitchen Production List</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; }
+          h1 { color: #3d59ab; margin-bottom: 5px; }
+          h2 { color: #666; margin-top: 20px; border-bottom: 2px solid #ebb582; padding-bottom: 5px; }
+          h3 { margin: 10px 0 5px 0; color: #333; }
+          .category { margin-bottom: 15px; }
+          .category-header { font-weight: bold; padding: 5px 10px; color: white; display: inline-block; margin-bottom: 5px; }
+          .protein { background: #dc2626; }
+          .veg { background: #16a34a; }
+          .starch { background: #ca8a04; }
+          .extras { background: #7c3aed; }
+          .dish { padding: 3px 0; border-bottom: 1px dotted #ddd; }
+          .dish-name { font-weight: 500; }
+          .portions { color: #666; }
+          @media print { body { padding: 0; } }
+        </style>
+      </head>
+      <body>
+        <h1>Kitchen Production List</h1>
+        <p style="color: #666; margin-bottom: 20px;">Printed: ${new Date().toLocaleDateString()}</p>
+    `;
+
+    ['monTue', 'thursday'].forEach(prodDay => {
+      const dayData = kdsView[prodDay];
+      const dayLabel = prodDay === 'monTue' ? 'Monday/Tuesday Production' : 'Thursday Production';
+      const hasDishes = ['protein', 'veg', 'starch', 'extras'].some(cat => Object.keys(dayData?.[cat] || {}).length > 0);
+
+      if (hasDishes) {
+        content += `<h2>${dayLabel}</h2>`;
+
+        ['protein', 'veg', 'starch', 'extras'].forEach(category => {
+          const dishes = Object.entries(dayData[category] || {})
+            .sort((a, b) => b[1].totalPortions - a[1].totalPortions);
+
+          if (dishes.length > 0) {
+            const catLabel = CATEGORY_CONFIG[category].label;
+            content += `<div class="category"><span class="category-header ${category}">${catLabel}</span>`;
+
+            dishes.forEach(([name, data]) => {
+              content += `<div class="dish"><span class="dish-name">${name}</span> <span class="portions">(${data.totalPortions} portions)</span></div>`;
+            });
+
+            content += `</div>`;
+          }
+        });
+      }
+    });
+
+    content += `</body></html>`;
+
+    printWindow.document.write(content);
+    printWindow.document.close();
+    printWindow.print();
+  };
+
   // Check if there are any items at all
   const hasMonTueItems = ['protein', 'veg', 'starch', 'extras'].some(
     cat => Object.keys(kdsView.monTue?.[cat] || {}).length > 0
@@ -262,16 +325,28 @@ export default function KDSTab({
               Dishes grouped by production day and category
             </p>
           </div>
-          {menuItems.length > 0 && allDishesComplete() && (
-            <button
-              onClick={completeAllOrders}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-white"
-              style={{ backgroundColor: '#22c55e' }}
-            >
-              <Check size={18} />
-              Complete All & Ready for Delivery
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {hasAnyItems && (
+              <button
+                onClick={printKDS}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg border-2"
+                style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
+              >
+                <Printer size={18} />
+                Print
+              </button>
+            )}
+            {menuItems.length > 0 && allDishesComplete() && (
+              <button
+                onClick={completeAllOrders}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-white"
+                style={{ backgroundColor: '#22c55e' }}
+              >
+                <Check size={18} />
+                Complete All & Ready for Delivery
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Check, AlertTriangle, Circle, Eye, X, ChevronDown, ChevronUp, Edit2 } from 'lucide-react';
+import { Plus, Trash2, Check, AlertTriangle, Circle, Eye, X, ChevronDown, ChevronUp, Edit2, Printer } from 'lucide-react';
 import WeekSelector from '../components/WeekSelector';
 import { getWeekIdFromDate } from '../utils/weekUtils';
 
@@ -391,6 +391,60 @@ export default function MenuTab({
   const weekOrdersByClient = getWeekOrdersByClient();
   const deliveringThisWeek = getDeliveringThisWeek();
 
+  // Print function for menu planner
+  const printMenuPlanner = () => {
+    const printWindow = window.open('', '_blank');
+
+    let content = `
+      <html>
+      <head>
+        <title>Menu Planner - Client Orders</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; }
+          h1 { color: #3d59ab; margin-bottom: 5px; }
+          .client { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #ddd; }
+          .client-name { font-weight: bold; font-size: 14px; color: #3d59ab; margin-bottom: 5px; }
+          .dishes { margin-left: 15px; font-size: 12px; color: #333; }
+          .dish { padding: 2px 0; }
+          .portions { color: #666; font-size: 11px; }
+          .approved { color: #22c55e; }
+          .pending { color: #f59e0b; }
+          @media print { body { padding: 0; } }
+        </style>
+      </head>
+      <body>
+        <h1>Menu Planner - Client Orders</h1>
+        <p style="color: #666; margin-bottom: 20px;">Week: ${selectedWeekId} | Printed: ${new Date().toLocaleDateString()}</p>
+    `;
+
+    Object.entries(weekOrdersByClient).forEach(([clientName, orders]) => {
+      const allApproved = orders.every(o => o.approved);
+      const client = activeClients.find(c => (c.displayName || c.name) === clientName) ||
+                     activeClients.find(c => c.name === clientName);
+      const displayName = client?.displayName || clientName;
+      const portions = orders[0]?.portions || 1;
+
+      content += `<div class="client">`;
+      content += `<div class="client-name">${displayName} <span class="portions">(${portions} portions)</span> <span class="${allApproved ? 'approved' : 'pending'}">${allApproved ? '✓' : '○'}</span></div>`;
+      content += `<div class="dishes">`;
+
+      orders.forEach(order => {
+        const dishes = [order.protein, order.veg, order.starch, ...(order.extras || [])].filter(Boolean);
+        dishes.forEach(dish => {
+          content += `<div class="dish">• ${dish}</div>`;
+        });
+      });
+
+      content += `</div></div>`;
+    });
+
+    content += `</body></html>`;
+
+    printWindow.document.write(content);
+    printWindow.document.close();
+    printWindow.print();
+  };
+
   // Count status summary
   const statusSummary = {
     approved: activeClients.filter(c => getClientStatus(c).status === 'approved').length,
@@ -462,15 +516,24 @@ export default function MenuTab({
             <h2 className="text-xl font-bold" style={{ color: '#3d59ab' }}>
               Current Orders ({Object.keys(weekOrdersByClient).length} clients)
             </h2>
-            {weekMenuItems.some(item => !item.approved) && (
+            <div className="flex items-center gap-2">
               <button
-                onClick={approveAllReady}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm"
-                style={{ backgroundColor: '#22c55e' }}
+                onClick={printMenuPlanner}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border-2 text-sm"
+                style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
               >
-                <Check size={16} /> Approve All
+                <Printer size={16} /> Print
               </button>
-            )}
+              {weekMenuItems.some(item => !item.approved) && (
+                <button
+                  onClick={approveAllReady}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm"
+                  style={{ backgroundColor: '#22c55e' }}
+                >
+                  <Check size={16} /> Approve All
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
