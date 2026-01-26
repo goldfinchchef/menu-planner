@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ChefHat, Settings } from 'lucide-react';
 import Papa from 'papaparse';
@@ -80,6 +80,14 @@ export default function App() {
   const clientsFileRef = useRef();
   const recipesFileRef = useRef();
   const ingredientsFileRef = useRef();
+
+  // Sync menuDate when selectedWeekId changes
+  useEffect(() => {
+    if (selectedWeekId) {
+      // Set menuDate to the Monday of the selected week
+      setMenuDate(selectedWeekId);
+    }
+  }, [selectedWeekId, setMenuDate]);
 
   // CSV Import handlers
   const importClientsCSV = (e) => {
