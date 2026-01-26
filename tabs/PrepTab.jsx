@@ -91,16 +91,23 @@ export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepL
     localStorage.setItem(SHOP_CHECKED_KEY, JSON.stringify(checkedItems));
   }, [checkedItems]);
 
+  // Normalize name for ID generation
+  const normalizeNameForStorage = (name) => (name || '').toLowerCase().trim().replace(/\s+/g, ' ');
+
   // Save manual items to localStorage
   useEffect(() => {
     // Combine auto-generated and manual items for storage
     const combined = {};
     SHOP_DAYS.forEach(day => {
-      const autoItems = (shoppingListsByDay[day] || []).map(item => ({
-        ...item,
-        id: `auto-${item.name}-${item.unit}`,
-        manual: false
-      }));
+      const autoItems = (shoppingListsByDay[day] || []).map(item => {
+        const normalizedName = normalizeNameForStorage(item.name);
+        const normalizedUnit = (item.unit || 'oz').toLowerCase().trim();
+        return {
+          ...item,
+          id: `auto-${normalizedName}|${normalizedUnit}`,
+          manual: false
+        };
+      });
       combined[day] = [...autoItems, ...(manualItems[day] || [])];
     });
     localStorage.setItem(SHOP_DATA_KEY, JSON.stringify(combined));
@@ -109,10 +116,16 @@ export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepL
   // Generate day-specific ID for checked state
   const getDayItemId = (day, itemId) => `${day}-${itemId}`;
 
+  // Normalize name for consistent ID generation (matches App.jsx consolidation)
+  const normalizeForId = (name) => (name || '').toLowerCase().trim().replace(/\s+/g, ' ');
+
   // Get combined list for a day (auto-generated + manual) with overrides applied
   const getItemsForDay = (day) => {
     const autoItems = (shoppingListsByDay[day] || []).map(item => {
-      const baseId = `auto-${item.name}-${item.unit}`;
+      // Use normalized name + unit for consistent ID (matches consolidation in App.jsx)
+      const normalizedName = normalizeForId(item.name);
+      const normalizedUnit = (item.unit || 'oz').toLowerCase().trim();
+      const baseId = `auto-${normalizedName}|${normalizedUnit}`;
       const dayItemId = getDayItemId(day, baseId);
       const override = itemOverrides[dayItemId] || {};
       return {

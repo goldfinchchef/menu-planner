@@ -433,6 +433,11 @@ export default function App() {
 
     const approvedItems = getWeekApprovedMenuItems();
 
+    // Helper to normalize ingredient names for consolidation
+    const normalizeIngredientName = (name) => {
+      return (name || '').toLowerCase().trim().replace(/\s+/g, ' ');
+    };
+
     approvedItems.forEach(item => {
       // Find the client to get their delivery day
       const client = clients.find(c => c.name === item.clientName || c.displayName === item.clientName);
@@ -459,19 +464,28 @@ export default function App() {
         if (recipe?.ingredients) {
           recipe.ingredients.forEach(ing => {
             const masterIng = findExactMatch(ing.name);
-            const key = `${ing.name}-${ing.unit || 'oz'}`;
+            // Normalize name and unit for proper consolidation
+            const normalizedName = normalizeIngredientName(ing.name);
+            const unit = (ing.unit || 'oz').toLowerCase().trim();
+            const key = `${normalizedName}|${unit}`;
 
             if (!shoppingLists[shopDay][key]) {
               shoppingLists[shopDay][key] = {
-                name: ing.name,
+                name: ing.name.trim(), // Keep original display name (first occurrence)
                 quantity: 0,
-                unit: ing.unit || 'oz',
+                unit: unit,
                 section: ing.section || masterIng?.section || categorizeIngredient(ing.name),
                 cost: masterIng?.cost || ing.cost || '',
-                source: masterIng?.source || ing.source || ''
+                source: masterIng?.source || ing.source || '',
+                recipes: [] // Track which recipes use this ingredient
               };
             }
+            // Sum quantities (multiplied by portions)
             shoppingLists[shopDay][key].quantity += parseFloat(ing.quantity || 0) * (item.portions || 1);
+            // Track which recipes use this ingredient
+            if (!shoppingLists[shopDay][key].recipes.includes(dishName)) {
+              shoppingLists[shopDay][key].recipes.push(dishName);
+            }
           });
         }
       });
@@ -482,7 +496,9 @@ export default function App() {
       return Object.values(ingredients).sort((a, b) => {
         const sourceCompare = (a.source || 'ZZZ').localeCompare(b.source || 'ZZZ');
         if (sourceCompare !== 0) return sourceCompare;
-        return a.section.localeCompare(b.section);
+        const sectionCompare = (a.section || 'ZZZ').localeCompare(b.section || 'ZZZ');
+        if (sectionCompare !== 0) return sectionCompare;
+        return a.name.localeCompare(b.name);
       });
     };
 
