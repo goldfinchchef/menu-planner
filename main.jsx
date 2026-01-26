@@ -1,24 +1,48 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
 
-// Minimal test - no router, no components
-function TestApp() {
+// Test pages - no external imports
+function HomePage() {
   return (
     <div style={{ padding: '40px', fontFamily: 'sans-serif' }}>
-      <h1 style={{ color: '#3d59ab' }}>App is working!</h1>
-      <p>If you see this, React is loading correctly.</p>
-      <p>Click a link to test routing:</p>
-      <ul>
-        <li><a href="/">Home</a></li>
-        <li><a href="/admin">Admin</a></li>
-        <li><a href="/driver">Driver</a></li>
-      </ul>
+      <h1 style={{ color: '#3d59ab' }}>Home Page Works!</h1>
+      <p>React Router is working.</p>
+      <nav>
+        <Link to="/" style={{ marginRight: '20px' }}>Home</Link>
+        <Link to="/admin" style={{ marginRight: '20px' }}>Admin</Link>
+        <Link to="/driver">Driver</Link>
+      </nav>
+    </div>
+  )
+}
+
+function AdminPage() {
+  return (
+    <div style={{ padding: '40px', fontFamily: 'sans-serif' }}>
+      <h1 style={{ color: '#3d59ab' }}>Admin Page Works!</h1>
+      <Link to="/">Back to Home</Link>
+    </div>
+  )
+}
+
+function DriverPage() {
+  return (
+    <div style={{ padding: '40px', fontFamily: 'sans-serif' }}>
+      <h1 style={{ color: '#3d59ab' }}>Driver Page Works!</h1>
+      <Link to="/">Back to Home</Link>
     </div>
   )
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <TestApp />
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/admin" element={<AdminPage />} />
+        <Route path="/driver" element={<DriverPage />} />
+      </Routes>
+    </BrowserRouter>
   </React.StrictMode>,
 )
