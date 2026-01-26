@@ -408,6 +408,8 @@ export default function MenuTab({
           .client-name { font-weight: bold; font-size: 13px; color: #3d59ab; margin-bottom: 3px; }
           .dishes { margin-left: 12px; font-size: 11px; color: #333; }
           .dish { padding: 1px 0; }
+          .side { padding: 1px 0; margin-left: 12px; color: #555; }
+          .extra { padding: 1px 0; color: #7c3aed; font-style: italic; }
           .portions { color: #666; font-size: 10px; }
           .approved { color: #22c55e; }
           .pending { color: #f59e0b; }
@@ -437,9 +439,18 @@ export default function MenuTab({
       content += `<div class="dishes">`;
 
       orders.forEach(order => {
-        const dishes = [order.protein, order.veg, order.starch, ...(order.extras || [])].filter(Boolean);
-        dishes.forEach(dish => {
-          content += `<div class="dish">• ${dish}</div>`;
+        if (order.protein) {
+          content += `<div class="dish">• ${order.protein}</div>`;
+          if (order.veg) content += `<div class="side">◦ ${order.veg}</div>`;
+          if (order.starch) content += `<div class="side">◦ ${order.starch}</div>`;
+        } else {
+          // No protein - show veg/starch as main items
+          if (order.veg) content += `<div class="dish">• ${order.veg}</div>`;
+          if (order.starch) content += `<div class="dish">• ${order.starch}</div>`;
+        }
+        // Extras
+        (order.extras || []).forEach(extra => {
+          content += `<div class="extra">+ ${extra}</div>`;
         });
       });
 
