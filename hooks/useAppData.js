@@ -1,14 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
+import { normalizeName, similarity } from '../utils';
 import {
-  normalizeName,
-  similarity,
   getWeekId,
   getWeekIdFromDate,
   createWeekRecord,
   lockWeek,
   unlockWeek,
   isDateInWeek
-} from '../utils';
+} from '../utils/weekUtils';
 import {
   DEFAULT_RECIPES,
   DEFAULT_CLIENTS,

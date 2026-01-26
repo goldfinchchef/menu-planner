@@ -1,19 +1,18 @@
 import React, { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ChefHat, Settings } from 'lucide-react';
+import Papa from 'papaparse';
 import Tabs from './components/Tabs';
 import WorkflowStatus from './components/WorkflowStatus';
 import WeekSelector from './components/WeekSelector';
 import { useAppData } from './hooks/useAppData';
+// Direct imports to avoid barrel export initialization issues
+import RecipesTab from './tabs/RecipesTab';
+import KDSTab from './tabs/KDSTab';
+import PrepTab from './tabs/PrepTab';
+import DeliveriesTab from './tabs/DeliveriesTab';
+import { getWeekId, getWeekIdFromDate } from './utils/weekUtils';
 import {
-  RecipesTab,
-  KDSTab,
-  PrepTab,
-  DeliveriesTab
-} from './tabs';
-import {
-  getWeekId,
-  getWeekIdFromDate,
   categorizeIngredient,
   exportClientsCSV,
   exportIngredientsCSV,
@@ -24,7 +23,6 @@ import {
   downloadCSV
 } from './utils';
 import { DEFAULT_NEW_CLIENT, DEFAULT_NEW_RECIPE, DEFAULT_NEW_MENU_ITEM, DEFAULT_NEW_INGREDIENT } from './constants';
-import Papa from 'papaparse';
 
 export default function App() {
   const navigate = useNavigate();

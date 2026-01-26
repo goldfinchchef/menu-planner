@@ -1,20 +1,7 @@
 import Papa from 'papaparse';
 
-// Re-export week utilities explicitly
-export {
-  getWeekId,
-  getWeekStartDate,
-  getWeekEndDate,
-  getWeekIdFromDate,
-  formatWeekRange,
-  getPastWeekIds,
-  isDateInWeek,
-  createWeekRecord,
-  createWeekSnapshot,
-  lockWeek,
-  unlockWeek,
-  getAdjacentWeekId
-} from './weekUtils';
+// Note: Week utilities are imported directly from './weekUtils' where needed
+// to avoid barrel export initialization issues
 
 export const normalizeName = (name) =>
   name.toLowerCase().trim().replace(/s$/, '').replace(/es$/, '').replace(/ies$/, 'y').replace(/[^a-z0-9]/g, '');
