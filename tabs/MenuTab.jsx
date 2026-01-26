@@ -456,19 +456,95 @@ export default function MenuTab({
       <head>
         <title>Menu Planner - Client Orders</title>
         <style>
-          body { font-family: Arial, sans-serif; padding: 20px; }
-          h1 { color: #3d59ab; margin-bottom: 5px; }
-          .header { margin-bottom: 15px; }
-          .columns { column-count: 2; column-gap: 30px; }
-          .client { break-inside: avoid; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #ddd; }
-          .client-name { font-weight: bold; font-size: 13px; color: #3d59ab; margin-bottom: 3px; }
-          .dishes { margin-left: 12px; font-size: 11px; color: #333; }
-          .dish { padding: 1px 0; }
-          .side { padding: 1px 0; margin-left: 12px; color: #555; }
-          .extra { padding: 1px 0; color: #7c3aed; font-style: italic; }
-          .portions { color: #666; font-size: 10px; }
+          body {
+            font-family: Arial, sans-serif;
+            padding: 15px;
+            font-size: 11px;
+            line-height: 1.3;
+          }
+          h1 {
+            color: #3d59ab;
+            margin-bottom: 3px;
+            font-size: 18px;
+          }
+          .header {
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #3d59ab;
+          }
+          .header p { margin: 0; color: #666; font-size: 10px; }
+          .columns {
+            column-count: 2;
+            column-gap: 25px;
+          }
+          .client {
+            break-inside: avoid;
+            margin-bottom: 10px;
+            padding-bottom: 6px;
+            border-bottom: 1px dotted #ccc;
+          }
+          .client-name {
+            font-weight: bold;
+            font-size: 12px;
+            color: #3d59ab;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+          }
+          .portions {
+            color: #888;
+            font-size: 10px;
+            font-weight: normal;
+          }
+          .status { font-size: 12px; }
           .approved { color: #22c55e; }
           .pending { color: #f59e0b; }
+          .meals {
+            margin-left: 4px;
+          }
+          .meal {
+            margin-bottom: 6px;
+          }
+          .protein {
+            font-weight: bold;
+            font-size: 11px;
+            color: #333;
+            padding: 2px 0;
+          }
+          .protein:before {
+            content: "•";
+            margin-right: 6px;
+            color: #3d59ab;
+            font-weight: bold;
+          }
+          .sides {
+            margin-left: 16px;
+            color: #555;
+            font-size: 10px;
+          }
+          .side {
+            padding: 1px 0;
+          }
+          .side:before {
+            content: "◦";
+            margin-right: 5px;
+            color: #999;
+          }
+          .extras {
+            margin-left: 16px;
+            margin-top: 2px;
+          }
+          .extra {
+            color: #7c3aed;
+            font-style: italic;
+            font-size: 10px;
+            padding: 1px 0;
+          }
+          .extra:before {
+            content: "+";
+            margin-right: 4px;
+          }
           @media print {
             body { padding: 10px; }
             .columns { column-count: 2; }
@@ -477,8 +553,8 @@ export default function MenuTab({
       </head>
       <body>
         <div class="header">
-          <h1>Menu Planner - Client Orders</h1>
-          <p style="color: #666;">Week: ${selectedWeekId} | Printed: ${new Date().toLocaleDateString()}</p>
+          <h1>Client Orders</h1>
+          <p>Week: ${selectedWeekId} | ${new Date().toLocaleDateString()}</p>
         </div>
         <div class="columns">
     `;
@@ -491,23 +567,43 @@ export default function MenuTab({
       const portions = orders[0]?.portions || 1;
 
       content += `<div class="client">`;
-      content += `<div class="client-name">${displayName} <span class="portions">(${portions})</span> <span class="${allApproved ? 'approved' : 'pending'}">${allApproved ? '✓' : '○'}</span></div>`;
-      content += `<div class="dishes">`;
+      content += `<div class="client-name">`;
+      content += `<span>${displayName}</span>`;
+      content += `<span class="portions">(${portions}p)</span>`;
+      content += `<span class="status ${allApproved ? 'approved' : 'pending'}">${allApproved ? '✓' : '○'}</span>`;
+      content += `</div>`;
+      content += `<div class="meals">`;
 
       orders.forEach(order => {
+        content += `<div class="meal">`;
+
         if (order.protein) {
-          content += `<div class="dish">• ${order.protein}</div>`;
-          if (order.veg) content += `<div class="side">◦ ${order.veg}</div>`;
-          if (order.starch) content += `<div class="side">◦ ${order.starch}</div>`;
+          // Protein as main bullet
+          content += `<div class="protein">${order.protein}</div>`;
+
+          // Veg and starch as indented sub-bullets
+          if (order.veg || order.starch) {
+            content += `<div class="sides">`;
+            if (order.veg) content += `<div class="side">${order.veg}</div>`;
+            if (order.starch) content += `<div class="side">${order.starch}</div>`;
+            content += `</div>`;
+          }
         } else {
           // No protein - show veg/starch as main items
-          if (order.veg) content += `<div class="dish">• ${order.veg}</div>`;
-          if (order.starch) content += `<div class="dish">• ${order.starch}</div>`;
+          if (order.veg) content += `<div class="protein">${order.veg}</div>`;
+          if (order.starch) content += `<div class="protein">${order.starch}</div>`;
         }
+
         // Extras
-        (order.extras || []).forEach(extra => {
-          content += `<div class="extra">+ ${extra}</div>`;
-        });
+        if (order.extras && order.extras.length > 0) {
+          content += `<div class="extras">`;
+          order.extras.forEach(extra => {
+            content += `<div class="extra">${extra}</div>`;
+          });
+          content += `</div>`;
+        }
+
+        content += `</div>`;
       });
 
       content += `</div></div>`;
