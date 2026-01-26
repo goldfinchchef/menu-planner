@@ -402,19 +402,27 @@ export default function MenuTab({
         <style>
           body { font-family: Arial, sans-serif; padding: 20px; }
           h1 { color: #3d59ab; margin-bottom: 5px; }
-          .client { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #ddd; }
-          .client-name { font-weight: bold; font-size: 14px; color: #3d59ab; margin-bottom: 5px; }
-          .dishes { margin-left: 15px; font-size: 12px; color: #333; }
-          .dish { padding: 2px 0; }
-          .portions { color: #666; font-size: 11px; }
+          .header { margin-bottom: 15px; }
+          .columns { column-count: 2; column-gap: 30px; }
+          .client { break-inside: avoid; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #ddd; }
+          .client-name { font-weight: bold; font-size: 13px; color: #3d59ab; margin-bottom: 3px; }
+          .dishes { margin-left: 12px; font-size: 11px; color: #333; }
+          .dish { padding: 1px 0; }
+          .portions { color: #666; font-size: 10px; }
           .approved { color: #22c55e; }
           .pending { color: #f59e0b; }
-          @media print { body { padding: 0; } }
+          @media print {
+            body { padding: 10px; }
+            .columns { column-count: 2; }
+          }
         </style>
       </head>
       <body>
-        <h1>Menu Planner - Client Orders</h1>
-        <p style="color: #666; margin-bottom: 20px;">Week: ${selectedWeekId} | Printed: ${new Date().toLocaleDateString()}</p>
+        <div class="header">
+          <h1>Menu Planner - Client Orders</h1>
+          <p style="color: #666;">Week: ${selectedWeekId} | Printed: ${new Date().toLocaleDateString()}</p>
+        </div>
+        <div class="columns">
     `;
 
     Object.entries(weekOrdersByClient).forEach(([clientName, orders]) => {
@@ -425,7 +433,7 @@ export default function MenuTab({
       const portions = orders[0]?.portions || 1;
 
       content += `<div class="client">`;
-      content += `<div class="client-name">${displayName} <span class="portions">(${portions} portions)</span> <span class="${allApproved ? 'approved' : 'pending'}">${allApproved ? '✓' : '○'}</span></div>`;
+      content += `<div class="client-name">${displayName} <span class="portions">(${portions})</span> <span class="${allApproved ? 'approved' : 'pending'}">${allApproved ? '✓' : '○'}</span></div>`;
       content += `<div class="dishes">`;
 
       orders.forEach(order => {
@@ -438,7 +446,7 @@ export default function MenuTab({
       content += `</div></div>`;
     });
 
-    content += `</body></html>`;
+    content += `</div></body></html>`;
 
     printWindow.document.write(content);
     printWindow.document.close();
