@@ -15,7 +15,8 @@ import {
   DEFAULT_NEW_RECIPE,
   DEFAULT_NEW_MENU_ITEM,
   DEFAULT_NEW_INGREDIENT,
-  DEFAULT_NEW_DRIVER
+  DEFAULT_NEW_DRIVER,
+  DEFAULT_UNITS
 } from '../constants';
 
 export function useAppData() {
@@ -48,6 +49,7 @@ export function useAppData() {
   const [groceryBills, setGroceryBills] = useState([]);
   const [weeks, setWeeks] = useState({});
   const [selectedWeekId, setSelectedWeekId] = useState(getWeekId());
+  const [units, setUnits] = useState(DEFAULT_UNITS);
 
   // Load from localStorage
   useEffect(() => {
@@ -72,6 +74,7 @@ export function useAppData() {
           if (parsed.customTasks) setCustomTasks(parsed.customTasks);
           if (parsed.groceryBills) setGroceryBills(parsed.groceryBills);
           if (parsed.weeks) setWeeks(parsed.weeks);
+          if (parsed.units) setUnits(parsed.units);
         } catch (e) {
           console.error('Error loading saved data:', e);
         }
@@ -129,10 +132,11 @@ export function useAppData() {
       customTasks,
       groceryBills,
       weeks,
+      units,
       lastSaved: new Date().toISOString()
     };
     localStorage.setItem('goldfinchChefData', JSON.stringify(dataToSave));
-  }, [recipes, clients, menuItems, masterIngredients, orderHistory, weeklyTasks, drivers, deliveryLog, bagReminders, readyForDelivery, clientPortalData, blockedDates, adminSettings, customTasks, groceryBills, weeks]);
+  }, [recipes, clients, menuItems, masterIngredients, orderHistory, weeklyTasks, drivers, deliveryLog, bagReminders, readyForDelivery, clientPortalData, blockedDates, adminSettings, customTasks, groceryBills, weeks, units]);
 
   const findSimilarIngredients = (name) => {
     if (!name || name.length < 2) return [];
@@ -153,6 +157,15 @@ export function useAppData() {
       }
     });
     return Array.from(vendors).sort();
+  };
+
+  // Add a new unit to the list
+  const addUnit = (newUnit) => {
+    if (!newUnit || newUnit.trim() === '') return;
+    const trimmed = newUnit.trim().toLowerCase();
+    if (!units.includes(trimmed)) {
+      setUnits(prev => [...prev, trimmed].sort());
+    }
   };
 
   const addToMasterIngredients = (ingredient) => {
@@ -470,6 +483,7 @@ export function useAppData() {
     groceryBills, setGroceryBills,
     weeks, setWeeks,
     selectedWeekId, setSelectedWeekId,
+    units, addUnit,
     // Functions
     findSimilarIngredients,
     findExactMatch,

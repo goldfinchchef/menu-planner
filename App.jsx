@@ -73,7 +73,8 @@ export default function App() {
     addDeliveryLogToWeek,
     removeReadyForDeliveryFromWeek,
     isWeekReadOnly,
-    getWeekIds
+    getWeekIds,
+    units, addUnit
   } = useAppData();
 
   const clientsFileRef = useRef();
@@ -671,6 +672,8 @@ export default function App() {
             getUniqueVendors={getUniqueVendors}
             updateMasterIngredientCost={updateMasterIngredientCost}
             syncRecipeIngredientsFromMaster={syncRecipeIngredientsFromMaster}
+            units={units}
+            addUnit={addUnit}
           />
         )}
 

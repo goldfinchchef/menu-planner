@@ -9,7 +9,10 @@ export const STORE_SECTIONS = [
   'Other'
 ];
 
-export const UNITS = ['oz', 'lb', 'g', 'kg', 'each'];
+export const DEFAULT_UNITS = ['oz', 'lb', 'g', 'kg', 'each', 'bunch', 'cup', 'tbsp', 'tsp', 'clove', 'head', 'can', 'jar', 'package'];
+
+// Alias for backwards compatibility
+export const UNITS = DEFAULT_UNITS;
 
 export const ZONES = ['A', 'B', 'C'];
 

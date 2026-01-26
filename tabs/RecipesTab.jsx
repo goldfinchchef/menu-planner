@@ -24,10 +24,14 @@ export default function RecipesTab({
   exportRecipesCSV,
   getUniqueVendors,
   updateMasterIngredientCost,
-  syncRecipeIngredientsFromMaster
+  syncRecipeIngredientsFromMaster,
+  units = ['oz', 'lb', 'each', 'bunch', 'cup', 'tbsp', 'tsp'],
+  addUnit
 }) {
   const [showNewVendorInput, setShowNewVendorInput] = useState({});
   const [editShowNewVendorInput, setEditShowNewVendorInput] = useState({});
+  const [showNewUnitInput, setShowNewUnitInput] = useState({});
+  const [editShowNewUnitInput, setEditShowNewUnitInput] = useState({});
 
   const recipeCounts = getRecipeCounts();
   const uniqueVendors = getUniqueVendors ? getUniqueVendors() : [];
@@ -160,6 +164,88 @@ export default function RecipesTab({
     );
   };
 
+  // Unit dropdown with "Add new" option
+  const UnitSelect = ({ value, onChange, index, isEditing = false }) => {
+    const showNew = isEditing ? editShowNewUnitInput[index] : showNewUnitInput[index];
+    const setShowNew = isEditing
+      ? (val) => setEditShowNewUnitInput(prev => ({ ...prev, [index]: val }))
+      : (val) => setShowNewUnitInput(prev => ({ ...prev, [index]: val }));
+
+    if (showNew) {
+      return (
+        <div className="flex gap-1">
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onBlur={() => {
+              // Add the new unit when user leaves the field
+              if (value && addUnit) {
+                addUnit(value);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                if (value && addUnit) {
+                  addUnit(value);
+                }
+                setShowNew(false);
+              }
+            }}
+            placeholder="New unit"
+            className={isEditing ? "w-14 p-1 border rounded text-sm" : "w-16 p-2 border-2 rounded-lg"}
+            style={isEditing ? {} : { borderColor: '#ebb582' }}
+            autoFocus
+          />
+          <button
+            onClick={() => {
+              if (value && addUnit) {
+                addUnit(value);
+              }
+              setShowNew(false);
+            }}
+            className="text-green-600 hover:text-green-700"
+            type="button"
+            title="Save unit"
+          >
+            <Check size={isEditing ? 14 : 16} />
+          </button>
+          <button
+            onClick={() => {
+              onChange('oz');
+              setShowNew(false);
+            }}
+            className="text-gray-500 hover:text-gray-700"
+            type="button"
+            title="Cancel"
+          >
+            <X size={isEditing ? 14 : 16} />
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <select
+        value={units.includes(value) ? value : (value || 'oz')}
+        onChange={(e) => {
+          if (e.target.value === '__new__') {
+            setShowNew(true);
+            onChange('');
+          } else {
+            onChange(e.target.value);
+          }
+        }}
+        className={isEditing ? "w-16 p-1 border rounded text-sm" : "w-20 p-2 border-2 rounded-lg"}
+        style={isEditing ? {} : { borderColor: '#ebb582' }}
+      >
+        {units.map(u => <option key={u} value={u}>{u}</option>)}
+        <option value="__new__">+ New...</option>
+      </select>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-lg shadow-lg p-6">
@@ -260,9 +346,14 @@ export default function RecipesTab({
                       type="text"
                       value={ing.quantity}
                       onChange={(e) => updateIngredient(index, 'quantity', e.target.value)}
-                      placeholder="Oz"
+                      placeholder="Qty"
                       className="w-16 p-2 border-2 rounded-lg"
                       style={{ borderColor: '#ebb582' }}
+                    />
+                    <UnitSelect
+                      value={ing.unit || 'oz'}
+                      onChange={(val) => updateIngredient(index, 'unit', val)}
+                      index={index}
                     />
                     <input
                       type="text"
@@ -404,8 +495,14 @@ export default function RecipesTab({
                                   type="text"
                                   value={ing.quantity}
                                   onChange={(e) => updateEditingIngredient(ingIndex, 'quantity', e.target.value)}
-                                  placeholder="Oz"
+                                  placeholder="Qty"
                                   className="w-12 p-1 border rounded text-sm"
+                                />
+                                <UnitSelect
+                                  value={ing.unit || 'oz'}
+                                  onChange={(val) => updateEditingIngredient(ingIndex, 'unit', val)}
+                                  index={ingIndex}
+                                  isEditing={true}
                                 />
                                 <input
                                   type="text"
@@ -483,7 +580,7 @@ export default function RecipesTab({
                             )}
                           </div>
                           <p className="text-sm text-gray-600">
-                            {recipe.ingredients?.map(i => `${i.name} (${i.quantity}oz)`).join(', ')}
+                            {recipe.ingredients?.map(i => `${i.name} (${i.quantity} ${i.unit || 'oz'})`).join(', ')}
                           </p>
                           {recipe.instructions && (
                             <p className="text-xs text-gray-500 mt-1">{recipe.instructions}</p>
