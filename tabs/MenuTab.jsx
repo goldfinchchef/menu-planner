@@ -2,6 +2,9 @@ import React, { useState, useMemo } from 'react';
 import { Plus, Trash2, Check, AlertTriangle, Circle, Eye, X, ChevronDown, ChevronUp, Edit2, Printer, Calendar } from 'lucide-react';
 import WeekSelector from '../components/WeekSelector';
 import { getWeekIdFromDate, getWeekStartDate } from '../utils/weekUtils';
+import { isSupabaseMode, isLocalMode } from '../lib/dataMode';
+import { saveAllMenus, fetchMenus } from '../lib/database';
+import { checkConnection } from '../lib/supabase';
 
 // Styled Menu Card Component - matches client portal
 function StyledMenuCard({ client, date, menuItems }) {
@@ -356,21 +359,75 @@ export default function MenuTab({
     return grouped;
   };
 
+  // State for approval toast messages
+  const [approvalToast, setApprovalToast] = useState(null);
+
+  // Show toast helper
+  const showToast = (message, type = 'info') => {
+    setApprovalToast({ message, type });
+    setTimeout(() => setApprovalToast(null), 4000);
+  };
+
   // Approve menu for a client
-  const approveClientMenu = (clientName) => {
+  const approveClientMenu = async (clientName) => {
     console.log('[MenuTab] Approving menu for:', clientName);
+
+    // Get current menu items for this client
+    const currentMenuItems = menuItems.filter(item => item.clientName === clientName);
+    const approvedItems = currentMenuItems.map(item => ({ ...item, approved: true }));
+
+    // Update local state immediately for responsive UI
     setMenuItems(prev => {
       const updated = prev.map(item =>
         item.clientName === clientName ? { ...item, approved: true } : item
       );
-      console.log('[MenuTab] Updated menuItems count:', updated.length);
-      console.log('[MenuTab] Approved items:', updated.filter(i => i.approved).length);
+      console.log('[MenuTab] Updated local state, approved items:', updated.filter(i => i.approved).length);
       return updated;
     });
+
+    // Check if we should persist to Supabase
+    if (isSupabaseMode()) {
+      console.log('[MenuTab] Supabase mode - checking connection...');
+      const isOnline = await checkConnection();
+
+      if (!isOnline) {
+        console.error('[MenuTab] Cannot persist: database offline');
+        showToast('Cannot approve: database offline. Changes saved locally only.', 'error');
+        return;
+      }
+
+      try {
+        console.log('[saveAllMenus] start, count:', approvedItems.length);
+        await saveAllMenus(approvedItems);
+        console.log('[saveAllMenus] success, returned count:', approvedItems.length);
+
+        // Optionally refetch to sync state with DB
+        try {
+          const freshMenus = await fetchMenus();
+          console.log('[MenuTab] Refetched menus from Supabase, count:', freshMenus.length);
+          // Merge: keep local items not in DB, update items that are in DB
+          setMenuItems(prev => {
+            const dbIds = new Set(freshMenus.map(m => `${m.clientName}-${m.date}`));
+            const localOnly = prev.filter(item => !dbIds.has(`${item.clientName}-${item.date}`));
+            return [...freshMenus, ...localOnly];
+          });
+        } catch (refetchError) {
+          console.warn('[MenuTab] Refetch failed, using local state:', refetchError);
+        }
+
+        showToast(`Menu approved for ${clientName}`, 'success');
+      } catch (error) {
+        console.error('[saveAllMenus] error, full error:', error);
+        showToast(`Failed to save: ${error.message}`, 'error');
+      }
+    } else {
+      console.log('[MenuTab] Local mode - skipping Supabase persistence');
+      showToast(`Menu approved for ${clientName} (local only)`, 'info');
+    }
   };
 
   // Approve all ready menus
-  const approveAllReady = () => {
+  const approveAllReady = async () => {
     const readyClients = activeClients.filter(c => {
       const clientName = c.displayName || c.name;
       const status = getClientStatus(c);
@@ -378,16 +435,26 @@ export default function MenuTab({
     });
 
     if (readyClients.length === 0) {
-      alert('No menus ready to approve');
+      showToast('No menus ready to approve', 'info');
       return;
     }
 
-    readyClients.forEach(c => {
-      const clientName = c.displayName || c.name;
-      approveClientMenu(clientName);
-    });
+    // Check Supabase connectivity once before bulk approve
+    if (isSupabaseMode()) {
+      const isOnline = await checkConnection();
+      if (!isOnline) {
+        showToast('Cannot approve: database offline', 'error');
+        return;
+      }
+    }
 
-    alert(`Approved ${readyClients.length} menu(s)`);
+    // Approve all sequentially
+    for (const c of readyClients) {
+      const clientName = c.displayName || c.name;
+      await approveClientMenu(clientName);
+    }
+
+    showToast(`Approved ${readyClients.length} menu(s)`, 'success');
   };
 
   // Deny (remove) menu for a client
@@ -639,6 +706,29 @@ export default function MenuTab({
 
   return (
     <div className="space-y-6">
+      {/* Toast notification */}
+      {approvalToast && (
+        <div
+          className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 ${
+            approvalToast.type === 'error'
+              ? 'bg-red-100 text-red-800 border border-red-300'
+              : approvalToast.type === 'success'
+              ? 'bg-green-100 text-green-800 border border-green-300'
+              : 'bg-blue-100 text-blue-800 border border-blue-300'
+          }`}
+        >
+          {approvalToast.type === 'error' && <AlertTriangle size={18} />}
+          {approvalToast.type === 'success' && <Check size={18} />}
+          <span>{approvalToast.message}</span>
+          <button
+            onClick={() => setApprovalToast(null)}
+            className="ml-2 hover:opacity-70"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       {/* Week Selector */}
       {weeks && selectedWeekId && setSelectedWeekId && (
         <WeekSelector
