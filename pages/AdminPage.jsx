@@ -16,8 +16,10 @@ import RecipesTab from '../tabs/RecipesTab';
 import IngredientsTab from '../tabs/IngredientsTab';
 import ClientsTab from '../tabs/ClientsTab';
 import SubscriptionDetailModal from '../components/SubscriptionDetailModal';
+import DataModeToggle from '../components/DataModeToggle';
 import { normalizeName, similarity, exportIngredientsCSV, exportRecipesCSV, parseIngredientsCSV, parseRecipesCSV, parseClientsCSV, categorizeIngredient } from '../utils';
 import { getWeekIdFromDate, createWeekRecord, lockWeek } from '../utils/weekUtils';
+import { getDataMode, isSupabaseMode } from '../lib/dataMode';
 
 const STORAGE_KEY = 'goldfinchChefData';
 
@@ -3299,13 +3301,16 @@ export default function AdminPage() {
               <p className="text-sm opacity-80">Goldfinch Chef</p>
             </div>
           </div>
-          <Link
-            to="/"
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"
-          >
-            <Home size={20} />
-            Back to App
-          </Link>
+          <div className="flex items-center gap-3">
+            <DataModeToggle onModeChange={() => window.location.reload()} />
+            <Link
+              to="/"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"
+            >
+              <Home size={20} />
+              Back to App
+            </Link>
+          </div>
         </div>
       </header>
 
