@@ -5,8 +5,10 @@ import {
   Plus, Trash2, Edit2, Edit3, Check, X, Settings, ClipboardList,
   LayoutDashboard, Users, MapPin, ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
   Package, CreditCard, FileText, ShoppingBag, ShoppingCart, Eye, Utensils,
-  ExternalLink, Copy, DollarSign, TrendingUp, Receipt
+  ExternalLink, Copy, DollarSign, TrendingUp, Receipt, Database, Cloud, CloudOff, Upload
 } from 'lucide-react';
+import { runMigration, getMigrationStatus } from '../lib/migration';
+import { isConfigured, checkConnection } from '../lib/supabase';
 import { ZONES, DEFAULT_NEW_DRIVER, DEFAULT_NEW_MENU_ITEM, DEFAULT_NEW_INGREDIENT, DEFAULT_NEW_RECIPE, STORE_SECTIONS } from '../constants';
 import SubscriptionsTab from '../tabs/SubscriptionsTab';
 import MenuTab from '../tabs/MenuTab';
@@ -2419,6 +2421,50 @@ export default function AdminPage() {
   const [newMenuItem, setNewMenuItem] = useState(DEFAULT_NEW_MENU_ITEM);
   const [selectedWeekId, setSelectedWeekId] = useState(() => getWeekIdFromDate(new Date().toISOString().split('T')[0]));
 
+  // Database migration state
+  const [migrationStatus, setMigrationStatus] = useState(null);
+  const [isMigrating, setIsMigrating] = useState(false);
+  const [migrationReport, setMigrationReport] = useState(null);
+  const [supabaseConnected, setSupabaseConnected] = useState(false);
+
+  // Check Supabase connection on mount
+  React.useEffect(() => {
+    const checkSupabase = async () => {
+      if (isConfigured()) {
+        const connected = await checkConnection();
+        setSupabaseConnected(connected);
+        const status = await getMigrationStatus();
+        setMigrationStatus(status);
+      }
+    };
+    checkSupabase();
+  }, []);
+
+  // Handle migration
+  const handleMigration = async () => {
+    if (isMigrating) return;
+
+    if (!window.confirm('This will import all localStorage data to Supabase.\n\nExisting records will be updated (not duplicated).\n\nProceed?')) {
+      return;
+    }
+
+    setIsMigrating(true);
+    setMigrationReport(null);
+
+    try {
+      const report = await runMigration();
+      setMigrationReport(report);
+
+      // Refresh status
+      const status = await getMigrationStatus();
+      setMigrationStatus(status);
+    } catch (e) {
+      setMigrationReport({ success: false, errors: [e.message] });
+    } finally {
+      setIsMigrating(false);
+    }
+  };
+
   // Unlock week by ID
   const unlockWeekById = (weekId) => {
     if (!weeks[weekId]) return;
@@ -4228,6 +4274,154 @@ export default function AdminPage() {
               ) : (
                 <p className="text-gray-500">No drivers yet. Add your first driver above.</p>
               )}
+            </div>
+
+            {/* Database / Supabase Section */}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-2xl font-bold mb-4" style={{ color: '#3d59ab' }}>
+                <Database size={24} className="inline mr-2" />
+                Database (Supabase)
+              </h2>
+
+              {/* Connection Status */}
+              <div className="mb-6 p-4 rounded-lg border-2" style={{ borderColor: supabaseConnected ? '#22c55e' : '#f59e0b' }}>
+                <div className="flex items-center gap-3">
+                  {supabaseConnected ? (
+                    <>
+                      <Cloud size={24} className="text-green-500" />
+                      <div>
+                        <p className="font-medium text-green-700">Connected to Supabase</p>
+                        {migrationStatus?.supabaseRecordCount !== undefined && (
+                          <p className="text-sm text-gray-600">
+                            {migrationStatus.supabaseRecordCount} client records in database
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <CloudOff size={24} className="text-amber-500" />
+                      <div>
+                        <p className="font-medium text-amber-700">
+                          {isConfigured() ? 'Cannot connect to Supabase' : 'Supabase not configured'}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {isConfigured()
+                            ? 'Check your network connection and Supabase status'
+                            : 'Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env file'}
+                        </p>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Migration Section */}
+              <div className="space-y-4">
+                <h3 className="font-bold text-lg">Import localStorage to Supabase</h3>
+                <p className="text-gray-600 text-sm">
+                  Migrate all data from browser localStorage to Supabase cloud database.
+                  This operation is safe to run multiple times (existing records will be updated, not duplicated).
+                </p>
+
+                {migrationStatus?.hasLocalData && (
+                  <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <p className="text-sm text-blue-700">
+                      localStorage data found and ready to import
+                    </p>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleMigration}
+                  disabled={isMigrating || !supabaseConnected}
+                  className={`flex items-center gap-2 px-6 py-3 rounded-lg text-white font-medium ${
+                    isMigrating || !supabaseConnected
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'hover:opacity-90'
+                  }`}
+                  style={{ backgroundColor: isMigrating || !supabaseConnected ? undefined : '#3d59ab' }}
+                >
+                  {isMigrating ? (
+                    <>
+                      <RefreshCw size={20} className="animate-spin" />
+                      Migrating...
+                    </>
+                  ) : (
+                    <>
+                      <Upload size={20} />
+                      Import localStorage → Supabase
+                    </>
+                  )}
+                </button>
+
+                {/* Migration Report */}
+                {migrationReport && (
+                  <div className={`mt-4 p-4 rounded-lg border-2 ${
+                    migrationReport.success ? 'border-green-300 bg-green-50' : 'border-red-300 bg-red-50'
+                  }`}>
+                    <h4 className={`font-bold mb-2 ${migrationReport.success ? 'text-green-700' : 'text-red-700'}`}>
+                      Migration {migrationReport.success ? 'Completed' : 'Completed with Errors'}
+                    </h4>
+
+                    {migrationReport.summary && (
+                      <div className="grid grid-cols-2 gap-2 text-sm mb-3">
+                        <div>Total Records: <span className="font-medium">{migrationReport.summary.totalRecords}</span></div>
+                        <div>Inserted/Updated: <span className="font-medium text-green-600">{migrationReport.summary.inserted}</span></div>
+                        <div>Skipped: <span className="font-medium text-amber-600">{migrationReport.summary.skipped}</span></div>
+                        <div>Failed: <span className="font-medium text-red-600">{migrationReport.summary.failed}</span></div>
+                      </div>
+                    )}
+
+                    {migrationReport.tables && Object.keys(migrationReport.tables).length > 0 && (
+                      <div className="mb-3">
+                        <p className="text-sm font-medium mb-1">By Table:</p>
+                        <div className="text-xs space-y-1">
+                          {Object.entries(migrationReport.tables).map(([table, stats]) => (
+                            <div key={table} className="flex justify-between">
+                              <span>{table}:</span>
+                              <span>
+                                <span className="text-green-600">{stats.inserted} ok</span>
+                                {stats.skipped > 0 && <span className="text-amber-600 ml-2">{stats.skipped} skipped</span>}
+                                {stats.failed > 0 && <span className="text-red-600 ml-2">{stats.failed} failed</span>}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {migrationReport.errors && migrationReport.errors.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-sm font-medium text-red-700 mb-1">Errors:</p>
+                        <ul className="text-xs text-red-600 list-disc list-inside max-h-32 overflow-y-auto">
+                          {migrationReport.errors.slice(0, 10).map((err, i) => (
+                            <li key={i}>{err}</li>
+                          ))}
+                          {migrationReport.errors.length > 10 && (
+                            <li>...and {migrationReport.errors.length - 10} more (see console)</li>
+                          )}
+                        </ul>
+                      </div>
+                    )}
+
+                    {migrationReport.warnings && migrationReport.warnings.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-sm font-medium text-amber-700 mb-1">Warnings:</p>
+                        <ul className="text-xs text-amber-600 list-disc list-inside">
+                          {migrationReport.warnings.slice(0, 5).map((warn, i) => (
+                            <li key={i}>{warn}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <p className="text-xs text-gray-500 mt-2">
+                  Check browser console for detailed migration log.
+                </p>
+              </div>
             </div>
           </div>
         )}
