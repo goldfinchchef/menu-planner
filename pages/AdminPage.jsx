@@ -3303,8 +3303,8 @@ export default function AdminPage() {
         {/* Dashboard Section */}
         {activeSection === 'overview' && (
           <DashboardSection
-            weekStart={weekStart}
-            weekEnd={weekEnd}
+            weekStart={weekStart.toISOString().split('T')[0]}
+            weekEnd={weekEnd.toISOString().split('T')[0]}
             thisWeekDeliveries={thisWeekDeliveries}
             thisWeekCompleted={thisWeekCompleted}
             renewalsThisWeek={renewalsThisWeek}
@@ -3622,9 +3622,7 @@ export default function AdminPage() {
                 <h3 className="text-xl font-bold mb-4" style={{ color: '#3d59ab' }}>This Week</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {(() => {
-                    const weekStartStr = weekStart.toISOString().split('T')[0];
-                    const weekEndStr = weekEnd.toISOString().split('T')[0];
-                    const weekGroceries = getGroceryTotals(weekStartStr, weekEndStr);
+                    const weekGroceries = getGroceryTotals(weekStart, weekEnd);
                     const activeClients = clients.filter(c => c.status === 'active');
                     const weekRevenue = activeClients.reduce((sum, c) => sum + calculateClientRevenue(c).total, 0);
                     const weekProfit = weekRevenue - weekGroceries;
