@@ -326,62 +326,126 @@ function DashboardSection({
   const difference = actualSpending - weeklyFoodCost;
   const wastePercent = weeklyFoodCost > 0 ? ((difference / weeklyFoodCost) * 100).toFixed(1) : 0;
 
-  // Group tasks by client name
-  const getTasksByClient = () => {
+  // Calculate due dates for this week (Wed, Thu, Sat)
+  const getWeekDueDates = () => {
+    const weekStartDate = new Date(weekStart + 'T12:00:00');
+    const wednesday = new Date(weekStartDate);
+    wednesday.setDate(weekStartDate.getDate() + 2); // Mon + 2 = Wed
+    const thursday = new Date(weekStartDate);
+    thursday.setDate(weekStartDate.getDate() + 3); // Mon + 3 = Thu
+    const saturday = new Date(weekStartDate);
+    saturday.setDate(weekStartDate.getDate() + 5); // Mon + 5 = Sat
+    return {
+      billing: wednesday.toISOString().split('T')[0],
+      menus: thursday.toISOString().split('T')[0],
+      substitutions: saturday.toISOString().split('T')[0]
+    };
+  };
+
+  const dueDates = getWeekDueDates();
+
+  // Smart task generation - only show tasks that need action
+  const getSmartTasksByClient = () => {
     const clientTasks = {};
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
     // Helper to add task to a client
-    const addClientTask = (clientName, taskType, taskId) => {
+    const addClientTask = (clientName, taskType, dueDate, priority = 'normal') => {
       if (!clientTasks[clientName]) {
         clientTasks[clientName] = [];
       }
+      const taskId = `${clientName}-${taskType}`;
       // Check if already completed in customTasks
-      const isCompleted = customTasks.some(t => t.id === `${clientName}-${taskType}` && t.completed);
+      const isCompleted = customTasks.some(t => t.id === taskId && t.completed);
+
+      // Check if task already exists
+      if (clientTasks[clientName].some(t => t.id === taskId)) return;
+
       clientTasks[clientName].push({
-        id: `${clientName}-${taskType}`,
+        id: taskId,
         clientName,
         type: taskType,
+        dueDate,
+        priority,
         completed: isCompleted
       });
     };
 
-    // Process auto tasks and extract client-specific tasks
-    autoTasks.forEach(task => {
-      const category = task.category?.toLowerCase() || '';
+    // Helper to check if client has menu for this week
+    const hasMenuThisWeek = (clientName) => {
+      return menuItems.some(item => {
+        const itemDate = new Date(item.date + 'T12:00:00');
+        const weekStartDate = new Date(weekStart + 'T12:00:00');
+        const weekEndDate = new Date(weekEnd + 'T12:00:00');
+        return (item.clientName === clientName || item.clientName === clientName) &&
+               itemDate >= weekStartDate && itemDate <= weekEndDate;
+      });
+    };
 
-      if (category.includes('billing') || category.includes('renewal')) {
-        // Billing/renewal tasks
-        (task.details || []).forEach(clientName => {
-          addClientTask(clientName, 'Invoice prepared');
-          addClientTask(clientName, 'Paste Honeybook link');
-        });
-      } else if (category.includes('menu')) {
-        // Menu planning tasks
-        (task.details || []).forEach(clientName => {
-          addClientTask(clientName, 'Plan menu');
-        });
-      } else if (category.includes('dish picks') || category.includes('client picks')) {
-        // Dish picks tasks
-        (task.details || []).forEach(clientName => {
-          addClientTask(clientName, 'Review dish picks');
-        });
-      } else if (category.includes('substitution')) {
-        // Substitution requests
-        (task.details || []).forEach(detail => {
-          const clientName = detail.split(':')[0]?.trim();
-          if (clientName) {
-            addClientTask(clientName, 'Review substitution request');
+    // Process each active client
+    clients.filter(c => c.status === 'active').forEach(client => {
+      const clientName = client.displayName || client.name;
+      const portalData = clientPortalData[clientName] || clientPortalData[client.name] || {};
+
+      // 1. BILLING TASKS - Only for clients with bill due within 7 days (Week 4 clients)
+      if (client.billDueDate) {
+        const dueDate = new Date(client.billDueDate + 'T12:00:00');
+        const daysUntilDue = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
+
+        // Show billing tasks if due within 7 days (or overdue)
+        if (daysUntilDue <= 7) {
+          const isOverdue = daysUntilDue < 0;
+          const priority = isOverdue ? 'urgent' : (daysUntilDue <= 3 ? 'high' : 'normal');
+
+          // Create invoice task
+          addClientTask(clientName, 'Create invoice', dueDates.billing, priority);
+
+          // Paste Honeybook link (if no link yet)
+          if (!client.honeyBookLink) {
+            addClientTask(clientName, 'Paste Honeybook link', dueDates.billing, priority);
           }
-        });
-      } else if (category.includes('bags')) {
-        // Bag follow-ups
+
+          // Payment pending (if overdue)
+          if (isOverdue) {
+            addClientTask(clientName, `Payment pending (${Math.abs(daysUntilDue)}d overdue)`, dueDates.billing, 'urgent');
+          }
+        }
+      }
+
+      // Check if client needs delivery dates set
+      if (client.deliveryDay && (!client.deliveryDates || client.deliveryDates.length === 0)) {
+        const portalDates = portalData.selectedDates || [];
+        if (portalDates.length === 0) {
+          addClientTask(clientName, 'Set delivery dates', dueDates.billing, 'normal');
+        }
+      }
+
+      // 2. MENU TASKS - Only if no menu planned for this week
+      if (client.deliveryDay && !hasMenuThisWeek(clientName) && !hasMenuThisWeek(client.name)) {
+        addClientTask(clientName, 'Plan menu', dueDates.menus, 'normal');
+      }
+
+      // 3. DISH PICKS - Only for non-Chef Choice clients who submitted picks
+      if (portalData.chefChoice === false && portalData.selectedIngredients && portalData.selectedIngredients.length > 0) {
+        // Check if picks haven't been reviewed yet (no menu created from picks)
+        if (!hasMenuThisWeek(clientName) && !hasMenuThisWeek(client.name)) {
+          addClientTask(clientName, 'Review dish picks', dueDates.menus, 'normal');
+        }
+      }
+
+      // 4. SUBSTITUTION REQUESTS - Only if one was submitted
+      if (portalData.substitutionRequest) {
+        addClientTask(clientName, 'Review substitution request', dueDates.substitutions, 'high');
+      }
+    });
+
+    // 5. BAGS REMINDER - Only for clients who didn't return bags from last delivery
+    // Look at recent deliveries (within last 10 days) where bags weren't returned
+    autoTasks.forEach(task => {
+      if (task.category?.toLowerCase().includes('bags')) {
         (task.details || []).forEach(clientName => {
-          addClientTask(clientName, 'Follow up on bags');
-        });
-      } else if (category.includes('grocery')) {
-        // Own groceries
-        (task.details || []).forEach(clientName => {
-          addClientTask(clientName, 'Add grocery costs');
+          addClientTask(clientName, 'Follow up on bags', null, 'low');
         });
       }
     });
@@ -397,9 +461,26 @@ function DashboardSection({
           clientName: task.clientName,
           type: task.title,
           completed: task.completed,
-          isCustom: true
+          isCustom: true,
+          dueDate: null,
+          priority: 'normal'
         });
       }
+    });
+
+    // Sort tasks within each client: incomplete first, then by priority, then by due date
+    const priorityOrder = { urgent: 0, high: 1, normal: 2, low: 3 };
+    Object.keys(clientTasks).forEach(clientName => {
+      clientTasks[clientName].sort((a, b) => {
+        // Completed tasks go to bottom
+        if (a.completed !== b.completed) return a.completed ? 1 : -1;
+        // Then by priority
+        const priorityDiff = (priorityOrder[a.priority] || 2) - (priorityOrder[b.priority] || 2);
+        if (priorityDiff !== 0) return priorityDiff;
+        // Then by due date
+        if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
+        return 0;
+      });
     });
 
     return clientTasks;
@@ -413,9 +494,52 @@ function DashboardSection({
     }));
   };
 
-  const tasksByClient = getTasksByClient();
+  // Helper to format due date display
+  const formatDueDate = (dateStr) => {
+    if (!dateStr) return null;
+    const date = new Date(dateStr + 'T12:00:00');
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    const dayAfter = new Date(today);
+    dayAfter.setDate(today.getDate() + 2);
+
+    if (date < today) return { text: 'Overdue', color: 'text-red-600', bg: 'bg-red-100' };
+    if (date.toDateString() === today.toDateString()) return { text: 'Today', color: 'text-orange-600', bg: 'bg-orange-100' };
+    if (date.toDateString() === tomorrow.toDateString()) return { text: 'Tomorrow', color: 'text-yellow-600', bg: 'bg-yellow-100' };
+    return {
+      text: date.toLocaleDateString('en-US', { weekday: 'short' }),
+      color: 'text-gray-600',
+      bg: 'bg-gray-100'
+    };
+  };
+
+  // Priority styling
+  const getPriorityStyle = (priority) => {
+    switch (priority) {
+      case 'urgent': return { border: 'border-l-4 border-l-red-500', bg: 'bg-red-50' };
+      case 'high': return { border: 'border-l-4 border-l-orange-500', bg: 'bg-orange-50' };
+      case 'low': return { border: 'border-l-4 border-l-gray-300', bg: '' };
+      default: return { border: '', bg: '' };
+    }
+  };
+
+  const tasksByClient = getSmartTasksByClient();
   const generalTasks = getGeneralTasks();
-  const hasAnyTasks = Object.keys(tasksByClient).length > 0 || generalTasks.length > 0;
+
+  // Sort clients: those with incomplete tasks first, then alphabetically
+  const sortedClientNames = Object.keys(tasksByClient).sort((a, b) => {
+    const aHasIncomplete = tasksByClient[a].some(t => !t.completed);
+    const bHasIncomplete = tasksByClient[b].some(t => !t.completed);
+    if (aHasIncomplete !== bHasIncomplete) return aHasIncomplete ? -1 : 1;
+    return a.localeCompare(b);
+  });
+
+  const hasAnyTasks = sortedClientNames.length > 0 || generalTasks.length > 0;
+  const incompleteTaskCount = sortedClientNames.reduce((count, name) =>
+    count + tasksByClient[name].filter(t => !t.completed).length, 0
+  );
 
   return (
     <div className="space-y-6">
@@ -482,10 +606,17 @@ function DashboardSection({
       {/* 2. To Do This Week */}
       <div className="bg-white rounded-lg shadow-lg p-6">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold flex items-center gap-2" style={{ color: '#3d59ab' }}>
-            <ClipboardList size={28} />
-            To Do This Week
-          </h2>
+          <div>
+            <h2 className="text-2xl font-bold flex items-center gap-2" style={{ color: '#3d59ab' }}>
+              <ClipboardList size={28} />
+              To Do This Week
+            </h2>
+            {incompleteTaskCount > 0 && (
+              <p className="text-sm text-gray-500 mt-1">
+                {incompleteTaskCount} task{incompleteTaskCount !== 1 ? 's' : ''} remaining
+              </p>
+            )}
+          </div>
           <button
             onClick={() => setShowAddTask(!showAddTask)}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-white"
@@ -494,6 +625,22 @@ function DashboardSection({
             <Plus size={18} />
             Add Task
           </button>
+        </div>
+
+        {/* Due date legend */}
+        <div className="flex flex-wrap gap-4 mb-4 text-xs text-gray-500">
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+            Billing: Wed
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+            Menus: Thu
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+            Subs: Sat
+          </span>
         </div>
 
         {/* Add task form */}
@@ -543,75 +690,128 @@ function DashboardSection({
         )}
 
         {/* Tasks grouped by client */}
-        <div className="space-y-4">
+        <div className="space-y-3">
           {!hasAnyTasks ? (
             <p className="text-gray-500 text-center py-4">All caught up! No tasks for this week.</p>
           ) : (
             <>
               {/* Client-specific tasks */}
-              {Object.entries(tasksByClient).map(([clientName, tasks]) => {
-                const allCompleted = tasks.every(t => t.completed);
+              {sortedClientNames.map(clientName => {
+                const tasks = tasksByClient[clientName];
+                const incompleteTasks = tasks.filter(t => !t.completed);
+                const completedTasks = tasks.filter(t => t.completed);
+                const allCompleted = incompleteTasks.length === 0;
+
                 return (
                   <div
                     key={clientName}
-                    className={`rounded-lg border-2 overflow-hidden ${allCompleted ? 'opacity-60' : ''}`}
-                    style={{ borderColor: '#ebb582' }}
+                    className={`rounded-lg border-2 overflow-hidden ${allCompleted ? 'opacity-50' : ''}`}
+                    style={{ borderColor: allCompleted ? '#d1d5db' : '#ebb582' }}
                   >
                     {/* Client header */}
                     <div
-                      className="px-4 py-2 font-bold"
-                      style={{ backgroundColor: '#3d59ab', color: 'white' }}
+                      className="px-4 py-2 font-bold flex items-center justify-between"
+                      style={{ backgroundColor: allCompleted ? '#9ca3af' : '#3d59ab', color: 'white' }}
                     >
-                      {clientName}
+                      <span>{clientName}</span>
+                      {allCompleted && (
+                        <span className="text-xs font-normal flex items-center gap-1">
+                          <Check size={14} /> All done
+                        </span>
+                      )}
                     </div>
 
-                    {/* Client tasks */}
-                    <div className="p-3 space-y-2" style={{ backgroundColor: '#f9f9ed' }}>
-                      {tasks.map((task) => (
-                        <div
-                          key={task.id}
-                          className="flex items-center gap-3"
-                        >
-                          {/* Checkbox */}
-                          <button
-                            onClick={() => {
-                              if (task.isCustom) {
-                                toggleTaskComplete(task.id);
-                              } else {
-                                // For auto-generated tasks, save to customTasks
-                                const existingTask = customTasks.find(t => t.id === task.id);
-                                if (existingTask) {
+                    {/* Client tasks - incomplete first */}
+                    <div className="p-2 space-y-1" style={{ backgroundColor: '#f9f9ed' }}>
+                      {incompleteTasks.map((task) => {
+                        const priorityStyle = getPriorityStyle(task.priority);
+                        const dueDateInfo = formatDueDate(task.dueDate);
+
+                        return (
+                          <div
+                            key={task.id}
+                            className={`flex items-center gap-3 p-2 rounded ${priorityStyle.border} ${priorityStyle.bg}`}
+                          >
+                            {/* Checkbox */}
+                            <button
+                              onClick={() => {
+                                if (task.isCustom) {
                                   toggleTaskComplete(task.id);
                                 } else {
-                                  updateCustomTasks([...customTasks, { ...task, completed: true }]);
+                                  const existingTask = customTasks.find(t => t.id === task.id);
+                                  if (existingTask) {
+                                    toggleTaskComplete(task.id);
+                                  } else {
+                                    updateCustomTasks([...customTasks, { ...task, completed: true }]);
+                                  }
                                 }
-                              }
-                            }}
-                            className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
-                              task.completed
-                                ? 'bg-green-500 border-green-500'
-                                : 'border-gray-300 bg-white hover:border-green-400'
-                            }`}
-                          >
-                            {task.completed && <Check size={12} className="text-white" />}
-                          </button>
-
-                          {/* Task label */}
-                          <span className={`text-sm ${task.completed ? 'line-through text-gray-400' : ''}`}>
-                            {task.type}
-                          </span>
-
-                          {/* Delete button for custom tasks */}
-                          {task.isCustom && (
-                            <button
-                              onClick={() => deleteCustomTask(task.id)}
-                              className="text-red-400 hover:text-red-600 p-1 ml-auto"
+                              }}
+                              className="w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 border-gray-300 bg-white hover:border-green-400"
                             >
-                              <X size={14} />
                             </button>
-                          )}
+
+                            {/* Task label */}
+                            <span className="text-sm flex-1">{task.type}</span>
+
+                            {/* Due date badge */}
+                            {dueDateInfo && (
+                              <span className={`text-xs px-2 py-0.5 rounded ${dueDateInfo.bg} ${dueDateInfo.color}`}>
+                                {dueDateInfo.text}
+                              </span>
+                            )}
+
+                            {/* Delete button for custom tasks */}
+                            {task.isCustom && (
+                              <button
+                                onClick={() => deleteCustomTask(task.id)}
+                                className="text-red-400 hover:text-red-600 p-1"
+                              >
+                                <X size={14} />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+
+                      {/* Completed tasks - collapsed at bottom */}
+                      {completedTasks.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-gray-200">
+                          <p className="text-xs text-gray-400 mb-1">Completed ({completedTasks.length})</p>
+                          {completedTasks.map((task) => (
+                            <div
+                              key={task.id}
+                              className="flex items-center gap-3 p-1 opacity-60"
+                            >
+                              <button
+                                onClick={() => {
+                                  if (task.isCustom) {
+                                    toggleTaskComplete(task.id);
+                                  } else {
+                                    const existingTask = customTasks.find(t => t.id === task.id);
+                                    if (existingTask) {
+                                      toggleTaskComplete(task.id);
+                                    } else {
+                                      updateCustomTasks([...customTasks, { ...task, completed: false }]);
+                                    }
+                                  }
+                                }}
+                                className="w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 bg-green-500 border-green-500"
+                              >
+                                <Check size={10} className="text-white" />
+                              </button>
+                              <span className="text-xs line-through text-gray-400">{task.type}</span>
+                              {task.isCustom && (
+                                <button
+                                  onClick={() => deleteCustomTask(task.id)}
+                                  className="text-red-400 hover:text-red-600 p-0.5 ml-auto"
+                                >
+                                  <X size={12} />
+                                </button>
+                              )}
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      )}
                     </div>
                   </div>
                 );
