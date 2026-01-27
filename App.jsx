@@ -5,6 +5,7 @@ import Papa from 'papaparse';
 import Tabs from './components/Tabs';
 import WorkflowStatus from './components/WorkflowStatus';
 import WeekSelector from './components/WeekSelector';
+import SyncStatus from './components/SyncStatus';
 import { useAppData } from './hooks/useAppData';
 // Direct imports to avoid barrel export initialization issues
 import RecipesTab from './tabs/RecipesTab';
@@ -74,7 +75,14 @@ export default function App() {
     removeReadyForDeliveryFromWeek,
     isWeekReadOnly,
     getWeekIds,
-    units, addUnit
+    units, addUnit,
+    // Sync state
+    isOnline,
+    isSyncing,
+    lastSyncedAt,
+    syncError,
+    dataSource,
+    forceSync
   } = useAppData();
 
   const clientsFileRef = useRef();
@@ -643,13 +651,23 @@ export default function App() {
             <ChefHat size={32} style={{ color: '#ffd700' }} />
             <h1 className="text-2xl font-bold">Goldfinch Chef</h1>
           </div>
-          <Link
-            to="/admin"
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"
-          >
-            <Settings size={20} />
-            Admin
-          </Link>
+          <div className="flex items-center gap-3">
+            <SyncStatus
+              isOnline={isOnline}
+              isSyncing={isSyncing}
+              lastSyncedAt={lastSyncedAt}
+              syncError={syncError}
+              dataSource={dataSource}
+              onForceSync={forceSync}
+            />
+            <Link
+              to="/admin"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"
+            >
+              <Settings size={20} />
+              Admin
+            </Link>
+          </div>
         </div>
       </header>
 

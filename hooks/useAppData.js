@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { normalizeName, similarity } from '../utils';
 import {
   getWeekId,
@@ -18,6 +18,16 @@ import {
   DEFAULT_NEW_DRIVER,
   DEFAULT_UNITS
 } from '../constants';
+import {
+  loadData,
+  syncToSupabase,
+  getSyncStatus,
+  checkOnlineStatus,
+  migrateLocalStorageToSupabase,
+  queueSave,
+  loadPendingSaves,
+  processPendingSaves
+} from '../lib/sync';
 
 export function useAppData() {
   const [recipes, setRecipes] = useState(DEFAULT_RECIPES);
@@ -51,9 +61,109 @@ export function useAppData() {
   const [selectedWeekId, setSelectedWeekId] = useState(getWeekId());
   const [units, setUnits] = useState(DEFAULT_UNITS);
 
-  // Load from localStorage
+  // Supabase sync state
+  const [isOnline, setIsOnline] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
+  const [syncError, setSyncError] = useState(null);
+  const [dataSource, setDataSource] = useState('loading');
+
+  // Refs for debounced save
+  const saveTimeoutRef = useRef(null);
+  const isInitialLoadRef = useRef(true);
+
+  // Load data on mount
   useEffect(() => {
-    const loadData = () => {
+    const initializeData = async () => {
+      setIsSyncing(true);
+
+      // Load pending saves queue
+      loadPendingSaves();
+
+      // Try to load from Supabase, fallback to localStorage
+      const result = await loadData();
+
+      if (result.data) {
+        // Apply loaded data to state
+        if (result.data.recipes) setRecipes(result.data.recipes);
+        if (result.data.clients) setClients(result.data.clients);
+        if (result.data.menuItems) setMenuItems(result.data.menuItems);
+        if (result.data.masterIngredients) setMasterIngredients(result.data.masterIngredients);
+        if (result.data.orderHistory) setOrderHistory(result.data.orderHistory);
+        if (result.data.weeklyTasks) setWeeklyTasks(result.data.weeklyTasks);
+        if (result.data.drivers) setDrivers(result.data.drivers);
+        if (result.data.deliveryLog) setDeliveryLog(result.data.deliveryLog);
+        if (result.data.bagReminders) setBagReminders(result.data.bagReminders);
+        if (result.data.readyForDelivery) setReadyForDelivery(result.data.readyForDelivery);
+        if (result.data.clientPortalData) setClientPortalData(result.data.clientPortalData);
+        if (result.data.blockedDates) setBlockedDates(result.data.blockedDates);
+        if (result.data.adminSettings) setAdminSettings(result.data.adminSettings);
+        if (result.data.customTasks) setCustomTasks(result.data.customTasks);
+        if (result.data.groceryBills) setGroceryBills(result.data.groceryBills);
+        if (result.data.weeks) setWeeks(result.data.weeks);
+        if (result.data.units) setUnits(result.data.units);
+
+        setDataSource(result.source);
+      }
+
+      // Update sync status from stored state
+      const syncStatus = getSyncStatus();
+      setLastSyncedAt(syncStatus.lastSyncedAt);
+
+      // Check online status
+      const online = await checkOnlineStatus();
+      setIsOnline(online);
+
+      // If online and migration not complete, run migration
+      if (online && !syncStatus.migrationComplete) {
+        await migrateLocalStorageToSupabase();
+      }
+
+      // Process any pending saves
+      if (online) {
+        await processPendingSaves();
+      }
+
+      setIsSyncing(false);
+      isInitialLoadRef.current = false;
+    };
+
+    initializeData();
+
+    // Listen for storage changes from other tabs/windows
+    const handleStorageChange = (e) => {
+      if (e.key === 'goldfinchChefData') {
+        // Reload from localStorage (other tab saved)
+        const savedData = localStorage.getItem('goldfinchChefData');
+        if (savedData) {
+          try {
+            const parsed = JSON.parse(savedData);
+            if (parsed.recipes) setRecipes(parsed.recipes);
+            if (parsed.clients) setClients(parsed.clients);
+            if (parsed.menuItems) setMenuItems(parsed.menuItems);
+            if (parsed.masterIngredients) setMasterIngredients(parsed.masterIngredients);
+            if (parsed.orderHistory) setOrderHistory(parsed.orderHistory);
+            if (parsed.weeklyTasks) setWeeklyTasks(parsed.weeklyTasks);
+            if (parsed.drivers) setDrivers(parsed.drivers);
+            if (parsed.deliveryLog) setDeliveryLog(parsed.deliveryLog);
+            if (parsed.bagReminders) setBagReminders(parsed.bagReminders);
+            if (parsed.readyForDelivery) setReadyForDelivery(parsed.readyForDelivery);
+            if (parsed.clientPortalData) setClientPortalData(parsed.clientPortalData);
+            if (parsed.blockedDates) setBlockedDates(parsed.blockedDates);
+            if (parsed.adminSettings) setAdminSettings(parsed.adminSettings);
+            if (parsed.customTasks) setCustomTasks(parsed.customTasks);
+            if (parsed.groceryBills) setGroceryBills(parsed.groceryBills);
+            if (parsed.weeks) setWeeks(parsed.weeks);
+            if (parsed.units) setUnits(parsed.units);
+          } catch (e) {
+            console.error('Error loading saved data:', e);
+          }
+        }
+      }
+    };
+
+    // Listen for custom event from same-tab updates (Admin page)
+    const handleDataUpdate = () => {
       const savedData = localStorage.getItem('goldfinchChefData');
       if (savedData) {
         try {
@@ -81,26 +191,23 @@ export function useAppData() {
       }
     };
 
-    loadData();
-
-    // Listen for storage changes from other tabs/windows
-    const handleStorageChange = (e) => {
-      if (e.key === 'goldfinchChefData') {
-        loadData();
-      }
-    };
-
-    // Listen for custom event from same-tab updates (Admin page)
-    const handleDataUpdate = () => {
-      loadData();
-    };
-
-    // Reload data when tab becomes visible (user switches back from Admin)
+    // Reload data when tab becomes visible
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        loadData();
+        handleDataUpdate();
       }
     };
+
+    // Check online status periodically
+    const onlineCheckInterval = setInterval(async () => {
+      const online = await checkOnlineStatus();
+      setIsOnline(online);
+
+      // If we came back online, process pending saves
+      if (online) {
+        await processPendingSaves();
+      }
+    }, 30000); // Check every 30 seconds
 
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener('goldfinchDataUpdated', handleDataUpdate);
@@ -110,11 +217,18 @@ export function useAppData() {
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('goldfinchDataUpdated', handleDataUpdate);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(onlineCheckInterval);
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
     };
   }, []);
 
-  // Save to localStorage
+  // Save to localStorage and Supabase (debounced)
   useEffect(() => {
+    // Skip save during initial load
+    if (isInitialLoadRef.current) return;
+
     const dataToSave = {
       recipes,
       clients,
@@ -135,7 +249,85 @@ export function useAppData() {
       units,
       lastSaved: new Date().toISOString()
     };
+
+    // Always save to localStorage immediately
     localStorage.setItem('goldfinchChefData', JSON.stringify(dataToSave));
+
+    // Debounce Supabase save to avoid too many requests
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    saveTimeoutRef.current = setTimeout(async () => {
+      const online = await checkOnlineStatus();
+      setIsOnline(online);
+
+      if (online) {
+        setIsSyncing(true);
+        setSyncError(null);
+
+        try {
+          const result = await syncToSupabase(dataToSave);
+          if (result.success) {
+            setLastSyncedAt(new Date().toISOString());
+          } else {
+            setSyncError(result.error);
+            // Queue for later if failed
+            queueSave(dataToSave);
+          }
+        } catch (error) {
+          setSyncError(error.message);
+          queueSave(dataToSave);
+        }
+
+        setIsSyncing(false);
+      } else {
+        // Queue for later when offline
+        queueSave(dataToSave);
+      }
+    }, 2000); // Wait 2 seconds after last change before syncing
+
+  }, [recipes, clients, menuItems, masterIngredients, orderHistory, weeklyTasks, drivers, deliveryLog, bagReminders, readyForDelivery, clientPortalData, blockedDates, adminSettings, customTasks, groceryBills, weeks, units]);
+
+  // Manual sync function
+  const forceSync = useCallback(async () => {
+    setIsSyncing(true);
+    setSyncError(null);
+
+    const dataToSave = {
+      recipes,
+      clients,
+      menuItems,
+      masterIngredients,
+      orderHistory,
+      weeklyTasks,
+      drivers,
+      deliveryLog,
+      bagReminders,
+      readyForDelivery,
+      clientPortalData,
+      blockedDates,
+      adminSettings,
+      customTasks,
+      groceryBills,
+      weeks,
+      units,
+      lastSaved: new Date().toISOString()
+    };
+
+    try {
+      const result = await syncToSupabase(dataToSave);
+      if (result.success) {
+        setLastSyncedAt(new Date().toISOString());
+        setIsOnline(true);
+      } else {
+        setSyncError(result.error);
+      }
+    } catch (error) {
+      setSyncError(error.message);
+    }
+
+    setIsSyncing(false);
   }, [recipes, clients, menuItems, masterIngredients, orderHistory, weeklyTasks, drivers, deliveryLog, bagReminders, readyForDelivery, clientPortalData, blockedDates, adminSettings, customTasks, groceryBills, weeks, units]);
 
   const findSimilarIngredients = (name) => {
@@ -484,6 +676,13 @@ export function useAppData() {
     weeks, setWeeks,
     selectedWeekId, setSelectedWeekId,
     units, addUnit,
+    // Sync state
+    isOnline,
+    isSyncing,
+    lastSyncedAt,
+    syncError,
+    dataSource,
+    forceSync,
     // Functions
     findSimilarIngredients,
     findExactMatch,
