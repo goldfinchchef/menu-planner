@@ -370,25 +370,32 @@ export default function MenuTab({
 
   // Approve menu for a client
   const approveClientMenu = async (clientName) => {
+    console.log('[MenuTab] === APPROVE START ===');
     console.log('[MenuTab] Approving menu for:', clientName);
+    console.log('[MenuTab] Current data mode:', isSupabaseMode() ? 'SUPABASE' : 'LOCAL');
 
     // Get current menu items for this client
     const currentMenuItems = menuItems.filter(item => item.clientName === clientName);
     const approvedItems = currentMenuItems.map(item => ({ ...item, approved: true }));
+    console.log('[MenuTab] Items to approve:', approvedItems.length);
 
     // Update local state immediately for responsive UI
     setMenuItems(prev => {
       const updated = prev.map(item =>
         item.clientName === clientName ? { ...item, approved: true } : item
       );
-      console.log('[MenuTab] Updated local state, approved items:', updated.filter(i => i.approved).length);
+      console.log('[MenuTab] Local state updated, total approved:', updated.filter(i => i.approved).length);
       return updated;
     });
 
     // Check if we should persist to Supabase
-    if (isSupabaseMode()) {
-      console.log('[MenuTab] Supabase mode - checking connection...');
+    const supabaseMode = isSupabaseMode();
+    console.log('[MenuTab] isSupabaseMode() returned:', supabaseMode);
+
+    if (supabaseMode) {
+      console.log('[MenuTab] Checking Supabase connection...');
       const isOnline = await checkConnection();
+      console.log('[MenuTab] checkConnection() returned:', isOnline);
 
       if (!isOnline) {
         console.error('[MenuTab] Cannot persist: database offline');
