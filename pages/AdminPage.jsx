@@ -372,15 +372,24 @@ function DashboardSection({
       });
     };
 
-    // Helper to check if client has menu for this week
-    const hasMenuThisWeek = (clientName) => {
+    // Calculate NEXT week's date range (menus are planned Thursday for next Mon/Tue)
+    const nextWeekStart = new Date(weekStart + 'T12:00:00');
+    nextWeekStart.setDate(nextWeekStart.getDate() + 7); // Next Monday
+    const nextWeekEnd = new Date(nextWeekStart);
+    nextWeekEnd.setDate(nextWeekStart.getDate() + 6); // Next Sunday
+
+    // Helper to check if client has menu for NEXT week (for menu planning tasks)
+    const hasMenuNextWeek = (clientName) => {
       return menuItems.some(item => {
         const itemDate = new Date(item.date + 'T12:00:00');
-        const weekStartDate = new Date(weekStart + 'T12:00:00');
-        const weekEndDate = new Date(weekEnd + 'T12:00:00');
-        return (item.clientName === clientName || item.clientName === clientName) &&
-               itemDate >= weekStartDate && itemDate <= weekEndDate;
+        return (item.clientName === clientName) &&
+               itemDate >= nextWeekStart && itemDate <= nextWeekEnd;
       });
+    };
+
+    // Helper to check if client delivers on Mon/Tue next week
+    const deliversNextMonTue = (client) => {
+      return client.deliveryDay === 'Monday' || client.deliveryDay === 'Tuesday';
     };
 
     // Process each active client
@@ -421,15 +430,17 @@ function DashboardSection({
         }
       }
 
-      // 2. MENU TASKS - Only if no menu planned for this week
-      if (client.deliveryDay && !hasMenuThisWeek(clientName) && !hasMenuThisWeek(client.name)) {
-        addClientTask(clientName, 'Plan menu', dueDates.menus, 'normal');
+      // 2. MENU TASKS - Show for clients delivering NEXT week Mon/Tue who don't have menu yet
+      // Menus are planned on Thursday for the following Monday/Tuesday deliveries
+      if (client.deliveryDay && deliversNextMonTue(client) && !hasMenuNextWeek(clientName) && !hasMenuNextWeek(client.name)) {
+        const deliveryDay = client.deliveryDay;
+        addClientTask(clientName, `Plan menu (${deliveryDay} delivery)`, dueDates.menus, 'normal');
       }
 
-      // 3. DISH PICKS - Only for non-Chef Choice clients who submitted picks
+      // 3. DISH PICKS - Only for non-Chef Choice clients who submitted picks for next week
       if (portalData.chefChoice === false && portalData.selectedIngredients && portalData.selectedIngredients.length > 0) {
-        // Check if picks haven't been reviewed yet (no menu created from picks)
-        if (!hasMenuThisWeek(clientName) && !hasMenuThisWeek(client.name)) {
+        // Check if picks haven't been reviewed yet (no menu created for next week)
+        if (deliversNextMonTue(client) && !hasMenuNextWeek(clientName) && !hasMenuNextWeek(client.name)) {
           addClientTask(clientName, 'Review dish picks', dueDates.menus, 'normal');
         }
       }
