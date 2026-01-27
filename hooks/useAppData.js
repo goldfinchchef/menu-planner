@@ -67,6 +67,7 @@ export function useAppData() {
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [syncError, setSyncError] = useState(null);
   const [dataSource, setDataSource] = useState('loading');
+  const [isReadOnly, setIsReadOnly] = useState(false); // True when Supabase unavailable
 
   // Refs for debounced save
   const saveTimeoutRef = useRef(null);
@@ -104,6 +105,8 @@ export function useAppData() {
         if (result.data.units) setUnits(result.data.units);
 
         setDataSource(result.source);
+        setIsReadOnly(result.readOnly || false);
+        setIsOnline(!result.readOnly);
       }
 
       // Update sync status from stored state
@@ -682,6 +685,7 @@ export function useAppData() {
     lastSyncedAt,
     syncError,
     dataSource,
+    isReadOnly,
     forceSync,
     // Functions
     findSimilarIngredients,

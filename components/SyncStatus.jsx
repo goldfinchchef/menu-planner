@@ -1,5 +1,5 @@
 import React from 'react';
-import { Cloud, CloudOff, RefreshCw, AlertCircle, Check } from 'lucide-react';
+import { Cloud, CloudOff, RefreshCw, AlertCircle, Lock } from 'lucide-react';
 
 export default function SyncStatus({
   isOnline,
@@ -7,6 +7,7 @@ export default function SyncStatus({
   lastSyncedAt,
   syncError,
   dataSource,
+  isReadOnly,
   onForceSync
 }) {
   // Format the last synced time
@@ -44,6 +45,15 @@ export default function SyncStatus({
       };
     }
 
+    if (isReadOnly) {
+      return {
+        icon: <Lock size={16} />,
+        color: 'text-amber-600',
+        bgColor: 'bg-amber-50',
+        text: 'Read-only'
+      };
+    }
+
     if (!isOnline) {
       return {
         icon: <CloudOff size={16} />,
@@ -70,13 +80,13 @@ export default function SyncStatus({
         <span className="text-sm font-medium">{status.text}</span>
       </div>
 
-      {lastSyncedAt && !isSyncing && (
+      {lastSyncedAt && !isSyncing && !isReadOnly && (
         <span className="text-xs text-gray-500">
           {formatLastSynced(lastSyncedAt)}
         </span>
       )}
 
-      {!isSyncing && (
+      {!isSyncing && !isReadOnly && (
         <button
           onClick={onForceSync}
           className="ml-1 p-1 hover:bg-white/50 rounded transition-colors"
@@ -92,8 +102,8 @@ export default function SyncStatus({
         </span>
       )}
 
-      {dataSource === 'localStorage' && !isOnline && (
-        <span className="text-xs text-gray-500">(local)</span>
+      {isReadOnly && dataSource === 'localStorage' && (
+        <span className="text-xs text-amber-600">(local cache)</span>
       )}
     </div>
   );

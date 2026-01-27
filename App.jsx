@@ -82,6 +82,7 @@ export default function App() {
     lastSyncedAt,
     syncError,
     dataSource,
+    isReadOnly,
     forceSync
   } = useAppData();
 
@@ -658,6 +659,7 @@ export default function App() {
               lastSyncedAt={lastSyncedAt}
               syncError={syncError}
               dataSource={dataSource}
+              isReadOnly={isReadOnly}
               onForceSync={forceSync}
             />
             <Link
