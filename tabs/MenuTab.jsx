@@ -218,17 +218,26 @@ export default function MenuTab({
   // Calculate delivery dates for the selected week
   const weekDeliveryDates = useMemo(() => {
     if (!selectedWeekId) return { Monday: '', Tuesday: '', Thursday: '' };
-    const weekStart = getWeekStartDate(selectedWeekId);
-    const monday = new Date(weekStart + 'T12:00:00');
-    const tuesday = new Date(monday);
-    tuesday.setDate(monday.getDate() + 1);
-    const thursday = new Date(monday);
-    thursday.setDate(monday.getDate() + 3);
-    return {
-      Monday: monday.toISOString().split('T')[0],
-      Tuesday: tuesday.toISOString().split('T')[0],
-      Thursday: thursday.toISOString().split('T')[0]
-    };
+    try {
+      const weekStart = getWeekStartDate(selectedWeekId);
+      if (!weekStart) return { Monday: '', Tuesday: '', Thursday: '' };
+
+      const monday = new Date(weekStart + 'T12:00:00');
+      if (isNaN(monday.getTime())) return { Monday: '', Tuesday: '', Thursday: '' };
+
+      const tuesday = new Date(monday);
+      tuesday.setDate(monday.getDate() + 1);
+      const thursday = new Date(monday);
+      thursday.setDate(monday.getDate() + 3);
+      return {
+        Monday: monday.toISOString().split('T')[0],
+        Tuesday: tuesday.toISOString().split('T')[0],
+        Thursday: thursday.toISOString().split('T')[0]
+      };
+    } catch (e) {
+      console.error('weekDeliveryDates error:', e);
+      return { Monday: '', Tuesday: '', Thursday: '' };
+    }
   }, [selectedWeekId]);
 
   // Get a client's scheduled delivery date for this week

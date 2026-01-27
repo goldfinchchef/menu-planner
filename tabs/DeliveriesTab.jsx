@@ -1073,16 +1073,24 @@ export default function DeliveriesTab({
       {activeView === 'week' && (() => {
         // Get the Monday of selected week
         const getWeekDates = () => {
-          const date = new Date(selectedDate + 'T12:00:00');
-          const day = date.getDay();
-          const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-          const monday = new Date(date.setDate(diff));
+          try {
+            const date = new Date(selectedDate + 'T12:00:00');
+            if (isNaN(date.getTime())) {
+              return { monday: '', tuesday: '', thursday: '' };
+            }
+            const day = date.getDay();
+            const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+            const monday = new Date(date.setDate(diff));
 
-          return {
-            monday: monday.toISOString().split('T')[0],
-            tuesday: new Date(new Date(monday).setDate(monday.getDate() + 1)).toISOString().split('T')[0],
-            thursday: new Date(new Date(monday).setDate(monday.getDate() + 3)).toISOString().split('T')[0]
-          };
+            return {
+              monday: monday.toISOString().split('T')[0],
+              tuesday: new Date(new Date(monday).setDate(monday.getDate() + 1)).toISOString().split('T')[0],
+              thursday: new Date(new Date(monday).setDate(monday.getDate() + 3)).toISOString().split('T')[0]
+            };
+          } catch (e) {
+            console.error('getWeekDates error:', e);
+            return { monday: '', tuesday: '', thursday: '' };
+          }
         };
 
         const weekDates = getWeekDates();

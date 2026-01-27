@@ -20,22 +20,50 @@ export function getWeekId(date = new Date()) {
  * Get the start date (Monday) of a week from weekId
  */
 export function getWeekStartDate(weekId) {
-  const [year, weekPart] = weekId.split('-W');
-  const weekNum = parseInt(weekPart, 10);
+  // Handle invalid weekId
+  if (!weekId || typeof weekId !== 'string' || !weekId.includes('-W')) {
+    // Return current week's Monday as fallback
+    const now = new Date();
+    const day = now.getDay();
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+    now.setDate(diff);
+    return now.toISOString().split('T')[0];
+  }
 
-  // January 4 is always in week 1
-  const jan4 = new Date(parseInt(year, 10), 0, 4);
-  const dayOfWeek = jan4.getDay() || 7; // Convert Sunday from 0 to 7
+  try {
+    const [year, weekPart] = weekId.split('-W');
+    const weekNum = parseInt(weekPart, 10);
 
-  // Find Monday of week 1
-  const week1Monday = new Date(jan4);
-  week1Monday.setDate(jan4.getDate() - dayOfWeek + 1);
+    if (isNaN(weekNum) || isNaN(parseInt(year, 10))) {
+      throw new Error('Invalid weekId format');
+    }
 
-  // Add weeks to get to target week
-  const targetMonday = new Date(week1Monday);
-  targetMonday.setDate(week1Monday.getDate() + (weekNum - 1) * 7);
+    // January 4 is always in week 1
+    const jan4 = new Date(parseInt(year, 10), 0, 4);
+    const dayOfWeek = jan4.getDay() || 7; // Convert Sunday from 0 to 7
 
-  return targetMonday.toISOString().split('T')[0];
+    // Find Monday of week 1
+    const week1Monday = new Date(jan4);
+    week1Monday.setDate(jan4.getDate() - dayOfWeek + 1);
+
+    // Add weeks to get to target week
+    const targetMonday = new Date(week1Monday);
+    targetMonday.setDate(week1Monday.getDate() + (weekNum - 1) * 7);
+
+    if (isNaN(targetMonday.getTime())) {
+      throw new Error('Invalid date calculation');
+    }
+
+    return targetMonday.toISOString().split('T')[0];
+  } catch (e) {
+    console.error('getWeekStartDate error:', e, 'weekId:', weekId);
+    // Return current week's Monday as fallback
+    const now = new Date();
+    const day = now.getDay();
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+    now.setDate(diff);
+    return now.toISOString().split('T')[0];
+  }
 }
 
 /**
