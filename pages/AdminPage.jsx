@@ -2428,13 +2428,20 @@ export default function AdminPage() {
   const [supabaseConnected, setSupabaseConnected] = useState(false);
 
   // Check Supabase connection on mount
-  React.useEffect(() => {
+  useEffect(() => {
     const checkSupabase = async () => {
       if (isConfigured()) {
-        const connected = await checkConnection();
-        setSupabaseConnected(connected);
-        const status = await getMigrationStatus();
-        setMigrationStatus(status);
+        try {
+          const connected = await checkConnection();
+          setSupabaseConnected(connected);
+          if (connected) {
+            const status = await getMigrationStatus();
+            setMigrationStatus(status);
+          }
+        } catch (e) {
+          console.error('Error checking Supabase:', e);
+          setSupabaseConnected(false);
+        }
       }
     };
     checkSupabase();
