@@ -142,7 +142,8 @@ CREATE TABLE IF NOT EXISTS menus (
   portions INTEGER,
   approved BOOLEAN DEFAULT false,
   created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(client_name, date)  -- Allows upsert by client + date
 );
 
 -- 9. client_dish_picks (for non-Chef Choice clients)
