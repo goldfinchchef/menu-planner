@@ -1139,9 +1139,33 @@ function BillingDatesSection({ clients, updateClients, blockedDates, updateBlock
           <Calendar className="inline mr-2" size={28} />
           Client Billing & Dates
         </h2>
-        <p className="text-gray-600 mb-6">
+        <p className="text-gray-600 mb-4">
           Set delivery dates, bill due dates, and invoice links for each client
         </p>
+
+        {/* Cycle color legend */}
+        <div className="mb-4 p-3 rounded-lg bg-gray-50 border">
+          <p className="text-sm font-medium text-gray-700 mb-2">Billing Cycle Colors</p>
+          <div className="flex flex-wrap gap-3 text-xs">
+            <span className="flex items-center gap-1">
+              <span className="w-4 h-4 rounded" style={{ backgroundColor: '#dcfce7', border: '2px solid #22c55e' }}></span>
+              Cycle 1
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-4 h-4 rounded" style={{ backgroundColor: '#dbeafe', border: '2px solid #3b82f6' }}></span>
+              Cycle 2
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-4 h-4 rounded" style={{ backgroundColor: '#f3e8ff', border: '2px solid #a855f7' }}></span>
+              Cycle 3
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-4 h-4 rounded" style={{ backgroundColor: '#fef3c7', border: '2px solid #f59e0b' }}></span>
+              Cycle 4
+            </span>
+            <span className="text-gray-500 ml-2">Due date starts new cycle → 4 deliveries per cycle</span>
+          </div>
+        </div>
 
         <div className="space-y-4">
           {activeClients.map((client, idx) => {
@@ -1149,6 +1173,37 @@ function BillingDatesSection({ clients, updateClients, blockedDates, updateBlock
             // Ensure we have exactly 4 slots for display
             const displayDates = [...deliveryDates];
             while (displayDates.length < 4) displayDates.push('');
+
+            // Calculate billing cycles for delivery dates
+            // Cycle colors: green, blue, purple, amber (repeating)
+            const cycleColors = [
+              { bg: '#dcfce7', border: '#22c55e', text: '#166534' }, // Green - Cycle 1
+              { bg: '#dbeafe', border: '#3b82f6', text: '#1e40af' }, // Blue - Cycle 2
+              { bg: '#f3e8ff', border: '#a855f7', text: '#6b21a8' }, // Purple - Cycle 3
+              { bg: '#fef3c7', border: '#f59e0b', text: '#92400e' }, // Amber - Cycle 4
+            ];
+
+            // Get cycle for a delivery date based on billDueDate
+            const getDateCycle = (dateStr) => {
+              if (!dateStr || !client.billDueDate) return null;
+              const deliveryDate = new Date(dateStr + 'T12:00:00');
+              const dueDate = new Date(client.billDueDate + 'T12:00:00');
+
+              // If delivery is before due date, it's from a previous cycle
+              if (deliveryDate < dueDate) {
+                // Calculate how many 4-week cycles back
+                const daysDiff = Math.floor((dueDate - deliveryDate) / (1000 * 60 * 60 * 24));
+                const weeksBack = Math.ceil(daysDiff / 7);
+                const cyclesBack = Math.ceil(weeksBack / 4);
+                return ((4 - (cyclesBack % 4)) % 4); // Previous cycle
+              }
+
+              // Days since due date
+              const daysSinceDue = Math.floor((deliveryDate - dueDate) / (1000 * 60 * 60 * 24));
+              // Roughly 4 deliveries per cycle (weekly = 4 weeks = 28 days)
+              const cycleNum = Math.floor(daysSinceDue / 28);
+              return cycleNum % 4;
+            };
 
             return (
               <div
@@ -1170,18 +1225,41 @@ function BillingDatesSection({ clients, updateClients, blockedDates, updateBlock
                 <div className="mb-3">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Next 4 Delivery Dates
+                    {client.billDueDate && (
+                      <span className="text-xs text-gray-500 ml-2">
+                        (Cycle starts from due date: {new Date(client.billDueDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})
+                      </span>
+                    )}
                   </label>
                   <div className="grid grid-cols-4 gap-2">
-                    {displayDates.slice(0, 4).map((date, i) => (
-                      <input
-                        key={i}
-                        type="date"
-                        value={date || ''}
-                        onChange={(e) => updateDeliveryDate(client.name, i, e.target.value)}
-                        className="px-3 py-2 border-2 rounded-lg text-sm"
-                        style={{ borderColor: '#ebb582' }}
-                      />
-                    ))}
+                    {displayDates.slice(0, 4).map((date, i) => {
+                      const cycleIdx = getDateCycle(date);
+                      const cycleStyle = cycleIdx !== null ? cycleColors[cycleIdx] : null;
+
+                      return (
+                        <div key={i} className="relative">
+                          <input
+                            type="date"
+                            value={date || ''}
+                            onChange={(e) => updateDeliveryDate(client.name, i, e.target.value)}
+                            className="w-full px-3 py-2 border-2 rounded-lg text-sm"
+                            style={{
+                              borderColor: cycleStyle ? cycleStyle.border : '#ebb582',
+                              backgroundColor: cycleStyle ? cycleStyle.bg : 'white',
+                              color: cycleStyle ? cycleStyle.text : 'inherit'
+                            }}
+                          />
+                          {cycleStyle && (
+                            <span
+                              className="absolute -top-2 -right-2 text-xs px-1.5 py-0.5 rounded-full font-medium"
+                              style={{ backgroundColor: cycleStyle.border, color: 'white' }}
+                            >
+                              C{cycleIdx + 1}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 

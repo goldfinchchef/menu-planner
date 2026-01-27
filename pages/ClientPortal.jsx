@@ -1492,6 +1492,34 @@ function DatePickerView({ client, selectedDates, setSelectedDates, blockedDates 
   };
   const clientDeliveryDayNum = dayNameToNumber[client.deliveryDay];
 
+  // Billing cycle colors (alternating)
+  const cycleColors = [
+    { bg: '#dcfce7', border: '#22c55e', text: '#166534', name: 'Cycle 1' }, // Green
+    { bg: '#dbeafe', border: '#3b82f6', text: '#1e40af', name: 'Cycle 2' }, // Blue
+    { bg: '#f3e8ff', border: '#a855f7', text: '#6b21a8', name: 'Cycle 3' }, // Purple
+    { bg: '#fef3c7', border: '#f59e0b', text: '#92400e', name: 'Cycle 4' }, // Amber
+  ];
+
+  // Get cycle for a delivery date based on billDueDate
+  const getDateCycle = (dateStr) => {
+    if (!dateStr || !client.billDueDate) return 0; // Default to first cycle if no due date
+    const deliveryDate = new Date(dateStr + 'T12:00:00');
+    const dueDate = new Date(client.billDueDate + 'T12:00:00');
+
+    // Days since due date (or before)
+    const daysDiff = Math.floor((deliveryDate - dueDate) / (1000 * 60 * 60 * 24));
+
+    // Calculate cycle: 4 deliveries per cycle (~28 days for weekly)
+    // If before due date, calculate backwards
+    if (daysDiff < 0) {
+      const cyclesBack = Math.ceil(Math.abs(daysDiff) / 28);
+      return (4 - (cyclesBack % 4)) % 4;
+    }
+
+    const cycleNum = Math.floor(daysDiff / 28);
+    return cycleNum % 4;
+  };
+
   // Get next 4 available dates based on client's delivery day
   const availableDates = [];
   let daysChecked = 0;
@@ -1621,6 +1649,26 @@ function DatePickerView({ client, selectedDates, setSelectedDates, blockedDates 
         </div>
       )}
 
+      {/* Billing cycle legend */}
+      {client.billDueDate && (
+        <div className="mb-4 p-3 rounded-lg bg-gray-50 border">
+          <p className="text-xs text-gray-600 mb-2">
+            <span className="font-medium">Billing Cycles</span> — Colors show which payment period each date belongs to
+          </p>
+          <div className="flex flex-wrap gap-2 text-xs">
+            {cycleColors.map((color, i) => (
+              <span key={i} className="flex items-center gap-1">
+                <span
+                  className="w-3 h-3 rounded"
+                  style={{ backgroundColor: color.bg, border: `2px solid ${color.border}` }}
+                ></span>
+                {color.name}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="mb-4 text-sm text-gray-600">
         Selected: {selectedDates.length} / {maxDates}
       </div>
@@ -1629,23 +1677,43 @@ function DatePickerView({ client, selectedDates, setSelectedDates, blockedDates 
         {availableDates.map(({ date, display }) => {
           const isSelected = selectedDates.includes(date);
           const isDisabled = isDateDisabled(date);
+          const cycleIdx = getDateCycle(date);
+          const cycleStyle = cycleColors[cycleIdx];
 
           return (
             <button
               key={date}
               onClick={() => toggleDate(date)}
               disabled={isDisabled && !isSelected}
-              className={`w-full p-3 rounded-lg border-2 text-left transition-all ${
+              className={`w-full p-3 rounded-lg border-2 text-left transition-all flex items-center justify-between ${
                 isSelected
-                  ? 'border-blue-500 bg-blue-50'
+                  ? ''
                   : isDisabled
                   ? 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
-                  : 'border-gray-200 hover:border-gray-300'
+                  : ''
               }`}
+              style={isSelected ? {
+                borderColor: cycleStyle.border,
+                backgroundColor: cycleStyle.bg
+              } : (!isDisabled ? {
+                borderColor: cycleStyle.border + '80',
+                backgroundColor: cycleStyle.bg + '40'
+              } : {})}
             >
-              <p className={`font-medium ${isSelected ? 'text-blue-700' : ''}`}>
+              <p className={`font-medium`} style={isSelected ? { color: cycleStyle.text } : {}}>
                 {display}
               </p>
+              {client.billDueDate && (
+                <span
+                  className="text-xs px-2 py-0.5 rounded-full"
+                  style={{
+                    backgroundColor: isSelected ? cycleStyle.border : cycleStyle.border + '60',
+                    color: 'white'
+                  }}
+                >
+                  {cycleStyle.name}
+                </span>
+              )}
             </button>
           );
         })}
