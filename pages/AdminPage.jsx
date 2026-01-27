@@ -218,19 +218,43 @@ const FormField = ({ label, children }) => (
 const inputStyle = "p-2 border-2 rounded-lg";
 const borderStyle = { borderColor: '#ebb582' };
 
+// Safe date to ISO string helper
+function safeToISODate(date) {
+  if (!date) return '';
+  try {
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d.getTime())) return '';
+    return d.toISOString().split('T')[0];
+  } catch (e) {
+    return '';
+  }
+}
+
 // Get week boundaries
 function getWeekBounds(date = new Date()) {
-  const start = new Date(date);
-  start.setDate(start.getDate() - start.getDay());
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 6);
-  end.setHours(23, 59, 59, 999);
-  return { start, end };
+  try {
+    const start = new Date(date);
+    if (isNaN(start.getTime())) {
+      const now = new Date();
+      start.setTime(now.getTime());
+    }
+    start.setDate(start.getDate() - start.getDay());
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+  } catch (e) {
+    const now = new Date();
+    return { start: now, end: now };
+  }
 }
 
 function formatDate(date) {
-  return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  if (!date) return 'N/A';
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return 'Invalid date';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 // Dashboard Section Component
@@ -330,18 +354,29 @@ function DashboardSection({
 
   // Calculate due dates for this week (Wed, Thu, Sat)
   const getWeekDueDates = () => {
-    const weekStartDate = new Date(weekStart + 'T12:00:00');
-    const wednesday = new Date(weekStartDate);
-    wednesday.setDate(weekStartDate.getDate() + 2); // Mon + 2 = Wed
-    const thursday = new Date(weekStartDate);
-    thursday.setDate(weekStartDate.getDate() + 3); // Mon + 3 = Thu
-    const saturday = new Date(weekStartDate);
-    saturday.setDate(weekStartDate.getDate() + 5); // Mon + 5 = Sat
-    return {
-      billing: wednesday.toISOString().split('T')[0],
-      menus: thursday.toISOString().split('T')[0],
-      substitutions: saturday.toISOString().split('T')[0]
-    };
+    if (!weekStart) {
+      return { billing: '', menus: '', substitutions: '' };
+    }
+    try {
+      const weekStartDate = new Date(weekStart + 'T12:00:00');
+      if (isNaN(weekStartDate.getTime())) {
+        return { billing: '', menus: '', substitutions: '' };
+      }
+      const wednesday = new Date(weekStartDate);
+      wednesday.setDate(weekStartDate.getDate() + 2); // Mon + 2 = Wed
+      const thursday = new Date(weekStartDate);
+      thursday.setDate(weekStartDate.getDate() + 3); // Mon + 3 = Thu
+      const saturday = new Date(weekStartDate);
+      saturday.setDate(weekStartDate.getDate() + 5); // Mon + 5 = Sat
+      return {
+        billing: wednesday.toISOString().split('T')[0],
+        menus: thursday.toISOString().split('T')[0],
+        substitutions: saturday.toISOString().split('T')[0]
+      };
+    } catch (e) {
+      console.error('Error calculating due dates:', e);
+      return { billing: '', menus: '', substitutions: '' };
+    }
   };
 
   const dueDates = getWeekDueDates();
@@ -3303,8 +3338,8 @@ export default function AdminPage() {
         {/* Dashboard Section */}
         {activeSection === 'overview' && (
           <DashboardSection
-            weekStart={weekStart.toISOString().split('T')[0]}
-            weekEnd={weekEnd.toISOString().split('T')[0]}
+            weekStart={safeToISODate(weekStart)}
+            weekEnd={safeToISODate(weekEnd)}
             thisWeekDeliveries={thisWeekDeliveries}
             thisWeekCompleted={thisWeekCompleted}
             renewalsThisWeek={renewalsThisWeek}
