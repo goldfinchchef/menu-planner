@@ -349,11 +349,15 @@ export default function MenuTab({
 
   // Approve menu for a client
   const approveClientMenu = (clientName) => {
-    setMenuItems(prev =>
-      prev.map(item =>
+    console.log('[MenuTab] Approving menu for:', clientName);
+    setMenuItems(prev => {
+      const updated = prev.map(item =>
         item.clientName === clientName ? { ...item, approved: true } : item
-      )
-    );
+      );
+      console.log('[MenuTab] Updated menuItems count:', updated.length);
+      console.log('[MenuTab] Approved items:', updated.filter(i => i.approved).length);
+      return updated;
+    });
   };
 
   // Approve all ready menus

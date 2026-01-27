@@ -313,7 +313,12 @@ export default function App() {
   // Get approved menu items filtered to selected week
   const getWeekApprovedMenuItems = () => {
     const weekItems = getWeekMenuItems();
-    return weekItems.filter(item => item.approved);
+    const approved = weekItems.filter(item => item.approved);
+    console.log('[KDS Debug] selectedWeekId:', selectedWeekId);
+    console.log('[KDS Debug] Total menuItems:', menuItems.length);
+    console.log('[KDS Debug] Week menuItems:', weekItems.length);
+    console.log('[KDS Debug] Approved items:', approved.length, approved);
+    return approved;
   };
 
   // Get production day from delivery date (Thursday = Thursday production, else Mon/Tue production)
