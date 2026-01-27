@@ -1482,7 +1482,8 @@ function DatePickerView({ client, selectedDates, setSelectedDates, blockedDates 
 
   const today = new Date();
   const isBiweekly = client.frequency === 'biweekly';
-  const maxDates = 4;
+  const minDates = 4; // Minimum required dates
+  const maxDatesToShow = 16; // Show up to 16 dates (~4 months of weekly deliveries)
 
   // Map delivery day name to day of week number (0=Sun, 1=Mon, 2=Tue, 4=Thu)
   const dayNameToNumber = {
@@ -1520,12 +1521,12 @@ function DatePickerView({ client, selectedDates, setSelectedDates, blockedDates 
     return cycleNum % 4;
   };
 
-  // Get next 4 available dates based on client's delivery day
+  // Get available dates based on client's delivery day (show many options)
   const availableDates = [];
   let daysChecked = 0;
-  const maxDaysToCheck = 120; // Look ahead ~4 months max
+  const maxDaysToCheck = 150; // Look ahead ~5 months max
 
-  while (availableDates.length < maxDates && daysChecked < maxDaysToCheck) {
+  while (availableDates.length < maxDatesToShow && daysChecked < maxDaysToCheck) {
     daysChecked++;
     const date = new Date(today);
     date.setDate(date.getDate() + daysChecked);
@@ -1564,11 +1565,6 @@ function DatePickerView({ client, selectedDates, setSelectedDates, blockedDates 
     if (selectedDates.includes(date)) {
       setSelectedDates(selectedDates.filter(d => d !== date));
     } else {
-      if (selectedDates.length >= maxDates) {
-        setValidationError(`You can only select ${maxDates} delivery dates`);
-        return;
-      }
-
       const newDates = [...selectedDates, date];
 
       if (isBiweekly && !validateBiweeklySpacing(newDates)) {
@@ -1581,12 +1577,8 @@ function DatePickerView({ client, selectedDates, setSelectedDates, blockedDates 
   };
 
   const handleSubmit = () => {
-    if (selectedDates.length === 0) {
-      setValidationError('Please select at least one delivery date');
-      return;
-    }
-    if (selectedDates.length > maxDates) {
-      setValidationError(`Please select no more than ${maxDates} dates`);
+    if (selectedDates.length < minDates) {
+      setValidationError(`Please select at least ${minDates} delivery dates`);
       return;
     }
     if (isBiweekly && !validateBiweeklySpacing(selectedDates)) {
@@ -1598,7 +1590,6 @@ function DatePickerView({ client, selectedDates, setSelectedDates, blockedDates 
 
   const isDateDisabled = (date) => {
     if (selectedDates.includes(date)) return false;
-    if (selectedDates.length >= maxDates) return true;
 
     if (isBiweekly && selectedDates.length > 0) {
       const testDates = [...selectedDates, date];
@@ -1628,12 +1619,12 @@ function DatePickerView({ client, selectedDates, setSelectedDates, blockedDates 
       <div className="flex items-center gap-3 mb-4">
         <Calendar size={24} style={{ color: '#3d59ab' }} />
         <h3 className="text-xl font-bold" style={{ color: '#3d59ab' }}>
-          Select Your Next {maxDates} Delivery Dates
+          Select Your Delivery Dates
         </h3>
       </div>
 
       <p className="text-gray-600 mb-2">
-        Your deliveries are on <strong>{client.deliveryDay}s</strong>. Choose {maxDates} upcoming dates.
+        Your deliveries are on <strong>{client.deliveryDay}s</strong>. Select at least {minDates} dates (you can choose more).
       </p>
 
       {isBiweekly && (
@@ -1669,8 +1660,18 @@ function DatePickerView({ client, selectedDates, setSelectedDates, blockedDates 
         </div>
       )}
 
-      <div className="mb-4 text-sm text-gray-600">
-        Selected: {selectedDates.length} / {maxDates}
+      <div className="mb-4 text-sm">
+        <span className={selectedDates.length >= minDates ? 'text-green-600 font-medium' : 'text-gray-600'}>
+          Selected: {selectedDates.length}
+        </span>
+        {selectedDates.length < minDates && (
+          <span className="text-amber-600 ml-2">
+            (need {minDates - selectedDates.length} more)
+          </span>
+        )}
+        {selectedDates.length >= minDates && (
+          <span className="text-green-600 ml-2">✓ Minimum met</span>
+        )}
       </div>
 
       <div className="space-y-2 mb-6">
@@ -1736,11 +1737,13 @@ function DatePickerView({ client, selectedDates, setSelectedDates, blockedDates 
 
       <button
         onClick={handleSubmit}
-        disabled={selectedDates.length === 0}
+        disabled={selectedDates.length < minDates}
         className="w-full py-3 rounded-lg text-white font-medium disabled:opacity-50"
         style={{ backgroundColor: '#3d59ab' }}
       >
-        Confirm {selectedDates.length} Date{selectedDates.length !== 1 ? 's' : ''}
+        {selectedDates.length < minDates
+          ? `Select ${minDates - selectedDates.length} more date${minDates - selectedDates.length !== 1 ? 's' : ''}`
+          : `Confirm ${selectedDates.length} Date${selectedDates.length !== 1 ? 's' : ''}`}
       </button>
     </div>
   );
