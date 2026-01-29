@@ -13,6 +13,25 @@ const HANDOFF_TYPES = {
   PORCH: 'porch'
 };
 
+// Normalize address for comparison (lowercase, trim, collapse whitespace)
+const normalizeAddress = (address) => {
+  if (!address) return '';
+  return address.toLowerCase().trim().replace(/\s+/g, ' ');
+};
+
+// Count unique delivery stops from a list of orders (by normalized address)
+const countUniqueStops = (orders) => {
+  if (!orders || orders.length === 0) return 0;
+  const uniqueAddresses = new Set(
+    orders.map(o => normalizeAddress(o.address)).filter(addr => addr !== '')
+  );
+  // If no addresses, fall back to counting by client name
+  if (uniqueAddresses.size === 0) {
+    return new Set(orders.map(o => o.clientName)).size;
+  }
+  return uniqueAddresses.size;
+};
+
 // Status definitions for driver view
 const DELIVERY_STATUS = {
   DELIVERED: { key: 'delivered', label: 'Delivered', color: '#22c55e', icon: Check },
@@ -593,7 +612,7 @@ export default function DriverView() {
                   All Ready Orders
                 </h1>
                 <p className="text-sm text-gray-500">
-                  {new Set(allReadyOrders.map(o => o.clientName)).size} stop{new Set(allReadyOrders.map(o => o.clientName)).size !== 1 ? 's' : ''} • {allReadyOrders.length} meal{allReadyOrders.length !== 1 ? 's' : ''} ready
+                  {countUniqueStops(allReadyOrders)} stop{countUniqueStops(allReadyOrders) !== 1 ? 's' : ''} • {allReadyOrders.length} meal{allReadyOrders.length !== 1 ? 's' : ''} ready
                 </p>
               </div>
               <button
@@ -954,7 +973,7 @@ export default function DriverView() {
   if (remainingReadyStops.length === 0 && !isComplete && !showAllReady) {
     const scheduledCount = allStops.filter(s => !s.isDelivered).length;
     const inKdsCount = allStops.filter(s => s.status === 'kds').length;
-    const readyOtherDates = allReadyOrders.length;
+    const readyOtherDates = countUniqueStops(allReadyOrders);
 
     return (
       <div className="min-h-screen p-4" style={{ backgroundColor: '#f9f9ed' }}>
@@ -989,7 +1008,7 @@ export default function DriverView() {
               <div className="mt-4 p-4 rounded-lg" style={{ backgroundColor: '#fef3c7' }}>
                 <p className="text-amber-800 font-medium">
                   <Truck size={16} className="inline mr-1" />
-                  {readyOtherDates} order{readyOtherDates !== 1 ? 's' : ''} ready for upcoming dates
+                  {readyOtherDates} stop{readyOtherDates !== 1 ? 's' : ''} ready for upcoming dates
                 </p>
                 <button
                   onClick={() => setShowAllReady(true)}
@@ -1018,7 +1037,7 @@ export default function DriverView() {
   return (
     <div className="min-h-screen p-4" style={{ backgroundColor: '#f9f9ed' }}>
       <div className="max-w-lg mx-auto">
-        <Header driver={driver} onLogout={handleLogout} onViewAll={() => setShowAllStops(true)} onViewReady={() => setShowAllReady(true)} readyCount={allReadyOrders.length} />
+        <Header driver={driver} onLogout={handleLogout} onViewAll={() => setShowAllStops(true)} onViewReady={() => setShowAllReady(true)} readyCount={countUniqueStops(allReadyOrders)} />
 
         {/* Progress indicator */}
         <div className="bg-white rounded-lg shadow p-3 mb-4">
