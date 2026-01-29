@@ -3110,6 +3110,9 @@ export default function AdminPage() {
 
   // Recipe functions
   const saveRecipe = async () => {
+    console.log('[AdminPage.saveRecipe] START');
+    console.log('[AdminPage.saveRecipe] dataMode:', getDataMode(), 'isSupabaseMode:', isSupabaseMode());
+
     if (!newRecipe.name) { alert('Please enter a recipe name'); return; }
     const validIngredients = newRecipe.ingredients.filter(ing => ing.name && ing.quantity);
     if (validIngredients.length === 0) { alert('Please add at least one ingredient with name and quantity'); return; }
@@ -3120,9 +3123,12 @@ export default function AdminPage() {
       instructions: newRecipe.instructions,
       ingredients: validIngredients
     };
+    console.log('[AdminPage.saveRecipe] recipeToSave:', recipeToSave.name, 'category:', newRecipe.category);
 
     if (isSupabaseMode()) {
+      console.log('[AdminPage.saveRecipe] calling saveRecipeToSupabase...');
       const result = await saveRecipeToSupabase(recipeToSave, newRecipe.category);
+      console.log('[AdminPage.saveRecipe] result:', result.success, result.error || '');
       if (result.success) {
         // Update both React state AND localStorage for persistence on refresh
         setRecipes(result.recipes);
@@ -3133,19 +3139,26 @@ export default function AdminPage() {
         alert(`Save failed: ${result.error}`);
       }
     } else {
+      console.log('[AdminPage.saveRecipe] LOCAL MODE - not calling Supabase');
       updateRecipes({ ...recipes, [newRecipe.category]: [...recipes[newRecipe.category], recipeToSave] });
       setNewRecipe(DEFAULT_NEW_RECIPE);
-      alert('Recipe saved!');
+      alert('Recipe saved (local only)!');
     }
   };
 
   const deleteRecipe = async (category, index) => {
+    console.log('[AdminPage.deleteRecipe] START', category, index);
+    console.log('[AdminPage.deleteRecipe] dataMode:', getDataMode(), 'isSupabaseMode:', isSupabaseMode());
+
     if (!window.confirm('Delete this recipe?')) return;
 
     const recipe = recipes[category][index];
+    console.log('[AdminPage.deleteRecipe] recipe:', recipe?.name);
 
     if (isSupabaseMode()) {
+      console.log('[AdminPage.deleteRecipe] calling deleteRecipeFromSupabase...');
       const result = await deleteRecipeFromSupabase(recipe.name, category);
+      console.log('[AdminPage.deleteRecipe] result:', result.success, result.error || '');
       if (result.success) {
         // Update both React state AND localStorage for persistence on refresh
         setRecipes(result.recipes);
@@ -3154,6 +3167,7 @@ export default function AdminPage() {
         alert(`Delete failed: ${result.error}`);
       }
     } else {
+      console.log('[AdminPage.deleteRecipe] LOCAL MODE - not calling Supabase');
       updateRecipes({ ...recipes, [category]: recipes[category].filter((_, i) => i !== index) });
     }
   };
@@ -3204,14 +3218,20 @@ export default function AdminPage() {
   };
 
   const saveEditingRecipe = async () => {
+    console.log('[AdminPage.saveEditingRecipe] START');
+    console.log('[AdminPage.saveEditingRecipe] dataMode:', getDataMode(), 'isSupabaseMode:', isSupabaseMode());
+
     const { category, index, recipe } = editingRecipe;
     const validIngredients = recipe.ingredients.filter(ing => ing.name && ing.quantity);
     validIngredients.forEach(ing => addToMasterIngredients(ing));
 
     const recipeToSave = { ...recipe, ingredients: validIngredients };
+    console.log('[AdminPage.saveEditingRecipe] recipe:', recipeToSave.name, 'category:', category);
 
     if (isSupabaseMode()) {
+      console.log('[AdminPage.saveEditingRecipe] calling saveRecipeToSupabase...');
       const result = await saveRecipeToSupabase(recipeToSave, category);
+      console.log('[AdminPage.saveEditingRecipe] result:', result.success, result.error || '');
       if (result.success) {
         // Update both React state AND localStorage for persistence on refresh
         setRecipes(result.recipes);
@@ -3222,11 +3242,12 @@ export default function AdminPage() {
         alert(`Save failed: ${result.error}`);
       }
     } else {
+      console.log('[AdminPage.saveEditingRecipe] LOCAL MODE - not calling Supabase');
       const updatedRecipes = { ...recipes };
       updatedRecipes[category][index] = recipeToSave;
       updateRecipes(updatedRecipes);
       setEditingRecipe(null);
-      alert('Recipe updated!');
+      alert('Recipe updated (local only)!');
     }
   };
 

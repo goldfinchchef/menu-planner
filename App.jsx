@@ -24,7 +24,7 @@ import {
   downloadCSV
 } from './utils';
 import { DEFAULT_NEW_CLIENT, DEFAULT_NEW_RECIPE, DEFAULT_NEW_MENU_ITEM, DEFAULT_NEW_INGREDIENT } from './constants';
-import { fetchKdsDishStatuses, setKdsDishDone } from './lib/database';
+import { fetchKdsDishStatuses, setKdsDishDone, saveRecipeToSupabase } from './lib/database';
 import { isSupabaseMode } from './lib/dataMode';
 import { checkConnection, isConfigured } from './lib/supabase';
 
@@ -273,15 +273,41 @@ export default function App() {
     });
   };
 
-  const saveEditingRecipe = () => {
+  const saveEditingRecipe = async () => {
     const { category, index, recipe } = editingRecipe;
     const validIngredients = recipe.ingredients.filter(ing => ing.name && ing.quantity);
     validIngredients.forEach(ing => addToMasterIngredients(ing));
-    const updatedRecipes = { ...recipes };
-    updatedRecipes[category][index] = { ...recipe, ingredients: validIngredients };
-    setRecipes(updatedRecipes);
-    setEditingRecipe(null);
-    alert('Recipe updated!');
+
+    const recipeToSave = { ...recipe, ingredients: validIngredients };
+
+    if (isSupabaseMode()) {
+      console.log('[saveEditingRecipe] calling saveRecipeToSupabase for:', recipe.name);
+      const result = await saveRecipeToSupabase(recipeToSave, category);
+      if (result.success) {
+        // Update React state
+        setRecipes(result.recipes);
+        // Update localStorage and dispatch event for cross-component sync
+        const savedData = localStorage.getItem('goldfinchChefData');
+        let existing = {};
+        if (savedData) {
+          try { existing = JSON.parse(savedData); } catch (e) { /* ignore */ }
+        }
+        const merged = { ...existing, recipes: result.recipes, lastSaved: new Date().toISOString() };
+        localStorage.setItem('goldfinchChefData', JSON.stringify(merged));
+        window.dispatchEvent(new CustomEvent('goldfinchDataUpdated'));
+        setEditingRecipe(null);
+        alert('Recipe updated!');
+      } else {
+        alert(`Save failed: ${result.error}`);
+      }
+    } else {
+      // Local mode - just update local state
+      const updatedRecipes = { ...recipes };
+      updatedRecipes[category][index] = recipeToSave;
+      setRecipes(updatedRecipes);
+      setEditingRecipe(null);
+      alert('Recipe updated!');
+    }
   };
 
   // Menu functions
