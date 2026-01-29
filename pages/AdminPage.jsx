@@ -3092,7 +3092,9 @@ export default function AdminPage() {
     if (isSupabaseMode()) {
       const result = await saveRecipeToSupabase(recipeToSave, newRecipe.category);
       if (result.success) {
+        // Update both React state AND localStorage for persistence on refresh
         setRecipes(result.recipes);
+        saveData({ recipes: result.recipes });
         setNewRecipe(DEFAULT_NEW_RECIPE);
         alert('Recipe saved!');
       } else {
@@ -3113,7 +3115,9 @@ export default function AdminPage() {
     if (isSupabaseMode()) {
       const result = await deleteRecipeFromSupabase(recipe.name, category);
       if (result.success) {
+        // Update both React state AND localStorage for persistence on refresh
         setRecipes(result.recipes);
+        saveData({ recipes: result.recipes });
       } else {
         alert(`Delete failed: ${result.error}`);
       }
@@ -3177,7 +3181,9 @@ export default function AdminPage() {
     if (isSupabaseMode()) {
       const result = await saveRecipeToSupabase(recipeToSave, category);
       if (result.success) {
+        // Update both React state AND localStorage for persistence on refresh
         setRecipes(result.recipes);
+        saveData({ recipes: result.recipes });
         setEditingRecipe(null);
         alert('Recipe updated!');
       } else {
