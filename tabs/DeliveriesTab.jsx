@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { MapPin, Clock, ExternalLink, GripVertical, Truck, Activity, FileText, Check, AlertTriangle, User, Phone, ShoppingBag, Bell, Calendar, Plus, Trash2, Edit2, X, Car, Save, Navigation } from 'lucide-react';
 import { ZONES, DAYS, DELIVERY_PROBLEMS, DEFAULT_NEW_DRIVER } from '../constants';
+import { isSupabaseMode } from '../lib/dataMode';
+import { saveDriverToSupabase, deleteDriverFromSupabase } from '../lib/database';
 
 const ViewToggle = ({ activeView, setActiveView }) => (
   <div className="flex rounded-lg overflow-hidden border-2 flex-wrap" style={{ borderColor: '#ebb582' }}>
@@ -1574,27 +1576,42 @@ export default function DeliveriesTab({
 
       {/* Drivers View */}
       {activeView === 'drivers' && (() => {
-        const addDriver = () => {
+        const addDriver = async () => {
           if (!localNewDriver.name) {
             alert('Please enter a driver name');
             return;
           }
-          if (setDrivers) {
-            // Don't set id - let Supabase generate UUID on sync
-            // Use a temporary marker for local state only
+
+          if (isSupabaseMode() && setDrivers) {
+            const result = await saveDriverToSupabase(localNewDriver);
+            if (result.success) {
+              setDrivers(result.drivers);
+              setLocalNewDriver({ ...DEFAULT_NEW_DRIVER });
+              if (setNewDriver) setNewDriver({ ...DEFAULT_NEW_DRIVER });
+            } else {
+              alert(`Save failed: ${result.error}`);
+            }
+          } else if (setDrivers) {
             setDrivers([...drivers, { ...localNewDriver, id: `temp-${Date.now()}` }]);
-          }
-          setLocalNewDriver({ ...DEFAULT_NEW_DRIVER });
-          if (setNewDriver) {
-            setNewDriver({ ...DEFAULT_NEW_DRIVER });
+            setLocalNewDriver({ ...DEFAULT_NEW_DRIVER });
+            if (setNewDriver) setNewDriver({ ...DEFAULT_NEW_DRIVER });
           }
         };
 
-        const deleteDriver = (index) => {
-          if (window.confirm('Delete this driver?')) {
-            if (setDrivers) {
-              setDrivers(drivers.filter((_, i) => i !== index));
+        const deleteDriver = async (index) => {
+          if (!window.confirm('Delete this driver?')) return;
+
+          const driver = drivers[index];
+
+          if (isSupabaseMode() && setDrivers && driver.id && !driver.id.startsWith('temp-')) {
+            const result = await deleteDriverFromSupabase(driver.id);
+            if (result.success) {
+              setDrivers(result.drivers);
+            } else {
+              alert(`Delete failed: ${result.error}`);
             }
+          } else if (setDrivers) {
+            setDrivers(drivers.filter((_, i) => i !== index));
           }
         };
 
@@ -1608,14 +1625,23 @@ export default function DeliveriesTab({
           setEditingDriver(null);
         };
 
-        const saveEditingDriver = () => {
-          if (setDrivers) {
+        const saveEditingDriver = async () => {
+          if (isSupabaseMode() && setDrivers) {
+            const result = await saveDriverToSupabase(editingDriver);
+            if (result.success) {
+              setDrivers(result.drivers);
+              setEditingDriverIndex(null);
+              setEditingDriver(null);
+            } else {
+              alert(`Save failed: ${result.error}`);
+            }
+          } else if (setDrivers) {
             const updated = [...drivers];
             updated[editingDriverIndex] = editingDriver;
             setDrivers(updated);
+            setEditingDriverIndex(null);
+            setEditingDriver(null);
           }
-          setEditingDriverIndex(null);
-          setEditingDriver(null);
         };
 
         return (

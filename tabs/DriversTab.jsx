@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Plus, Trash2, Edit2, Check, X } from 'lucide-react';
 import { ZONES, DEFAULT_NEW_DRIVER } from '../constants';
+import { isSupabaseMode } from '../lib/dataMode';
+import { saveDriverToSupabase, deleteDriverFromSupabase } from '../lib/database';
 
 const FormField = ({ label, children }) => (
   <div className="flex flex-col">
@@ -21,20 +23,41 @@ export default function DriversTab({
   const [editingIndex, setEditingIndex] = useState(null);
   const [editingDriver, setEditingDriver] = useState(null);
 
-  const addDriver = () => {
+  const addDriver = async () => {
     if (!newDriver.name) {
       alert('Please enter a driver name');
       return;
     }
-    // Don't set id - let Supabase generate UUID on sync
-    // Use a temporary marker for local state only
-    setDrivers([...drivers, { ...newDriver, id: `temp-${Date.now()}` }]);
-    setNewDriver(DEFAULT_NEW_DRIVER);
-    alert('Driver added!');
+
+    if (isSupabaseMode()) {
+      const result = await saveDriverToSupabase(newDriver);
+      if (result.success) {
+        setDrivers(result.drivers);
+        setNewDriver(DEFAULT_NEW_DRIVER);
+        alert('Driver added!');
+      } else {
+        alert(`Save failed: ${result.error}`);
+      }
+    } else {
+      setDrivers([...drivers, { ...newDriver, id: `temp-${Date.now()}` }]);
+      setNewDriver(DEFAULT_NEW_DRIVER);
+      alert('Driver added!');
+    }
   };
 
-  const deleteDriver = (index) => {
-    if (window.confirm('Delete this driver?')) {
+  const deleteDriver = async (index) => {
+    if (!window.confirm('Delete this driver?')) return;
+
+    const driver = drivers[index];
+
+    if (isSupabaseMode() && driver.id && !driver.id.startsWith('temp-')) {
+      const result = await deleteDriverFromSupabase(driver.id);
+      if (result.success) {
+        setDrivers(result.drivers);
+      } else {
+        alert(`Delete failed: ${result.error}`);
+      }
+    } else {
       setDrivers(drivers.filter((_, i) => i !== index));
     }
   };
@@ -49,12 +72,23 @@ export default function DriversTab({
     setEditingDriver(null);
   };
 
-  const saveEditing = () => {
-    const updated = [...drivers];
-    updated[editingIndex] = editingDriver;
-    setDrivers(updated);
-    setEditingIndex(null);
-    setEditingDriver(null);
+  const saveEditing = async () => {
+    if (isSupabaseMode()) {
+      const result = await saveDriverToSupabase(editingDriver);
+      if (result.success) {
+        setDrivers(result.drivers);
+        setEditingIndex(null);
+        setEditingDriver(null);
+      } else {
+        alert(`Save failed: ${result.error}`);
+      }
+    } else {
+      const updated = [...drivers];
+      updated[editingIndex] = editingDriver;
+      setDrivers(updated);
+      setEditingIndex(null);
+      setEditingDriver(null);
+    }
   };
 
   return (

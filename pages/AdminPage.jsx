@@ -20,6 +20,7 @@ import DataModeToggle from '../components/DataModeToggle';
 import { normalizeName, similarity, exportIngredientsCSV, exportRecipesCSV, parseIngredientsCSV, parseRecipesCSV, parseClientsCSV, categorizeIngredient } from '../utils';
 import { getWeekIdFromDate, createWeekRecord, lockWeek } from '../utils/weekUtils';
 import { getDataMode, isSupabaseMode } from '../lib/dataMode';
+import { saveDriverToSupabase, deleteDriverFromSupabase } from '../lib/database';
 
 const STORAGE_KEY = 'goldfinchChefData';
 
@@ -2833,19 +2834,43 @@ export default function AdminPage() {
   };
 
   // Driver management
-  const addDriver = () => {
+  const addDriver = async () => {
     if (!newDriver.name) {
       alert('Please enter a driver name');
       return;
     }
-    // Don't set id - let Supabase generate UUID on sync
-    // Use a temporary marker for local state only
-    updateDrivers([...drivers, { ...newDriver, id: `temp-${Date.now()}` }]);
-    setNewDriver(DEFAULT_NEW_DRIVER);
+
+    if (isSupabaseMode()) {
+      // Supabase-first: save to Supabase, then refetch
+      const result = await saveDriverToSupabase(newDriver);
+      if (result.success) {
+        setDrivers(result.drivers);
+        setNewDriver(DEFAULT_NEW_DRIVER);
+      } else {
+        alert(`Save failed: ${result.error}`);
+      }
+    } else {
+      // Local mode: save to localStorage
+      updateDrivers([...drivers, { ...newDriver, id: `temp-${Date.now()}` }]);
+      setNewDriver(DEFAULT_NEW_DRIVER);
+    }
   };
 
-  const deleteDriver = (index) => {
-    if (window.confirm('Delete this driver?')) {
+  const deleteDriverAtIndex = async (index) => {
+    if (!window.confirm('Delete this driver?')) return;
+
+    const driver = drivers[index];
+
+    if (isSupabaseMode() && driver.id && !driver.id.startsWith('temp-')) {
+      // Supabase-first: delete from Supabase, then refetch
+      const result = await deleteDriverFromSupabase(driver.id);
+      if (result.success) {
+        setDrivers(result.drivers);
+      } else {
+        alert(`Delete failed: ${result.error}`);
+      }
+    } else {
+      // Local mode or temp driver: just remove from local state
       updateDrivers(drivers.filter((_, i) => i !== index));
     }
   };
@@ -2855,12 +2880,25 @@ export default function AdminPage() {
     setEditingDriver({ ...drivers[index] });
   };
 
-  const saveEditingDriver = () => {
-    const updated = [...drivers];
-    updated[editingDriverIndex] = editingDriver;
-    updateDrivers(updated);
-    setEditingDriverIndex(null);
-    setEditingDriver(null);
+  const saveEditingDriver = async () => {
+    if (isSupabaseMode()) {
+      // Supabase-first: save to Supabase, then refetch
+      const result = await saveDriverToSupabase(editingDriver);
+      if (result.success) {
+        setDrivers(result.drivers);
+        setEditingDriverIndex(null);
+        setEditingDriver(null);
+      } else {
+        alert(`Save failed: ${result.error}`);
+      }
+    } else {
+      // Local mode: save to localStorage
+      const updated = [...drivers];
+      updated[editingDriverIndex] = editingDriver;
+      updateDrivers(updated);
+      setEditingDriverIndex(null);
+      setEditingDriver(null);
+    }
   };
 
   // Ingredient helper functions
@@ -4357,7 +4395,7 @@ export default function AdminPage() {
                               <button onClick={() => startEditingDriver(i)} className="text-blue-600">
                                 <Edit2 size={18} />
                               </button>
-                              <button onClick={() => deleteDriver(i)} className="text-red-600">
+                              <button onClick={() => deleteDriverAtIndex(i)} className="text-red-600">
                                 <Trash2 size={18} />
                               </button>
                             </div>
