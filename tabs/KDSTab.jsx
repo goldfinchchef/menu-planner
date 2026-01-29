@@ -210,7 +210,7 @@ function ProductionDaySection({
                       isComplete={completedDishes[dishName]}
                       isExpanded={expandedTiles[dishName]}
                       onToggleExpand={() => onToggleExpand(dishName)}
-                      onToggleComplete={() => onToggleComplete(dishName)}
+                      onToggleComplete={() => onToggleComplete(dishName, category)}
                     />
                   );
                 })}

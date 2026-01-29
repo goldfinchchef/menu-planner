@@ -20,7 +20,14 @@ import DataModeToggle from '../components/DataModeToggle';
 import { normalizeName, similarity, exportIngredientsCSV, exportRecipesCSV, parseIngredientsCSV, parseRecipesCSV, parseClientsCSV, categorizeIngredient } from '../utils';
 import { getWeekIdFromDate, createWeekRecord, lockWeek } from '../utils/weekUtils';
 import { getDataMode, isSupabaseMode } from '../lib/dataMode';
-import { saveDriverToSupabase, deleteDriverFromSupabase } from '../lib/database';
+import {
+  saveDriverToSupabase,
+  deleteDriverFromSupabase,
+  saveClientToSupabase,
+  deleteClientFromSupabase,
+  saveRecipeToSupabase,
+  deleteRecipeFromSupabase
+} from '../lib/database';
 
 const STORAGE_KEY = 'goldfinchChefData';
 
@@ -3070,18 +3077,47 @@ export default function AdminPage() {
   };
 
   // Recipe functions
-  const saveRecipe = () => {
+  const saveRecipe = async () => {
     if (!newRecipe.name) { alert('Please enter a recipe name'); return; }
     const validIngredients = newRecipe.ingredients.filter(ing => ing.name && ing.quantity);
     if (validIngredients.length === 0) { alert('Please add at least one ingredient with name and quantity'); return; }
     validIngredients.forEach(ing => addToMasterIngredients(ing));
-    updateRecipes({ ...recipes, [newRecipe.category]: [...recipes[newRecipe.category], { name: newRecipe.name, instructions: newRecipe.instructions, ingredients: validIngredients }] });
-    setNewRecipe(DEFAULT_NEW_RECIPE);
-    alert('Recipe saved!');
+
+    const recipeToSave = {
+      name: newRecipe.name,
+      instructions: newRecipe.instructions,
+      ingredients: validIngredients
+    };
+
+    if (isSupabaseMode()) {
+      const result = await saveRecipeToSupabase(recipeToSave, newRecipe.category);
+      if (result.success) {
+        setRecipes(result.recipes);
+        setNewRecipe(DEFAULT_NEW_RECIPE);
+        alert('Recipe saved!');
+      } else {
+        alert(`Save failed: ${result.error}`);
+      }
+    } else {
+      updateRecipes({ ...recipes, [newRecipe.category]: [...recipes[newRecipe.category], recipeToSave] });
+      setNewRecipe(DEFAULT_NEW_RECIPE);
+      alert('Recipe saved!');
+    }
   };
 
-  const deleteRecipe = (category, index) => {
-    if (window.confirm('Delete this recipe?')) {
+  const deleteRecipe = async (category, index) => {
+    if (!window.confirm('Delete this recipe?')) return;
+
+    const recipe = recipes[category][index];
+
+    if (isSupabaseMode()) {
+      const result = await deleteRecipeFromSupabase(recipe.name, category);
+      if (result.success) {
+        setRecipes(result.recipes);
+      } else {
+        alert(`Delete failed: ${result.error}`);
+      }
+    } else {
       updateRecipes({ ...recipes, [category]: recipes[category].filter((_, i) => i !== index) });
     }
   };
@@ -3131,15 +3167,29 @@ export default function AdminPage() {
     });
   };
 
-  const saveEditingRecipe = () => {
+  const saveEditingRecipe = async () => {
     const { category, index, recipe } = editingRecipe;
     const validIngredients = recipe.ingredients.filter(ing => ing.name && ing.quantity);
     validIngredients.forEach(ing => addToMasterIngredients(ing));
-    const updatedRecipes = { ...recipes };
-    updatedRecipes[category][index] = { ...recipe, ingredients: validIngredients };
-    updateRecipes(updatedRecipes);
-    setEditingRecipe(null);
-    alert('Recipe updated!');
+
+    const recipeToSave = { ...recipe, ingredients: validIngredients };
+
+    if (isSupabaseMode()) {
+      const result = await saveRecipeToSupabase(recipeToSave, category);
+      if (result.success) {
+        setRecipes(result.recipes);
+        setEditingRecipe(null);
+        alert('Recipe updated!');
+      } else {
+        alert(`Save failed: ${result.error}`);
+      }
+    } else {
+      const updatedRecipes = { ...recipes };
+      updatedRecipes[category][index] = recipeToSave;
+      updateRecipes(updatedRecipes);
+      setEditingRecipe(null);
+      alert('Recipe updated!');
+    }
   };
 
   // Ingredient management functions
@@ -3271,24 +3321,62 @@ export default function AdminPage() {
   };
 
   // Client management functions
-  const addClient = () => {
-    if (!newClient.name) {
+  const addClient = async () => {
+    if (!newClient.name && !newClient.displayName) {
       alert('Please enter a client name');
       return;
     }
-    updateClients([...clients, { ...newClient, id: Date.now() }]);
-    setNewClient({
-      name: '', displayName: '', persons: 1,
-      contacts: [{ name: '', email: '', phone: '', address: '' }],
-      notes: '', mealsPerWeek: 0, frequency: 'weekly', status: 'active',
-      pausedDate: '', honeyBookLink: '', billingNotes: '', deliveryDay: '', zone: '',
-      pickup: false, planPrice: 0, serviceFee: 0, prepayDiscount: false,
-      newClientFeePaid: false, paysOwnGroceries: false
-    });
+
+    const clientToSave = {
+      ...newClient,
+      name: newClient.name || newClient.displayName,
+      id: Date.now()
+    };
+
+    if (isSupabaseMode()) {
+      const result = await saveClientToSupabase(clientToSave);
+      if (result.success) {
+        setClients(result.clients);
+        setNewClient({
+          name: '', displayName: '', persons: 1,
+          contacts: [{ name: '', email: '', phone: '', address: '' }],
+          notes: '', mealsPerWeek: 0, frequency: 'weekly', status: 'active',
+          pausedDate: '', honeyBookLink: '', billingNotes: '', deliveryDay: '', zone: '',
+          pickup: false, planPrice: 0, serviceFee: 0, prepayDiscount: false,
+          newClientFeePaid: false, paysOwnGroceries: false
+        });
+        alert('Client added!');
+      } else {
+        alert(`Save failed: ${result.error}`);
+      }
+    } else {
+      updateClients([...clients, clientToSave]);
+      setNewClient({
+        name: '', displayName: '', persons: 1,
+        contacts: [{ name: '', email: '', phone: '', address: '' }],
+        notes: '', mealsPerWeek: 0, frequency: 'weekly', status: 'active',
+        pausedDate: '', honeyBookLink: '', billingNotes: '', deliveryDay: '', zone: '',
+        pickup: false, planPrice: 0, serviceFee: 0, prepayDiscount: false,
+        newClientFeePaid: false, paysOwnGroceries: false
+      });
+      alert('Client added!');
+    }
   };
 
-  const deleteClient = (index) => {
-    if (window.confirm('Delete this client?')) {
+  const deleteClient = async (index) => {
+    if (!window.confirm('Delete this client?')) return;
+
+    const client = clients[index];
+
+    if (isSupabaseMode()) {
+      const clientName = client.name || client.displayName;
+      const result = await deleteClientFromSupabase(clientName);
+      if (result.success) {
+        setClients(result.clients);
+      } else {
+        alert(`Delete failed: ${result.error}`);
+      }
+    } else {
       updateClients(clients.filter((_, i) => i !== index));
     }
   };

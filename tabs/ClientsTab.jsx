@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Plus, Trash2, Upload, Download, Edit2, Check, X, Link2, Minus, Users, User, ChevronDown, ChevronUp, Truck } from 'lucide-react';
 import { ZONES, DAYS, DEFAULT_CONTACT, DEFAULT_NEW_SUBSCRIPTION } from '../constants';
+import { isSupabaseMode } from '../lib/dataMode';
+import { saveClientToSupabase } from '../lib/database';
 
 const FormField = ({ label, children }) => (
   <div className="flex flex-col">
@@ -217,12 +219,23 @@ export default function ClientsTab({
     setEditingClient(null);
   };
 
-  const saveEditing = () => {
-    const updated = [...clients];
-    updated[editingIndex] = editingClient;
-    setClients(updated);
-    setEditingIndex(null);
-    setEditingClient(null);
+  const saveEditing = async () => {
+    if (isSupabaseMode()) {
+      const result = await saveClientToSupabase(editingClient);
+      if (result.success) {
+        setClients(result.clients);
+        setEditingIndex(null);
+        setEditingClient(null);
+      } else {
+        alert(`Save failed: ${result.error}`);
+      }
+    } else {
+      const updated = [...clients];
+      updated[editingIndex] = editingClient;
+      setClients(updated);
+      setEditingIndex(null);
+      setEditingClient(null);
+    }
   };
 
   // Contact management for new subscription

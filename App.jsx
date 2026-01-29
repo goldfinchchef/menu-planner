@@ -24,6 +24,9 @@ import {
   downloadCSV
 } from './utils';
 import { DEFAULT_NEW_CLIENT, DEFAULT_NEW_RECIPE, DEFAULT_NEW_MENU_ITEM, DEFAULT_NEW_INGREDIENT } from './constants';
+import { fetchKdsDishStatuses, setKdsDishDone } from './lib/database';
+import { isSupabaseMode } from './lib/dataMode';
+import { checkConnection, isConfigured } from './lib/supabase';
 
 export default function App() {
   const navigate = useNavigate();
@@ -90,6 +93,10 @@ export default function App() {
   const recipesFileRef = useRef();
   const ingredientsFileRef = useRef();
 
+  // KDS dish status state (persisted per week in Supabase)
+  const [kdsDishStatuses, setKdsDishStatuses] = useState({});
+  const [kdsStatusLoading, setKdsStatusLoading] = useState(false);
+
   // Sync menuDate when selectedWeekId changes
   useEffect(() => {
     if (selectedWeekId) {
@@ -97,6 +104,35 @@ export default function App() {
       setMenuDate(selectedWeekId);
     }
   }, [selectedWeekId, setMenuDate]);
+
+  // Fetch KDS dish statuses when week changes (Supabase mode)
+  useEffect(() => {
+    const loadKdsStatuses = async () => {
+      if (!selectedWeekId) return;
+      if (!isSupabaseMode()) {
+        // In local mode, use completedDishes from useAppData
+        return;
+      }
+      if (!isConfigured()) return;
+
+      setKdsStatusLoading(true);
+      try {
+        const statuses = await fetchKdsDishStatuses(selectedWeekId);
+        // Convert to completedDishes format: { dishName: true/false }
+        const completed = {};
+        Object.entries(statuses).forEach(([recipeName, status]) => {
+          completed[recipeName] = status.done;
+        });
+        setKdsDishStatuses(statuses);
+        setCompletedDishes(completed);
+      } catch (err) {
+        console.error('Failed to load KDS statuses:', err);
+      }
+      setKdsStatusLoading(false);
+    };
+
+    loadKdsStatuses();
+  }, [selectedWeekId, setCompletedDishes]);
 
   // CSV Import handlers
   const importClientsCSV = (e) => {
@@ -368,8 +404,48 @@ export default function App() {
     return kds;
   };
 
-  const toggleDishComplete = (dishName) => {
-    setCompletedDishes(prev => ({ ...prev, [dishName]: !prev[dishName] }));
+  const toggleDishComplete = async (dishName, recipeType = null) => {
+    const newDoneState = !completedDishes[dishName];
+
+    // In Supabase mode, persist to database
+    if (isSupabaseMode()) {
+      // Check if online first
+      if (!isConfigured()) {
+        alert('Cannot mark complete: database not configured');
+        return;
+      }
+
+      const isOnlineNow = await checkConnection();
+      if (!isOnlineNow) {
+        alert('Cannot mark complete: database offline');
+        return;
+      }
+
+      const result = await setKdsDishDone({
+        week_id: selectedWeekId,
+        recipe_name: dishName,
+        recipe_type: recipeType,
+        done: newDoneState
+      });
+
+      if (!result.success) {
+        alert(`Cannot mark complete: ${result.error}`);
+        return;
+      }
+
+      // Update local status map
+      setKdsDishStatuses(prev => ({
+        ...prev,
+        [dishName]: {
+          done: newDoneState,
+          done_at: newDoneState ? new Date().toISOString() : null,
+          recipe_type: recipeType
+        }
+      }));
+    }
+
+    // Update completedDishes state (both modes)
+    setCompletedDishes(prev => ({ ...prev, [dishName]: newDoneState }));
   };
 
   const allDishesComplete = () => {
