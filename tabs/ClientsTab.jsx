@@ -92,8 +92,11 @@ const ContactForm = ({ contact, index, onChange, onRemove, canRemove }) => (
 // Helper to migrate old client format to new subscription format
 const migrateToSubscription = (client) => {
   if (client.subscriptionId) {
-    // Already in new format
-    return client;
+    // Already in new format - ensure name is preserved
+    return {
+      ...client,
+      name: client.name || client.displayName || ''
+    };
   }
 
   // Migrate from old format
@@ -113,8 +116,12 @@ const migrateToSubscription = (client) => {
         address: client.address || ''
       }];
 
+  // Preserve both name and displayName for Supabase compatibility
+  const clientName = client.name || client.displayName || '';
+
   return {
     subscriptionId: client.id || Date.now().toString(),
+    name: clientName,  // Preserve for Supabase 'name' column
     displayName: client.displayName || client.name || '',
     portions: client.portions || client.persons || 1,
     mealsPerWeek: client.mealsPerWeek || 0,
@@ -220,8 +227,21 @@ export default function ClientsTab({
   };
 
   const saveEditing = async () => {
+    // Validate that we have a name (from name or displayName)
+    const clientName = editingClient?.name || editingClient?.displayName;
+    if (!clientName || clientName.trim() === '') {
+      alert('Client name is required');
+      return;
+    }
+
+    // Ensure name is set for Supabase (it uses 'name' column)
+    const clientToSave = {
+      ...editingClient,
+      name: clientName.trim()
+    };
+
     if (isSupabaseMode()) {
-      const result = await saveClientToSupabase(editingClient);
+      const result = await saveClientToSupabase(clientToSave);
       if (result.success) {
         setClients(result.clients);
         setEditingIndex(null);
@@ -231,7 +251,7 @@ export default function ClientsTab({
       }
     } else {
       const updated = [...clients];
-      updated[editingIndex] = editingClient;
+      updated[editingIndex] = clientToSave;
       setClients(updated);
       setEditingIndex(null);
       setEditingClient(null);
