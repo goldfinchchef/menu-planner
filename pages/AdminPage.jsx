@@ -26,7 +26,9 @@ import {
   saveClientToSupabase,
   deleteClientFromSupabase,
   saveRecipeToSupabase,
-  deleteRecipeFromSupabase
+  deleteRecipeFromSupabase,
+  saveIngredientToSupabase,
+  deleteIngredientFromSupabase
 } from '../lib/database';
 
 const STORAGE_KEY = 'goldfinchChefData';
@@ -2995,27 +2997,57 @@ export default function AdminPage() {
     return { ingredientsAdded, costsUpdated };
   };
 
-  const addToMasterIngredients = (ingredient) => {
+  const addToMasterIngredients = async (ingredient) => {
     if (!ingredient.name) return;
     const exactMatch = findExactMatch(ingredient.name);
-    if (exactMatch) {
-      if (ingredient.cost || ingredient.source || ingredient.section !== 'Other') {
-        updateMasterIngredients(masterIngredients.map(mi =>
-          mi.id === exactMatch.id
-            ? { ...mi, cost: ingredient.cost || mi.cost, source: ingredient.source || mi.source, section: ingredient.section !== 'Other' ? ingredient.section : mi.section }
-            : mi
-        ));
+
+    if (isSupabaseMode()) {
+      // In Supabase mode, upsert ingredient to master list
+      const ingredientToSave = exactMatch
+        ? {
+            ...exactMatch,
+            cost: ingredient.cost || exactMatch.cost,
+            source: ingredient.source || exactMatch.source,
+            section: ingredient.section !== 'Other' ? ingredient.section : exactMatch.section
+          }
+        : {
+            name: ingredient.name,
+            cost: ingredient.cost || '',
+            unit: ingredient.unit || 'oz',
+            source: ingredient.source || '',
+            section: ingredient.section || 'Other'
+          };
+
+      // Fire and forget - don't block recipe save
+      saveIngredientToSupabase(ingredientToSave).then(result => {
+        if (result.success) {
+          setMasterIngredients(result.ingredients);
+          saveData({ masterIngredients: result.ingredients });
+        }
+      }).catch(err => {
+        console.error('[addToMasterIngredients] error', err);
+      });
+    } else {
+      // Local mode
+      if (exactMatch) {
+        if (ingredient.cost || ingredient.source || ingredient.section !== 'Other') {
+          updateMasterIngredients(masterIngredients.map(mi =>
+            mi.id === exactMatch.id
+              ? { ...mi, cost: ingredient.cost || mi.cost, source: ingredient.source || mi.source, section: ingredient.section !== 'Other' ? ingredient.section : mi.section }
+              : mi
+          ));
+        }
+        return;
       }
-      return;
+      updateMasterIngredients([...masterIngredients, {
+        id: Date.now() + Math.random(),
+        name: ingredient.name,
+        cost: ingredient.cost || '',
+        unit: ingredient.unit || 'oz',
+        source: ingredient.source || '',
+        section: ingredient.section || 'Other'
+      }]);
     }
-    updateMasterIngredients([...masterIngredients, {
-      id: Date.now() + Math.random(),
-      name: ingredient.name,
-      cost: ingredient.cost || '',
-      unit: ingredient.unit || 'oz',
-      source: ingredient.source || '',
-      section: ingredient.section || 'Other'
-    }]);
   };
 
   const getRecipeCost = (recipe) => {
@@ -3199,19 +3231,42 @@ export default function AdminPage() {
   };
 
   // Ingredient management functions
-  const addMasterIngredient = () => {
+  const addMasterIngredient = async () => {
     if (!newIngredient.name) { alert('Please enter an ingredient name'); return; }
     const similar = findSimilarIngredients(newIngredient.name);
     const exact = findExactMatch(newIngredient.name);
     if (exact) { alert(`"${newIngredient.name}" already exists as "${exact.name}"`); return; }
     if (similar.length > 0 && !window.confirm(`Similar ingredients found: ${similar.map(s => s.name).join(', ')}\n\nAdd "${newIngredient.name}" anyway?`)) return;
-    updateMasterIngredients([...masterIngredients, { ...newIngredient, id: Date.now() }]);
-    setNewIngredient(DEFAULT_NEW_INGREDIENT);
-    alert('Ingredient added!');
+
+    if (isSupabaseMode()) {
+      const result = await saveIngredientToSupabase(newIngredient);
+      if (result.success) {
+        setMasterIngredients(result.ingredients);
+        saveData({ masterIngredients: result.ingredients });
+        setNewIngredient(DEFAULT_NEW_INGREDIENT);
+        alert('Ingredient added!');
+      } else {
+        alert(`Save failed: ${result.error}`);
+      }
+    } else {
+      updateMasterIngredients([...masterIngredients, { ...newIngredient, id: Date.now() }]);
+      setNewIngredient(DEFAULT_NEW_INGREDIENT);
+      alert('Ingredient added!');
+    }
   };
 
-  const deleteMasterIngredient = (id) => {
-    if (window.confirm('Delete this ingredient?')) {
+  const deleteMasterIngredient = async (id) => {
+    if (!window.confirm('Delete this ingredient?')) return;
+
+    if (isSupabaseMode()) {
+      const result = await deleteIngredientFromSupabase(id);
+      if (result.success) {
+        setMasterIngredients(result.ingredients);
+        saveData({ masterIngredients: result.ingredients });
+      } else {
+        alert(`Delete failed: ${result.error}`);
+      }
+    } else {
       updateMasterIngredients(masterIngredients.filter(ing => ing.id !== id));
     }
   };
@@ -3221,10 +3276,22 @@ export default function AdminPage() {
     setEditingIngredientData({ ...ing });
   };
 
-  const saveEditingMasterIngredient = () => {
-    updateMasterIngredients(masterIngredients.map(ing => ing.id === editingIngredientId ? { ...editingIngredientData } : ing));
-    setEditingIngredientId(null);
-    setEditingIngredientData(null);
+  const saveEditingMasterIngredient = async () => {
+    if (isSupabaseMode()) {
+      const result = await saveIngredientToSupabase(editingIngredientData);
+      if (result.success) {
+        setMasterIngredients(result.ingredients);
+        saveData({ masterIngredients: result.ingredients });
+        setEditingIngredientId(null);
+        setEditingIngredientData(null);
+      } else {
+        alert(`Save failed: ${result.error}`);
+      }
+    } else {
+      updateMasterIngredients(masterIngredients.map(ing => ing.id === editingIngredientId ? { ...editingIngredientData } : ing));
+      setEditingIngredientId(null);
+      setEditingIngredientData(null);
+    }
   };
 
   const cancelEditingMasterIngredient = () => {
