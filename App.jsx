@@ -746,6 +746,8 @@ export default function App() {
             allDishesComplete={allDishesComplete}
             completeAllOrders={completeAllOrders}
             getKDSView={getKDSView}
+            selectedWeekId={selectedWeekId}
+            currentWeek={currentWeek}
           />
         )}
 

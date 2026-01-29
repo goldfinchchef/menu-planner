@@ -289,37 +289,67 @@ function DashboardSection({
   const [showAddTask, setShowAddTask] = useState(false);
   const [showGroceryAnalysis, setShowGroceryAnalysis] = useState(false);
 
-  // Calculate weekly food cost from menu items
-  const calculateWeeklyFoodCost = () => {
-    let totalCost = 0;
+  // Build aggregated cook list with costs (KDS-style: one entry per unique recipe)
+  const buildCookListWithCosts = () => {
     const approvedItems = menuItems.filter(item => item.approved);
+    const cookList = {};
 
     approvedItems.forEach(item => {
       const portions = item.portions || 1;
+
       ['protein', 'veg', 'starch'].forEach(type => {
-        if (item[type]) {
-          const recipe = recipes[type]?.find(r => r.name === item[type]);
-          if (recipe) {
-            totalCost += getRecipeCost(recipe) * portions;
-          }
+        if (!item[type]) return;
+        const dishName = item[type];
+        const recipe = recipes[type]?.find(r => r.name === dishName);
+        const key = dishName.toLowerCase().trim();
+
+        if (!cookList[key]) {
+          cookList[key] = {
+            name: dishName,
+            category: type,
+            totalPortions: 0,
+            costPerPortion: recipe ? getRecipeCost(recipe) : 0
+          };
         }
+        cookList[key].totalPortions += portions;
       });
+
       if (item.extras) {
         item.extras.forEach(extra => {
           const category = ['sauces', 'breakfast', 'soups'].find(cat =>
             recipes[cat]?.find(r => r.name === extra)
           );
-          if (category) {
-            const recipe = recipes[category].find(r => r.name === extra);
-            if (recipe) {
-              totalCost += getRecipeCost(recipe) * portions;
-            }
+          const recipe = category ? recipes[category].find(r => r.name === extra) : null;
+          const key = extra.toLowerCase().trim();
+
+          if (!cookList[key]) {
+            cookList[key] = {
+              name: extra,
+              category: category || 'extras',
+              totalPortions: 0,
+              costPerPortion: recipe ? getRecipeCost(recipe) : 0
+            };
           }
+          cookList[key].totalPortions += portions;
         });
       }
     });
 
-    return totalCost;
+    const entries = Object.values(cookList).map(entry => ({
+      ...entry,
+      totalCost: entry.totalPortions * entry.costPerPortion
+    }));
+
+    const projectedTotal = entries.reduce((sum, e) => sum + e.totalCost, 0);
+
+    console.log('[FoodCost] KDS rows (approved menu items):', approvedItems.length);
+    console.log('[FoodCost] Unique recipes in cook list:', entries.length);
+    entries.forEach(e => {
+      console.log(`[FoodCost]   ${e.name}: ${e.totalPortions} portions × $${e.costPerPortion.toFixed(2)} = $${e.totalCost.toFixed(2)}`);
+    });
+    console.log('[FoodCost] Projected total: $' + projectedTotal.toFixed(2));
+
+    return { entries, projectedTotal };
   };
 
   // Get this week's grocery spending
@@ -349,7 +379,7 @@ function DashboardSection({
     return months;
   };
 
-  const weeklyFoodCost = calculateWeeklyFoodCost();
+  const { entries: cookListEntries, projectedTotal: weeklyFoodCost } = buildCookListWithCosts();
   const actualSpending = getThisWeekGrocerySpending();
   const difference = actualSpending - weeklyFoodCost;
   const wastePercent = weeklyFoodCost > 0 ? ((difference / weeklyFoodCost) * 100).toFixed(1) : 0;
@@ -1051,6 +1081,59 @@ function DashboardSection({
                 </p>
               </div>
             </div>
+
+            {/* Per-Recipe Breakdown */}
+            {cookListEntries.length > 0 && (
+              <div className="mb-6">
+                <h4 className="font-bold mb-3" style={{ color: '#3d59ab' }}>Recipe Cost Breakdown</h4>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b-2" style={{ borderColor: '#3d59ab' }}>
+                        <th className="text-left py-2 px-2">Recipe</th>
+                        <th className="text-left py-2 px-2">Category</th>
+                        <th className="text-right py-2 px-2">Portions</th>
+                        <th className="text-right py-2 px-2">Cost/Portion</th>
+                        <th className="text-right py-2 px-2">Total Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cookListEntries
+                        .sort((a, b) => b.totalCost - a.totalCost)
+                        .map((entry, idx) => (
+                          <tr key={idx} className="border-b border-gray-100">
+                            <td className="py-1.5 px-2 font-medium">{entry.name}</td>
+                            <td className="py-1.5 px-2 text-gray-500 capitalize">{entry.category}</td>
+                            <td className="py-1.5 px-2 text-right">{entry.totalPortions}</td>
+                            <td className="py-1.5 px-2 text-right">${entry.costPerPortion.toFixed(2)}</td>
+                            <td className="py-1.5 px-2 text-right font-medium">${entry.totalCost.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      <tr className="border-t-2 font-bold" style={{ borderColor: '#3d59ab' }}>
+                        <td className="py-2 px-2" colSpan={4}>Projected Total</td>
+                        <td className="py-2 px-2 text-right">${weeklyFoodCost.toFixed(2)}</td>
+                      </tr>
+                      {actualSpending > 0 && (
+                        <>
+                          <tr className="text-gray-600">
+                            <td className="py-1 px-2" colSpan={4}>Actual Spending</td>
+                            <td className="py-1 px-2 text-right">${actualSpending.toFixed(2)}</td>
+                          </tr>
+                          <tr className={difference > 0 ? 'text-red-600' : 'text-green-600'}>
+                            <td className="py-1 px-2" colSpan={4}>Variance (Actual − Projected)</td>
+                            <td className="py-1 px-2 text-right font-medium">{difference > 0 ? '+' : ''}${difference.toFixed(2)}</td>
+                          </tr>
+                          <tr className={parseFloat(wastePercent) > 10 ? 'text-red-600' : 'text-green-600'}>
+                            <td className="py-1 px-2" colSpan={4}>Waste %</td>
+                            <td className="py-1 px-2 text-right font-medium">{wastePercent}%</td>
+                          </tr>
+                        </>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             {/* Monthly Trend */}
             <div>
@@ -2755,7 +2838,9 @@ export default function AdminPage() {
       alert('Please enter a driver name');
       return;
     }
-    updateDrivers([...drivers, { ...newDriver, id: Date.now() }]);
+    // Don't set id - let Supabase generate UUID on sync
+    // Use a temporary marker for local state only
+    updateDrivers([...drivers, { ...newDriver, id: `temp-${Date.now()}` }]);
     setNewDriver(DEFAULT_NEW_DRIVER);
   };
 

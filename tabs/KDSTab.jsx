@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Check, ChevronDown, ChevronUp, Utensils, Calendar, Printer } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Utensils, Calendar, Printer, AlertCircle } from 'lucide-react';
 
 // Category display config
 const CATEGORY_CONFIG = {
@@ -230,10 +230,27 @@ export default function KDSTab({
   toggleDishComplete,
   allDishesComplete,
   completeAllOrders,
-  getKDSView
+  getKDSView,
+  selectedWeekId,
+  currentWeek
 }) {
   const [expandedTiles, setExpandedTiles] = useState({});
   const kdsView = getKDSView();
+
+  // Guard: No week selected
+  if (!selectedWeekId) {
+    return (
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <div className="text-center py-12">
+          <AlertCircle size={48} className="mx-auto mb-4 text-amber-400" />
+          <p className="text-gray-600 text-lg font-medium">No Week Selected</p>
+          <p className="text-gray-400 text-sm mt-2">
+            Please select a week from the navigation bar to view the kitchen display.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const toggleExpand = (dishName) => {
     setExpandedTiles(prev => ({
@@ -388,8 +405,17 @@ export default function KDSTab({
             <Utensils size={48} className="mx-auto mb-4 text-gray-300" />
             <p className="text-gray-500 text-lg">No dishes to cook yet</p>
             <p className="text-gray-400 text-sm mt-2">
-              Approved menus for this week will appear here when ready for cooking.
+              {selectedWeekId ? (
+                <>Approved menus for week <strong>{selectedWeekId}</strong> will appear here when ready for cooking.</>
+              ) : (
+                <>Select a week and approve menus to see dishes here.</>
+              )}
             </p>
+            {!currentWeek && selectedWeekId && (
+              <p className="text-amber-500 text-xs mt-3">
+                Week {selectedWeekId} has no data yet. Menus will be created when clients are assigned.
+              </p>
+            )}
           </div>
         </div>
       )}

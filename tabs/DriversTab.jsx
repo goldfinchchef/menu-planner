@@ -26,7 +26,9 @@ export default function DriversTab({
       alert('Please enter a driver name');
       return;
     }
-    setDrivers([...drivers, { ...newDriver, id: Date.now() }]);
+    // Don't set id - let Supabase generate UUID on sync
+    // Use a temporary marker for local state only
+    setDrivers([...drivers, { ...newDriver, id: `temp-${Date.now()}` }]);
     setNewDriver(DEFAULT_NEW_DRIVER);
     alert('Driver added!');
   };

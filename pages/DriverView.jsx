@@ -2,8 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Truck, MapPin, Camera, AlertTriangle, Check, ChevronLeft,
-  ChevronRight, List, LogOut, Package, ShoppingBag, Home, User,
-  Calendar, Eye, Clock, ChefHat, FileText
+  ChevronRight, ChevronDown, ChevronUp, List, LogOut, Package, ShoppingBag, Home, User,
+  Calendar, Eye, Clock, ChefHat, FileText, Utensils
 } from 'lucide-react';
 import { useDriverData } from '../hooks/useDriverData';
 import { DELIVERY_PROBLEMS } from '../constants';
@@ -76,6 +76,7 @@ export default function DriverView() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null); // null = today
   const [activeOrder, setActiveOrder] = useState(null); // For delivering orders from any date
+  const [showMealDetails, setShowMealDetails] = useState(false); // Expand/collapse meal list in main view
 
   const fileInputRef = useRef(null);
   const today = new Date().toISOString().split('T')[0];
@@ -302,6 +303,7 @@ export default function DriverView() {
     setSelectedProblem('');
     setProblemNote('');
     setShowProblemModal(false);
+    setShowMealDetails(false);
   };
 
   const handlePhotoChange = (e) => {
@@ -545,55 +547,15 @@ export default function DriverView() {
               const deliveryEntry = deliveryLog.find(
                 e => e.date === viewingDate && e.clientName === stop.clientName
               );
-              const StatusIcon = stop.statusInfo.icon;
 
               return (
-                <div
+                <StopCard
                   key={stop.clientName}
-                  className={`bg-white rounded-lg shadow p-4 border-l-4 ${
-                    stop.isDelivered ? 'opacity-60' : ''
-                  }`}
-                  style={{ borderLeftColor: stop.statusInfo.color }}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-lg" style={{ color: '#3d59ab' }}>
-                          {index + 1}.
-                        </span>
-                        <h3 className="font-bold">{stop.displayName}</h3>
-                        <span
-                          className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1"
-                          style={{ backgroundColor: stop.statusInfo.color + '20', color: stop.statusInfo.color }}
-                        >
-                          <StatusIcon size={12} />
-                          {stop.statusInfo.label}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-600 mt-1">{stop.address}</p>
-                      {stop.isReady && stop.orders.length > 0 && (
-                        <p className="text-sm text-gray-500 mt-1">
-                          {stop.orders.map(o => `${o.portions}p: ${o.dishes?.join(', ')}`).join(' | ')}
-                        </p>
-                      )}
-                      {deliveryEntry?.problem && (
-                        <p className="text-sm text-red-600 mt-1 flex items-center gap-1">
-                          <AlertTriangle size={14} />
-                          {deliveryEntry.problem}
-                        </p>
-                      )}
-                    </div>
-                    {stop.address && (
-                      <button
-                        onClick={() => openMaps(stop.address)}
-                        className="p-2 rounded-lg text-white"
-                        style={{ backgroundColor: '#27ae60' }}
-                      >
-                        <MapPin size={20} />
-                      </button>
-                    )}
-                  </div>
-                </div>
+                  stop={stop}
+                  index={index}
+                  deliveryEntry={deliveryEntry}
+                  onNavigate={openMaps}
+                />
               );
             })}
           </div>
@@ -631,7 +593,7 @@ export default function DriverView() {
                   All Ready Orders
                 </h1>
                 <p className="text-sm text-gray-500">
-                  {allReadyOrders.length} order{allReadyOrders.length !== 1 ? 's' : ''} ready for delivery
+                  {new Set(allReadyOrders.map(o => o.clientName)).size} stop{new Set(allReadyOrders.map(o => o.clientName)).size !== 1 ? 's' : ''} • {allReadyOrders.length} meal{allReadyOrders.length !== 1 ? 's' : ''} ready
                 </p>
               </div>
               <button
@@ -643,10 +605,10 @@ export default function DriverView() {
             </div>
           </div>
 
-          {/* Group orders by date */}
+          {/* Group orders by date, then by client */}
           {allReadyOrders.length > 0 ? (
             <div className="space-y-4">
-              {/* Group by date */}
+              {/* Group by date first */}
               {Object.entries(
                 allReadyOrders.reduce((groups, order) => {
                   const date = order.date;
@@ -654,57 +616,55 @@ export default function DriverView() {
                   groups[date].push(order);
                   return groups;
                 }, {})
-              ).map(([date, orders]) => (
-                <div key={date}>
-                  <h3 className="text-sm font-bold mb-2 px-2" style={{ color: '#3d59ab' }}>
-                    {formatDate(date)}
-                  </h3>
-                  <div className="space-y-2">
-                    {orders.map((order, idx) => (
-                      <div
-                        key={`${order.clientName}-${order.date}-${idx}`}
-                        className="bg-white rounded-lg shadow p-4 border-l-4"
-                        style={{ borderLeftColor: '#f59e0b' }}
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <h4 className="font-bold">{order.displayName}</h4>
-                            <p className="text-sm text-gray-600">{order.address}</p>
-                            <p className="text-sm text-gray-500 mt-1">
-                              {order.portions}p: {order.dishes?.join(', ')}
-                            </p>
-                          </div>
-                          <div className="flex gap-2">
-                            {order.address && (
-                              <button
-                                onClick={() => openMaps(order.address)}
-                                className="p-2 rounded-lg text-white"
-                                style={{ backgroundColor: '#27ae60' }}
-                              >
-                                <MapPin size={20} />
-                              </button>
-                            )}
-                            <button
-                              onClick={() => setActiveOrder({
-                                clientName: order.clientName,
-                                displayName: order.displayName,
-                                address: order.address,
-                                date: order.date,
-                                orders: [order]
-                              })}
-                              className="p-2 rounded-lg text-white"
-                              style={{ backgroundColor: '#f59e0b' }}
-                              title="Deliver Now"
-                            >
-                              <Truck size={20} />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+              ).map(([date, ordersForDate]) => {
+                // Group by client within each date
+                const clientGroups = ordersForDate.reduce((groups, order) => {
+                  const clientKey = order.clientName;
+                  if (!groups[clientKey]) {
+                    groups[clientKey] = {
+                      clientName: order.clientName,
+                      displayName: order.displayName,
+                      address: order.address,
+                      date: order.date,
+                      orders: [],
+                      isReady: true,
+                      statusInfo: DELIVERY_STATUS.READY
+                    };
+                  }
+                  groups[clientKey].orders.push(order);
+                  return groups;
+                }, {});
+
+                // Sort orders within each client by meal_index
+                Object.values(clientGroups).forEach(group => {
+                  group.orders.sort((a, b) => (a.meal_index ?? 0) - (b.meal_index ?? 0));
+                });
+
+                return (
+                  <div key={date}>
+                    <h3 className="text-sm font-bold mb-2 px-2" style={{ color: '#3d59ab' }}>
+                      {formatDate(date)}
+                    </h3>
+                    <div className="space-y-2">
+                      {Object.values(clientGroups).map((clientStop) => (
+                        <StopCard
+                          key={`${clientStop.clientName}-${date}`}
+                          stop={clientStop}
+                          onNavigate={openMaps}
+                          onDeliver={(stop) => setActiveOrder({
+                            clientName: stop.clientName,
+                            displayName: stop.displayName,
+                            address: stop.address,
+                            date: stop.date,
+                            orders: stop.orders
+                          })}
+                          showDeliverButton={true}
+                        />
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="bg-white rounded-lg shadow-lg p-8 text-center">
@@ -1087,17 +1047,65 @@ export default function DriverView() {
         </div>
 
         {/* Current stop card */}
-        {currentStop && (
+        {currentStop && (() => {
+          // Calculate meal summary
+          let totalMeals = 0;
+          let totalPortions = 0;
+          const sortedMeals = [];
+
+          currentStop.orders.forEach(order => {
+            totalPortions += order.portions || 0;
+            if (order.dishes) {
+              order.dishes.forEach((dish, idx) => {
+                totalMeals++;
+                sortedMeals.push({
+                  name: dish,
+                  portions: order.portions,
+                  mealIndex: order.meal_index ?? idx
+                });
+              });
+            }
+          });
+          sortedMeals.sort((a, b) => a.mealIndex - b.mealIndex);
+
+          return (
           <div className="bg-white rounded-lg shadow-lg p-6 mb-4">
             <div className="mb-4">
               <h2 className="text-2xl font-bold" style={{ color: '#3d59ab' }}>
                 {currentStop.displayName}
               </h2>
-              <p className="text-gray-600 mt-1">{currentStop.address}</p>
-              {currentStop.orders.length > 0 && (
-                <p className="text-sm text-gray-500 mt-2">
-                  {currentStop.orders.map(o => `${o.portions}p: ${o.dishes.join(', ')}`).join(' | ')}
-                </p>
+              <p className="text-gray-600 mt-1 flex items-center gap-1">
+                <MapPin size={16} className="shrink-0" />
+                {currentStop.address}
+              </p>
+
+              {/* Meal summary with expand/collapse */}
+              {totalMeals > 0 && (
+                <div className="mt-3">
+                  <button
+                    onClick={() => setShowMealDetails(!showMealDetails)}
+                    className="flex items-center gap-2 text-sm font-medium px-3 py-2 rounded-lg transition-colors w-full justify-between"
+                    style={{ backgroundColor: '#f9f9ed', color: '#3d59ab' }}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Utensils size={16} />
+                      {totalMeals} meal{totalMeals !== 1 ? 's' : ''} • {totalPortions} portion{totalPortions !== 1 ? 's' : ''}
+                    </span>
+                    {showMealDetails ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                  </button>
+
+                  {showMealDetails && (
+                    <div className="mt-2 pl-3 space-y-1 border-l-2" style={{ borderColor: '#3d59ab' }}>
+                      {sortedMeals.map((meal, idx) => (
+                        <div key={idx} className="flex items-center gap-2 text-sm text-gray-600 py-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-gray-400 shrink-0" />
+                          <span>{meal.name}</span>
+                          <span className="text-gray-400">({meal.portions}p)</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
@@ -1239,7 +1247,7 @@ export default function DriverView() {
               </button>
             </div>
           </div>
-        )}
+        );})()}
 
         {/* Problem Modal */}
         {showProblemModal && (
@@ -1356,6 +1364,182 @@ function Header({ driver, onLogout, onViewAll, onViewReady, readyCount = 0 }) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// StopCard component - grouped by client with expandable meal list
+function StopCard({
+  stop,
+  index,
+  deliveryEntry,
+  onNavigate,
+  onDeliver,
+  showDeliverButton = false,
+  defaultExpanded = false
+}) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const StatusIcon = stop.statusInfo?.icon || Package;
+
+  // Calculate summary: total meals and total portions
+  const getMealSummary = () => {
+    if (!stop.orders || stop.orders.length === 0) return null;
+
+    let totalMeals = 0;
+    let totalPortions = 0;
+
+    stop.orders.forEach(order => {
+      totalPortions += order.portions || 0;
+      // Count dishes as meals
+      if (order.dishes) {
+        totalMeals += order.dishes.length;
+      }
+    });
+
+    return { totalMeals, totalPortions };
+  };
+
+  // Get all meals sorted by meal_index
+  const getSortedMeals = () => {
+    if (!stop.orders || stop.orders.length === 0) return [];
+
+    const meals = [];
+    stop.orders.forEach(order => {
+      if (order.dishes) {
+        order.dishes.forEach((dish, idx) => {
+          meals.push({
+            name: dish,
+            portions: order.portions,
+            mealIndex: order.meal_index ?? idx
+          });
+        });
+      }
+    });
+
+    return meals.sort((a, b) => a.mealIndex - b.mealIndex);
+  };
+
+  const summary = getMealSummary();
+  const sortedMeals = getSortedMeals();
+
+  return (
+    <div
+      className={`bg-white rounded-lg shadow overflow-hidden border-l-4 ${
+        stop.isDelivered ? 'opacity-60' : ''
+      }`}
+      style={{ borderLeftColor: stop.statusInfo?.color || '#3d59ab' }}
+    >
+      {/* Main card header - always visible */}
+      <div className="p-4">
+        <div className="flex items-start justify-between">
+          <div className="flex-1 min-w-0">
+            {/* Client name - largest */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {typeof index === 'number' && (
+                <span className="font-bold text-lg" style={{ color: '#3d59ab' }}>
+                  {index + 1}.
+                </span>
+              )}
+              <h3 className="font-bold text-lg truncate">{stop.displayName}</h3>
+              {stop.statusInfo && (
+                <span
+                  className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0"
+                  style={{ backgroundColor: stop.statusInfo.color + '20', color: stop.statusInfo.color }}
+                >
+                  <StatusIcon size={12} />
+                  {stop.statusInfo.label}
+                </span>
+              )}
+            </div>
+
+            {/* Address - smaller */}
+            {stop.address && (
+              <p className="text-sm text-gray-600 mt-1 flex items-center gap-1">
+                <MapPin size={14} className="shrink-0" />
+                <span className="truncate">{stop.address}</span>
+              </p>
+            )}
+
+            {/* Delivery type and time window */}
+            {(stop.handoffType || stop.timeWindow) && (
+              <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                {stop.handoffType && (
+                  <span className="flex items-center gap-1">
+                    {stop.handoffType === 'porch' ? <Home size={12} /> : <User size={12} />}
+                    {stop.handoffType === 'porch' ? 'Porch' : 'Hand-off'}
+                  </span>
+                )}
+                {stop.timeWindow && (
+                  <span className="flex items-center gap-1">
+                    <Clock size={12} />
+                    {stop.timeWindow}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Compact summary line */}
+            {summary && stop.isReady && (
+              <button
+                onClick={() => setExpanded(!expanded)}
+                className="mt-2 flex items-center gap-2 text-sm font-medium px-2 py-1 rounded-lg transition-colors hover:bg-gray-100"
+                style={{ color: '#3d59ab' }}
+              >
+                <Utensils size={14} />
+                <span>{summary.totalMeals} meal{summary.totalMeals !== 1 ? 's' : ''} • {summary.totalPortions} portion{summary.totalPortions !== 1 ? 's' : ''}</span>
+                {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
+            )}
+
+            {/* Problem indicator */}
+            {deliveryEntry?.problem && (
+              <p className="text-sm text-red-600 mt-2 flex items-center gap-1">
+                <AlertTriangle size={14} />
+                {deliveryEntry.problem}
+              </p>
+            )}
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex gap-2 ml-2 shrink-0">
+            {stop.address && (
+              <button
+                onClick={() => onNavigate(stop.address)}
+                className="p-2 rounded-lg text-white"
+                style={{ backgroundColor: '#27ae60' }}
+                title="Navigate"
+              >
+                <MapPin size={20} />
+              </button>
+            )}
+            {showDeliverButton && onDeliver && (
+              <button
+                onClick={() => onDeliver(stop)}
+                className="p-2 rounded-lg text-white"
+                style={{ backgroundColor: '#f59e0b' }}
+                title="Deliver Now"
+              >
+                <Truck size={20} />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Expandable meal list */}
+      {expanded && sortedMeals.length > 0 && (
+        <div className="px-4 pb-4 pt-0">
+          <div className="border-t pt-3 space-y-1">
+            {sortedMeals.map((meal, idx) => (
+              <div key={idx} className="flex items-center gap-2 text-sm text-gray-600 pl-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-400 shrink-0" />
+                <span className="truncate">{meal.name}</span>
+                <span className="text-gray-400 shrink-0">({meal.portions}p)</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

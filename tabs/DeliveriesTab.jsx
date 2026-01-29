@@ -1580,7 +1580,9 @@ export default function DeliveriesTab({
             return;
           }
           if (setDrivers) {
-            setDrivers([...drivers, { ...localNewDriver, id: Date.now() }]);
+            // Don't set id - let Supabase generate UUID on sync
+            // Use a temporary marker for local state only
+            setDrivers([...drivers, { ...localNewDriver, id: `temp-${Date.now()}` }]);
           }
           setLocalNewDriver({ ...DEFAULT_NEW_DRIVER });
           if (setNewDriver) {
