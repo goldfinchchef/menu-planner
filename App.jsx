@@ -24,8 +24,8 @@ import {
   downloadCSV
 } from './utils';
 import { DEFAULT_NEW_CLIENT, DEFAULT_NEW_RECIPE, DEFAULT_NEW_MENU_ITEM, DEFAULT_NEW_INGREDIENT } from './constants';
-import { fetchKdsDishStatuses, setKdsDishDone, saveRecipeToSupabase } from './lib/database';
-import { isSupabaseMode } from './lib/dataMode';
+import { fetchKdsDishStatuses, setKdsDishDone, saveRecipeToSupabase, deleteRecipeFromSupabase } from './lib/database';
+import { isSupabaseMode, getDataMode } from './lib/dataMode';
 import { checkConnection, isConfigured } from './lib/supabase';
 
 export default function App() {
@@ -202,18 +202,75 @@ export default function App() {
   };
 
   // Recipe functions
-  const saveRecipe = () => {
+  const saveRecipe = async () => {
+    console.log('[App.saveRecipe] START');
+    console.log('[App.saveRecipe] dataMode:', getDataMode(), 'isSupabaseMode:', isSupabaseMode());
+    console.log('[App.saveRecipe] recipeName:', newRecipe?.name, 'category:', newRecipe?.category);
+
     if (!newRecipe.name) { alert('Please enter a recipe name'); return; }
     const validIngredients = newRecipe.ingredients.filter(ing => ing.name && ing.quantity);
     if (validIngredients.length === 0) { alert('Please add at least one ingredient with name and quantity'); return; }
     validIngredients.forEach(ing => addToMasterIngredients(ing));
-    setRecipes({ ...recipes, [newRecipe.category]: [...recipes[newRecipe.category], { name: newRecipe.name, instructions: newRecipe.instructions, ingredients: validIngredients }] });
-    setNewRecipe(DEFAULT_NEW_RECIPE);
-    alert('Recipe saved!');
+
+    const recipeToSave = {
+      name: newRecipe.name,
+      instructions: newRecipe.instructions,
+      ingredients: validIngredients
+    };
+
+    if (isSupabaseMode()) {
+      console.log('[App.saveRecipe] calling saveRecipeToSupabase...');
+      const result = await saveRecipeToSupabase(recipeToSave, newRecipe.category);
+      console.log('[App.saveRecipe] result:', result.success, result.error || '');
+      if (result.success) {
+        setRecipes(result.recipes);
+        // Update localStorage for cross-component sync
+        const savedData = localStorage.getItem('goldfinchChefData');
+        let existing = {};
+        if (savedData) { try { existing = JSON.parse(savedData); } catch (e) { /* ignore */ } }
+        const merged = { ...existing, recipes: result.recipes, lastSaved: new Date().toISOString() };
+        localStorage.setItem('goldfinchChefData', JSON.stringify(merged));
+        window.dispatchEvent(new CustomEvent('goldfinchDataUpdated'));
+        setNewRecipe(DEFAULT_NEW_RECIPE);
+        alert('Recipe saved!');
+      } else {
+        alert(`Cannot save recipe: ${result.error}`);
+      }
+    } else {
+      console.log('[App.saveRecipe] LOCAL MODE - not calling Supabase');
+      setRecipes({ ...recipes, [newRecipe.category]: [...recipes[newRecipe.category], recipeToSave] });
+      setNewRecipe(DEFAULT_NEW_RECIPE);
+      alert('Recipe saved (local only)!');
+    }
   };
 
-  const deleteRecipe = (category, index) => {
-    if (window.confirm('Delete this recipe?')) {
+  const deleteRecipe = async (category, index) => {
+    console.log('[App.deleteRecipe] START', category, index);
+    console.log('[App.deleteRecipe] dataMode:', getDataMode(), 'isSupabaseMode:', isSupabaseMode());
+
+    if (!window.confirm('Delete this recipe?')) return;
+
+    const recipe = recipes[category][index];
+    console.log('[App.deleteRecipe] recipe:', recipe?.name);
+
+    if (isSupabaseMode()) {
+      console.log('[App.deleteRecipe] calling deleteRecipeFromSupabase...');
+      const result = await deleteRecipeFromSupabase(recipe.name, category);
+      console.log('[App.deleteRecipe] result:', result.success, result.error || '');
+      if (result.success) {
+        setRecipes(result.recipes);
+        // Update localStorage for cross-component sync
+        const savedData = localStorage.getItem('goldfinchChefData');
+        let existing = {};
+        if (savedData) { try { existing = JSON.parse(savedData); } catch (e) { /* ignore */ } }
+        const merged = { ...existing, recipes: result.recipes, lastSaved: new Date().toISOString() };
+        localStorage.setItem('goldfinchChefData', JSON.stringify(merged));
+        window.dispatchEvent(new CustomEvent('goldfinchDataUpdated'));
+      } else {
+        alert(`Cannot delete recipe: ${result.error}`);
+      }
+    } else {
+      console.log('[App.deleteRecipe] LOCAL MODE - not calling Supabase');
       setRecipes({ ...recipes, [category]: recipes[category].filter((_, i) => i !== index) });
     }
   };
@@ -274,14 +331,19 @@ export default function App() {
   };
 
   const saveEditingRecipe = async () => {
+    console.log('[App.saveEditingRecipe] START');
+    console.log('[App.saveEditingRecipe] dataMode:', getDataMode(), 'isSupabaseMode:', isSupabaseMode());
+
     const { category, index, recipe } = editingRecipe;
+    console.log('[App.saveEditingRecipe] recipe:', recipe?.name, 'category:', category);
+
     const validIngredients = recipe.ingredients.filter(ing => ing.name && ing.quantity);
     validIngredients.forEach(ing => addToMasterIngredients(ing));
 
     const recipeToSave = { ...recipe, ingredients: validIngredients };
 
     if (isSupabaseMode()) {
-      console.log('[saveEditingRecipe] calling saveRecipeToSupabase for:', recipe.name);
+      console.log('[App.saveEditingRecipe] calling saveRecipeToSupabase...');
       const result = await saveRecipeToSupabase(recipeToSave, category);
       if (result.success) {
         // Update React state
@@ -302,11 +364,12 @@ export default function App() {
       }
     } else {
       // Local mode - just update local state
+      console.log('[App.saveEditingRecipe] LOCAL MODE - not calling Supabase');
       const updatedRecipes = { ...recipes };
       updatedRecipes[category][index] = recipeToSave;
       setRecipes(updatedRecipes);
       setEditingRecipe(null);
-      alert('Recipe updated!');
+      alert('Recipe updated (local only)!');
     }
   };
 

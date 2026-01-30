@@ -419,7 +419,10 @@ export default function RecipesTab({
             </button>
           </div>
           <button
-            onClick={saveRecipe}
+            onClick={() => {
+              console.log('[RecipesTab] Save Recipe clicked', { recipeName: newRecipe?.name, category: newRecipe?.category });
+              saveRecipe();
+            }}
             className="px-6 py-2 rounded-lg text-white"
             style={{ backgroundColor: '#3d59ab' }}
           >
@@ -552,7 +555,10 @@ export default function RecipesTab({
                         </button>
                         <div className="flex gap-2 mt-2">
                           <button
-                            onClick={saveEditingRecipe}
+                            onClick={() => {
+                              console.log('[RecipesTab] Save Editing clicked', { recipeName: editingRecipe?.recipe?.name, category: editingRecipe?.category });
+                              saveEditingRecipe();
+                            }}
                             className="flex items-center gap-1 px-3 py-1 rounded text-white text-sm"
                             style={{ backgroundColor: '#3d59ab' }}
                           >
