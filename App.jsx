@@ -676,24 +676,36 @@ export default function App() {
         if (recipe?.ingredients) {
           recipe.ingredients.forEach(ing => {
             const masterIng = findExactMatch(ing.name);
-            // Normalize name and unit for proper consolidation
-            const normalizedName = normalizeIngredientName(ing.name);
+            // Normalize unit for proper consolidation
             const unit = (ing.unit || 'oz').toLowerCase().trim();
-            const key = `${normalizedName}|${unit}`;
+            // Group by ingredient_id if present, otherwise by normalized name + unit
+            // Ignore source/section for grouping - just aggregate by ingredient identity + unit
+            const ingredientKey = ing.ingredient_id
+              ? String(ing.ingredient_id)
+              : normalizeIngredientName(ing.name);
+            const key = `${ingredientKey}|${unit}`;
+
+            const portionMultiplier = item.portions || 1;
+            const ingQuantity = parseFloat(ing.quantity || 0) * portionMultiplier;
+            const unitCost = parseFloat(masterIng?.cost || ing.cost || 0);
+            const ingCost = ingQuantity * unitCost;
 
             if (!shoppingLists[shopDay][key]) {
               shoppingLists[shopDay][key] = {
                 name: ing.name.trim(), // Keep original display name (first occurrence)
+                ingredient_id: ing.ingredient_id || null,
                 quantity: 0,
                 unit: unit,
                 section: ing.section || masterIng?.section || categorizeIngredient(ing.name),
-                cost: masterIng?.cost || ing.cost || '',
+                cost: 0, // Will sum costs
+                unitCost: unitCost, // Store for reference
                 source: masterIng?.source || ing.source || '',
                 recipes: [] // Track which recipes use this ingredient
               };
             }
-            // Sum quantities (multiplied by portions)
-            shoppingLists[shopDay][key].quantity += parseFloat(ing.quantity || 0) * (item.portions || 1);
+            // Sum quantities and costs
+            shoppingLists[shopDay][key].quantity += ingQuantity;
+            shoppingLists[shopDay][key].cost += ingCost;
             // Track which recipes use this ingredient
             if (!shoppingLists[shopDay][key].recipes.includes(dishName)) {
               shoppingLists[shopDay][key].recipes.push(dishName);

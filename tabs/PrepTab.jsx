@@ -100,11 +100,14 @@ export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepL
     const combined = {};
     SHOP_DAYS.forEach(day => {
       const autoItems = (shoppingListsByDay[day] || []).map(item => {
-        const normalizedName = normalizeNameForStorage(item.name);
+        // Use ingredient_id if present, otherwise normalized name (matches App.jsx aggregation)
+        const ingredientKey = item.ingredient_id
+          ? String(item.ingredient_id)
+          : normalizeNameForStorage(item.name);
         const normalizedUnit = (item.unit || 'oz').toLowerCase().trim();
         return {
           ...item,
-          id: `auto-${normalizedName}|${normalizedUnit}`,
+          id: `auto-${ingredientKey}|${normalizedUnit}`,
           manual: false
         };
       });
@@ -122,10 +125,12 @@ export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepL
   // Get combined list for a day (auto-generated + manual) with overrides applied
   const getItemsForDay = (day) => {
     const autoItems = (shoppingListsByDay[day] || []).map(item => {
-      // Use normalized name + unit for consistent ID (matches consolidation in App.jsx)
-      const normalizedName = normalizeForId(item.name);
+      // Use ingredient_id if present, otherwise normalized name (matches App.jsx aggregation)
+      const ingredientKey = item.ingredient_id
+        ? String(item.ingredient_id)
+        : normalizeForId(item.name);
       const normalizedUnit = (item.unit || 'oz').toLowerCase().trim();
-      const baseId = `auto-${normalizedName}|${normalizedUnit}`;
+      const baseId = `auto-${ingredientKey}|${normalizedUnit}`;
       const dayItemId = getDayItemId(day, baseId);
       const override = itemOverrides[dayItemId] || {};
       return {

@@ -1281,7 +1281,8 @@ export default function DeliveriesTab({
           setDragOverItem(null);
         };
 
-        // Save route to driver portal - only includes ready clients
+        // Save route to driver portal - includes ALL scheduled/routable clients
+        // Routable = has menu items OR scheduled delivery for this date (regardless of KDS status)
         const saveRouteForDay = (date, zone, stops) => {
           const driver = drivers.find(d => d.zone === zone);
           if (!driver) {
@@ -1289,14 +1290,20 @@ export default function DeliveriesTab({
             return;
           }
 
-          // Only include ready clients in saved route
-          const readyStops = stops.filter(s => s.status === 'ready');
-          if (readyStops.length === 0) {
-            alert('No clients are ready for delivery in this zone yet.');
+          // All scheduled stops are routable (status is display-only, doesn't block routing)
+          const routableStops = stops.filter(s => s.status !== 'none'); // Exclude only "No Menu" clients
+
+          console.log('[Routes] routableStops count:', routableStops.length);
+          console.log('[Routes] stops by status:', stops.map(s => ({ name: s.displayName, status: s.status })));
+
+          if (routableStops.length === 0) {
+            const disabledReason = 'No clients scheduled for delivery in this zone';
+            console.log('[Routes] disabledReason:', disabledReason);
+            alert(disabledReason);
             return;
           }
 
-          const orderedStops = getOrderedStopsForZone(date, zone, readyStops);
+          const orderedStops = getOrderedStopsForZone(date, zone, routableStops);
 
           const routeData = {
             date,
@@ -1309,6 +1316,7 @@ export default function DeliveriesTab({
               displayName: stop.displayName,
               address: stop.address,
               phone: stop.phone,
+              status: stop.status, // Include status for display in driver portal
               dishes: stop.orders.flatMap(o => o.dishes || []),
               portions: stop.orders.reduce((sum, o) => sum + (o.portions || 0), 0)
             })),
@@ -1328,7 +1336,8 @@ export default function DeliveriesTab({
             saveDriverRoutes(newSavedRoutes);
           }
 
-          alert(`Route saved for ${driver.name} on ${date}!\n${readyStops.length} stop(s) ready for delivery.\nThe driver can now view this route in the Driver Portal.`);
+          console.log('[Routes] Route saved:', { date, zone, stopCount: routableStops.length });
+          alert(`Route saved for ${driver.name} on ${date}!\n${routableStops.length} stop(s) scheduled.\nThe driver can now view this route in the Driver Portal.`);
         };
 
         // Generate maps link for a zone on a date
@@ -1466,7 +1475,14 @@ export default function DeliveriesTab({
                           const orderedClients = getOrderedStopsForZone(day.date, zone, zoneClients);
                           const driver = zone !== 'Unassigned' ? drivers.find(d => d.zone === zone) : null;
                           const isRouteSaved = savedRoutes[`${day.date}-${zone}`];
-                          const zoneReadyCount = zoneClients.filter(c => c.status === 'ready').length;
+                          // Routable = any client with menu/schedule (not just 'ready' from KDS)
+                          const routableCount = zoneClients.filter(c => c.status !== 'none').length;
+                          const readyCount = zoneClients.filter(c => c.status === 'ready').length;
+
+                          // Log routing eligibility
+                          if (zoneClients.length > 0) {
+                            console.log(`[Routes] ${day.name} Zone ${zone}: ${routableCount} routable, ${readyCount} ready (KDS complete)`);
+                          }
 
                           return (
                             <div key={zone} className="border-2 rounded-lg p-3" style={{ borderColor: isRouteSaved ? '#22c55e' : '#ebb582' }}>
@@ -1487,7 +1503,7 @@ export default function DeliveriesTab({
                                   )}
                                 </div>
                                 <span className="text-xs text-gray-500">
-                                  {zoneClients.length} stops {zoneReadyCount > 0 && `(${zoneReadyCount} ready)`}
+                                  {zoneClients.length} stops {readyCount > 0 && `(${readyCount} ready)`}
                                 </span>
                               </div>
 
@@ -1542,15 +1558,15 @@ export default function DeliveriesTab({
                               <div className="flex gap-2">
                                 <button
                                   onClick={() => saveRouteForDay(day.date, zone, zoneClients)}
-                                  disabled={zoneReadyCount === 0}
+                                  disabled={routableCount === 0}
                                   className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded text-white text-xs ${
-                                    zoneReadyCount === 0 ? 'opacity-50 cursor-not-allowed' : ''
+                                    routableCount === 0 ? 'opacity-50 cursor-not-allowed' : ''
                                   }`}
                                   style={{ backgroundColor: '#3d59ab' }}
-                                  title={zoneReadyCount === 0 ? 'No clients ready for delivery' : 'Save route to driver portal'}
+                                  title={routableCount === 0 ? 'No clients scheduled for delivery' : `Save route (${routableCount} stops)`}
                                 >
                                   <Save size={12} />
-                                  Save Route {zoneReadyCount > 0 && `(${zoneReadyCount})`}
+                                  Save Route ({routableCount})
                                 </button>
                                 <button
                                   onClick={() => generateMapsLinkForDay(day.date, zone, day.name)}
