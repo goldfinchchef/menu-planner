@@ -201,6 +201,23 @@ export default function App() {
     e.target.value = '';
   };
 
+  // Helper to find duplicate ingredients (case-insensitive, trimmed)
+  const findDuplicateIngredients = (ingredients) => {
+    const seen = new Map();
+    const duplicates = [];
+    ingredients.forEach(ing => {
+      const normalized = (ing.name || '').trim().toLowerCase();
+      if (normalized && seen.has(normalized)) {
+        if (!duplicates.includes(seen.get(normalized))) {
+          duplicates.push(seen.get(normalized));
+        }
+      } else if (normalized) {
+        seen.set(normalized, ing.name.trim());
+      }
+    });
+    return duplicates;
+  };
+
   // Recipe functions
   const saveRecipe = async () => {
     console.log('[App.saveRecipe] START');
@@ -210,6 +227,14 @@ export default function App() {
     if (!newRecipe.name) { alert('Please enter a recipe name'); return; }
     const validIngredients = newRecipe.ingredients.filter(ing => ing.name && ing.quantity);
     if (validIngredients.length === 0) { alert('Please add at least one ingredient with name and quantity'); return; }
+
+    // Check for duplicate ingredients
+    const duplicates = findDuplicateIngredients(validIngredients);
+    if (duplicates.length > 0) {
+      alert(`Error: ${duplicates.join(', ')} is entered twice. Please combine or remove duplicates.`);
+      return;
+    }
+
     validIngredients.forEach(ing => addToMasterIngredients(ing));
 
     const recipeToSave = {
@@ -338,6 +363,14 @@ export default function App() {
     console.log('[App.saveEditingRecipe] recipe:', recipe?.name, 'category:', category);
 
     const validIngredients = recipe.ingredients.filter(ing => ing.name && ing.quantity);
+
+    // Check for duplicate ingredients
+    const duplicates = findDuplicateIngredients(validIngredients);
+    if (duplicates.length > 0) {
+      alert(`Error: ${duplicates.join(', ')} is entered twice. Please combine or remove duplicates.`);
+      return;
+    }
+
     validIngredients.forEach(ing => addToMasterIngredients(ing));
 
     const recipeToSave = { ...recipe, ingredients: validIngredients };

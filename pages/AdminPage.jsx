@@ -3021,8 +3021,7 @@ export default function AdminPage() {
       // Fire and forget - don't block recipe save
       saveIngredientToSupabase(ingredientToSave).then(result => {
         if (result.success) {
-          setMasterIngredients(result.ingredients);
-          saveData({ masterIngredients: result.ingredients });
+          updateMasterIngredients(result.ingredients);
         }
       }).catch(err => {
         console.error('[addToMasterIngredients] error', err);
@@ -3108,6 +3107,23 @@ export default function AdminPage() {
     return grouped;
   };
 
+  // Helper to find duplicate ingredients (case-insensitive, trimmed)
+  const findDuplicateIngredients = (ingredients) => {
+    const seen = new Map();
+    const duplicates = [];
+    ingredients.forEach(ing => {
+      const normalized = (ing.name || '').trim().toLowerCase();
+      if (normalized && seen.has(normalized)) {
+        if (!duplicates.includes(seen.get(normalized))) {
+          duplicates.push(seen.get(normalized));
+        }
+      } else if (normalized) {
+        seen.set(normalized, ing.name.trim());
+      }
+    });
+    return duplicates;
+  };
+
   // Recipe functions
   const saveRecipe = async () => {
     console.log('[AdminPage.saveRecipe] START');
@@ -3116,6 +3132,14 @@ export default function AdminPage() {
     if (!newRecipe.name) { alert('Please enter a recipe name'); return; }
     const validIngredients = newRecipe.ingredients.filter(ing => ing.name && ing.quantity);
     if (validIngredients.length === 0) { alert('Please add at least one ingredient with name and quantity'); return; }
+
+    // Check for duplicate ingredients
+    const duplicates = findDuplicateIngredients(validIngredients);
+    if (duplicates.length > 0) {
+      alert(`Error: ${duplicates.join(', ')} is entered twice. Please combine or remove duplicates.`);
+      return;
+    }
+
     validIngredients.forEach(ing => addToMasterIngredients(ing));
 
     const recipeToSave = {
@@ -3223,6 +3247,14 @@ export default function AdminPage() {
 
     const { category, index, recipe } = editingRecipe;
     const validIngredients = recipe.ingredients.filter(ing => ing.name && ing.quantity);
+
+    // Check for duplicate ingredients
+    const duplicates = findDuplicateIngredients(validIngredients);
+    if (duplicates.length > 0) {
+      alert(`Error: ${duplicates.join(', ')} is entered twice. Please combine or remove duplicates.`);
+      return;
+    }
+
     validIngredients.forEach(ing => addToMasterIngredients(ing));
 
     const recipeToSave = { ...recipe, ingredients: validIngredients };
@@ -3260,19 +3292,22 @@ export default function AdminPage() {
     if (similar.length > 0 && !window.confirm(`Similar ingredients found: ${similar.map(s => s.name).join(', ')}\n\nAdd "${newIngredient.name}" anyway?`)) return;
 
     if (isSupabaseMode()) {
+      console.log('[Ingredients.add] START', { name: newIngredient.name });
       const result = await saveIngredientToSupabase(newIngredient);
       if (result.success) {
-        setMasterIngredients(result.ingredients);
-        saveData({ masterIngredients: result.ingredients });
+        console.log('[Ingredients.add] SUCCESS');
+        updateMasterIngredients(result.ingredients);
         setNewIngredient(DEFAULT_NEW_INGREDIENT);
         alert('Ingredient added!');
       } else {
+        console.log('[Ingredients.add] ERROR', result.error);
         alert(`Save failed: ${result.error}`);
       }
     } else {
+      console.log('[Ingredients.add] LOCAL MODE');
       updateMasterIngredients([...masterIngredients, { ...newIngredient, id: Date.now() }]);
       setNewIngredient(DEFAULT_NEW_INGREDIENT);
-      alert('Ingredient added!');
+      alert('Ingredient added (local only)!');
     }
   };
 
@@ -3280,14 +3315,17 @@ export default function AdminPage() {
     if (!window.confirm('Delete this ingredient?')) return;
 
     if (isSupabaseMode()) {
+      console.log('[Ingredients.delete] START', { id });
       const result = await deleteIngredientFromSupabase(id);
       if (result.success) {
-        setMasterIngredients(result.ingredients);
-        saveData({ masterIngredients: result.ingredients });
+        console.log('[Ingredients.delete] SUCCESS');
+        updateMasterIngredients(result.ingredients);
       } else {
+        console.log('[Ingredients.delete] ERROR', result.error);
         alert(`Delete failed: ${result.error}`);
       }
     } else {
+      console.log('[Ingredients.delete] LOCAL MODE');
       updateMasterIngredients(masterIngredients.filter(ing => ing.id !== id));
     }
   };
@@ -3298,17 +3336,22 @@ export default function AdminPage() {
   };
 
   const saveEditingMasterIngredient = async () => {
+    console.log('[Ingredients.save] START', { id: editingIngredientId, name: editingIngredientData?.name });
+    console.log('[Ingredients.save] mode:', isSupabaseMode() ? 'supabase' : 'local');
+
     if (isSupabaseMode()) {
       const result = await saveIngredientToSupabase(editingIngredientData);
       if (result.success) {
-        setMasterIngredients(result.ingredients);
-        saveData({ masterIngredients: result.ingredients });
+        console.log('[Ingredients.save] SUCCESS');
+        updateMasterIngredients(result.ingredients);
         setEditingIngredientId(null);
         setEditingIngredientData(null);
       } else {
+        console.log('[Ingredients.save] ERROR', result.error);
         alert(`Save failed: ${result.error}`);
       }
     } else {
+      console.log('[Ingredients.save] LOCAL MODE - updating local state');
       updateMasterIngredients(masterIngredients.map(ing => ing.id === editingIngredientId ? { ...editingIngredientData } : ing));
       setEditingIngredientId(null);
       setEditingIngredientData(null);

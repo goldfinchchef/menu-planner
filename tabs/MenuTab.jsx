@@ -3,7 +3,7 @@ import { Plus, Trash2, Check, AlertTriangle, Circle, Eye, X, ChevronDown, Chevro
 import WeekSelector from '../components/WeekSelector';
 import { getWeekIdFromDate, getWeekStartDate } from '../utils/weekUtils';
 import { isSupabaseMode, isLocalMode } from '../lib/dataMode';
-import { saveAllMenus, fetchMenus } from '../lib/database';
+import { saveAllMenus, fetchMenus, ensureWeeksExist } from '../lib/database';
 import { checkConnection } from '../lib/supabase';
 
 // Styled Menu Card Component - matches client portal
@@ -379,16 +379,7 @@ export default function MenuTab({
     const approvedItems = currentMenuItems.map(item => ({ ...item, approved: true }));
     console.log('[MenuTab] Items to approve:', approvedItems.length);
 
-    // Update local state immediately for responsive UI
-    setMenuItems(prev => {
-      const updated = prev.map(item =>
-        item.clientName === clientName ? { ...item, approved: true } : item
-      );
-      console.log('[MenuTab] Local state updated, total approved:', updated.filter(i => i.approved).length);
-      return updated;
-    });
-
-    // Check if we should persist to Supabase
+    // Check if we should persist to Supabase BEFORE updating UI
     const supabaseMode = isSupabaseMode();
     console.log('[MenuTab] isSupabaseMode() returned:', supabaseMode);
 
@@ -399,20 +390,53 @@ export default function MenuTab({
 
       if (!isOnline) {
         console.error('[MenuTab] Cannot persist: database offline');
-        showToast('Cannot approve: database offline. Changes saved locally only.', 'error');
-        return;
+        showToast('Cannot approve: database offline or misconfigured. Check console for details.', 'error');
+        return; // Don't update UI if we can't persist
       }
 
       try {
+        // Extract week IDs from menu items and ensure weeks exist first
+        const weekIds = approvedItems.map(item => {
+          if (item.weekId) return item.weekId;
+          if (!item.date) return null;
+          // Calculate week ID from date
+          const date = new Date(item.date + 'T12:00:00');
+          const thursday = new Date(date);
+          thursday.setDate(date.getDate() + (3 - ((date.getDay() + 6) % 7)));
+          const year = thursday.getFullYear();
+          const jan4 = new Date(year, 0, 4);
+          const weekNum = 1 + Math.round(((thursday - jan4) / 86400000 - 3 + ((jan4.getDay() + 6) % 7)) / 7);
+          return `${year}-W${String(weekNum).padStart(2, '0')}`;
+        }).filter(Boolean);
+
+        console.log('[MenuTab] Ensuring weeks exist:', [...new Set(weekIds)]);
+        const weeksResult = await ensureWeeksExist(weekIds);
+        if (!weeksResult.success) {
+          console.error('[MenuTab] ❌ Failed to create weeks:', weeksResult.errors);
+          showToast(`Failed to create week records: ${weeksResult.errors.join(', ')}`, 'error');
+          return;
+        }
+        if (weeksResult.created.length > 0) {
+          console.log('[MenuTab] Created weeks:', weeksResult.created);
+        }
+
         console.log('[saveAllMenus] start, count:', approvedItems.length);
         await saveAllMenus(approvedItems);
-        console.log('[saveAllMenus] success, returned count:', approvedItems.length);
+        console.log('[saveAllMenus] success');
 
-        // Optionally refetch to sync state with DB
+        // Only update local state AFTER successful persistence
+        setMenuItems(prev => {
+          const updated = prev.map(item =>
+            item.clientName === clientName ? { ...item, approved: true } : item
+          );
+          console.log('[MenuTab] Local state updated after DB success');
+          return updated;
+        });
+
+        // Refetch to sync state with DB
         try {
           const freshMenus = await fetchMenus();
           console.log('[MenuTab] Refetched menus from Supabase, count:', freshMenus.length);
-          // Merge: keep local items not in DB, update items that are in DB
           setMenuItems(prev => {
             const dbIds = new Set(freshMenus.map(m => `${m.clientName}-${m.date}`));
             const localOnly = prev.filter(item => !dbIds.has(`${item.clientName}-${item.date}`));
@@ -424,12 +448,18 @@ export default function MenuTab({
 
         showToast(`Menu approved for ${clientName}`, 'success');
       } catch (error) {
-        console.error('[saveAllMenus] error, full error:', error);
-        showToast(`Failed to save: ${error.message}`, 'error');
+        console.error('[MenuTab] ❌ SAVE FAILED:', error);
+        console.error('[MenuTab] Error details:', JSON.stringify(error, null, 2));
+        showToast(`Failed to approve: ${error.message || 'Database error'}. Menu NOT saved.`, 'error');
+        // Don't update local state - approval failed
       }
     } else {
-      console.log('[MenuTab] Local mode - skipping Supabase persistence');
-      showToast(`Menu approved for ${clientName} (local only)`, 'info');
+      // Local mode - just update local state
+      console.log('[MenuTab] Local mode - updating local state only');
+      setMenuItems(prev => prev.map(item =>
+        item.clientName === clientName ? { ...item, approved: true } : item
+      ));
+      showToast(`Menu approved for ${clientName} (local only - not persisted)`, 'info');
     }
   };
 
