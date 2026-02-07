@@ -32,7 +32,8 @@ import {
   saveGroceryBillToSupabase,
   deleteGroceryBillFromSupabase,
   fetchGroceryBillsByWeek,
-  fetchAllGroceryBills
+  fetchAllGroceryBills,
+  updateClientDeliveryDates
 } from '../lib/database';
 
 const STORAGE_KEY = 'goldfinchChefData';
@@ -1214,7 +1215,7 @@ function DashboardSection({
 }
 
 // Billing & Dates Section Component
-function BillingDatesSection({ clients, updateClients, blockedDates, updateBlockedDates }) {
+function BillingDatesSection({ clients, updateClients, blockedDates, updateBlockedDates, saveDeliveryDatesToSupabase }) {
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [showCalendar, setShowCalendar] = useState(false);
   const today = new Date();
@@ -1229,7 +1230,7 @@ function BillingDatesSection({ clients, updateClients, blockedDates, updateBlock
     updateClients(updated);
   };
 
-  const updateDeliveryDate = (clientName, index, value) => {
+  const updateDeliveryDate = async (clientName, index, value) => {
     const client = clients.find(c => c.name === clientName);
     const dates = [...(client.deliveryDates || ['', '', '', ''])];
     // Ensure we have 4 slots
@@ -1238,7 +1239,14 @@ function BillingDatesSection({ clients, updateClients, blockedDates, updateBlock
     // Sort non-empty dates and filter out empty ones, then pad back to 4
     const sortedDates = dates.filter(d => d).sort();
     while (sortedDates.length < 4) sortedDates.push('');
+
+    // Update local state
     updateClientField(clientName, 'deliveryDates', sortedDates);
+
+    // Save to Supabase if available
+    if (saveDeliveryDatesToSupabase && client.id) {
+      await saveDeliveryDatesToSupabase(client.id, clientName, sortedDates);
+    }
   };
 
   const handleInvoicePaid = (clientName, isPaid) => {
@@ -3934,6 +3942,13 @@ export default function AdminPage() {
             updateClients={updateClients}
             blockedDates={blockedDates}
             updateBlockedDates={updateBlockedDates}
+            saveDeliveryDatesToSupabase={isSupabaseMode() ? async (clientId, clientName, dates) => {
+              const result = await updateClientDeliveryDates(clientId, clientName, dates);
+              if (!result.success) {
+                console.error('[deliveryDates] Failed to save:', result.error);
+              }
+              return result;
+            } : null}
           />
         )}
 
