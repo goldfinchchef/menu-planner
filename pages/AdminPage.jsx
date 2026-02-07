@@ -755,16 +755,16 @@ function DashboardSection({
         </p>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {/* Pending Deliveries */}
+          {/* Stops This Week */}
           <div className="p-4 rounded-lg" style={{ backgroundColor: '#dbeafe' }}>
             <div className="flex items-center gap-2 mb-2">
               <Truck size={24} style={{ color: '#3d59ab' }} />
-              <span className="text-sm font-medium text-gray-600">Pending</span>
+              <span className="text-sm font-medium text-gray-600">Stops</span>
             </div>
             <p className="text-3xl font-bold" style={{ color: '#3d59ab' }}>
-              {thisWeekDeliveries.length}
+              {new Set(thisWeekDeliveries.map(d => d.clientName)).size}
             </p>
-            <p className="text-sm text-gray-500">deliveries</p>
+            <p className="text-sm text-gray-500">clients scheduled for delivery</p>
           </div>
 
           {/* Completed */}
