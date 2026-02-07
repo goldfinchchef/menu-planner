@@ -745,7 +745,7 @@ function DashboardSection({
 
   return (
     <div className="space-y-6">
-      {/* 1. This Week at a Glance */}
+      {/* 1. This Week at a Glance - Financial Summary */}
       <div className="bg-white rounded-lg shadow-lg p-6">
         <h2 className="text-2xl font-bold mb-4" style={{ color: '#3d59ab' }}>
           This Week at a Glance
@@ -754,319 +754,66 @@ function DashboardSection({
           {formatDate(weekStart)} - {formatDate(weekEnd)}
         </p>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {/* Stops This Week */}
-          <div className="p-4 rounded-lg" style={{ backgroundColor: '#dbeafe' }}>
-            <div className="flex items-center gap-2 mb-2">
-              <Truck size={24} style={{ color: '#3d59ab' }} />
-              <span className="text-sm font-medium text-gray-600">Stops</span>
-            </div>
-            <p className="text-3xl font-bold" style={{ color: '#3d59ab' }}>
-              {new Set(thisWeekDeliveries.map(d => d.clientName)).size}
-            </p>
-            <p className="text-sm text-gray-500">clients scheduled for delivery</p>
-          </div>
+        {(() => {
+          // Get unique clients with menus scheduled this week
+          const clientsWithMenus = [...new Set(
+            menuItems
+              .filter(item => {
+                if (!item.date) return false;
+                const itemDate = new Date(item.date + 'T12:00:00');
+                const weekStartDate = new Date(weekStart + 'T00:00:00');
+                const weekEndDate = new Date(weekEnd + 'T23:59:59');
+                return itemDate >= weekStartDate && itemDate <= weekEndDate;
+              })
+              .map(item => item.clientName)
+          )];
 
-          {/* Completed */}
-          <div className="p-4 rounded-lg" style={{ backgroundColor: '#dcfce7' }}>
-            <div className="flex items-center gap-2 mb-2">
-              <Check size={24} className="text-green-600" />
-              <span className="text-sm font-medium text-gray-600">Completed</span>
-            </div>
-            <p className="text-3xl font-bold text-green-600">
-              {thisWeekCompleted.length}
-            </p>
-            <p className="text-sm text-gray-500">deliveries</p>
-          </div>
+          // Calculate value of orders using menu pricing snapshot
+          // For each client with a menu, use their stored pricing
+          const valueOfOrders = clientsWithMenus.reduce((total, clientName) => {
+            const client = clients.find(c => c.name === clientName || c.displayName === clientName);
+            if (!client) return total;
 
-          {/* Renewals */}
-          <div className="p-4 rounded-lg" style={{ backgroundColor: '#fef3c7' }}>
-            <div className="flex items-center gap-2 mb-2">
-              <RefreshCw size={24} className="text-amber-600" />
-              <span className="text-sm font-medium text-gray-600">Renewals</span>
-            </div>
-            <p className="text-3xl font-bold text-amber-600">
-              {renewalsThisWeek.length}
-            </p>
-            <p className="text-sm text-gray-500">due</p>
-          </div>
+            const planPrice = parseFloat(client.planPrice) || 0;
+            const serviceFee = client.pickup ? 0 : (parseFloat(client.serviceFee) || 0);
+            const subtotal = planPrice + serviceFee;
+            const discount = client.prepayDiscount ? subtotal * 0.1 : 0;
+            const clientTotal = subtotal - discount;
 
-          {/* Problems */}
-          <div className="p-4 rounded-lg" style={{ backgroundColor: problemsThisWeek.length > 0 ? '#fee2e2' : '#f3f4f6' }}>
-            <div className="flex items-center gap-2 mb-2">
-              <AlertTriangle size={24} className={problemsThisWeek.length > 0 ? 'text-red-600' : 'text-gray-400'} />
-              <span className="text-sm font-medium text-gray-600">Problems</span>
-            </div>
-            <p className={`text-3xl font-bold ${problemsThisWeek.length > 0 ? 'text-red-600' : 'text-gray-400'}`}>
-              {problemsThisWeek.length}
-            </p>
-            <p className="text-sm text-gray-500">flagged</p>
-          </div>
-        </div>
-      </div>
+            return total + clientTotal;
+          }, 0);
 
-      {/* 2. To Do This Week */}
-      <div className="bg-white rounded-lg shadow-lg p-6">
-        <div className="flex justify-between items-center mb-4">
-          <div>
-            <h2 className="text-2xl font-bold flex items-center gap-2" style={{ color: '#3d59ab' }}>
-              <ClipboardList size={28} />
-              To Do This Week
-            </h2>
-            {incompleteTaskCount > 0 && (
-              <p className="text-sm text-gray-500 mt-1">
-                {incompleteTaskCount} task{incompleteTaskCount !== 1 ? 's' : ''} remaining
-              </p>
-            )}
-          </div>
-          <button
-            onClick={() => setShowAddTask(!showAddTask)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-white"
-            style={{ backgroundColor: '#3d59ab' }}
-          >
-            <Plus size={18} />
-            Add Task
-          </button>
-        </div>
-
-        {/* Due date legend */}
-        <div className="flex flex-wrap gap-4 mb-4 text-xs text-gray-500">
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-            Billing: Wed
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-            Menus: Thu
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-            Subs: Sat
-          </span>
-        </div>
-
-        {/* Add task form */}
-        {showAddTask && (
-          <div className="mb-4 p-4 rounded-lg border-2" style={{ borderColor: '#ebb582', backgroundColor: '#f9f9ed' }}>
-            <div className="flex flex-wrap gap-3">
-              <select
-                value={newTask.clientName || ''}
-                onChange={(e) => setNewTask({ ...newTask, clientName: e.target.value || undefined })}
-                className="p-2 border-2 rounded-lg"
-                style={{ borderColor: '#ebb582' }}
-              >
-                <option value="">Select client (optional)</option>
-                {clients.filter(c => c.status === 'active').map((client, i) => (
-                  <option key={i} value={client.displayName || client.name}>
-                    {client.displayName || client.name}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="text"
-                value={newTask.title}
-                onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-                placeholder="Task description..."
-                className="flex-1 p-2 border-2 rounded-lg min-w-48"
-                style={{ borderColor: '#ebb582' }}
-              />
-              <button
-                onClick={() => {
-                  addCustomTask();
-                  setShowAddTask(false);
-                }}
-                className="px-4 py-2 rounded-lg text-white"
-                style={{ backgroundColor: '#3d59ab' }}
-              >
-                Add
-              </button>
-              <button
-                onClick={() => setShowAddTask(false)}
-                className="px-4 py-2 rounded-lg border-2"
-                style={{ borderColor: '#ebb582' }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Tasks grouped by client */}
-        <div className="space-y-3">
-          {!hasAnyTasks ? (
-            <p className="text-gray-500 text-center py-4">All caught up! No tasks for this week.</p>
-          ) : (
-            <>
-              {/* Client-specific tasks */}
-              {sortedClientNames.map(clientName => {
-                const tasks = tasksByClient[clientName];
-                const incompleteTasks = tasks.filter(t => !t.completed);
-                const completedTasks = tasks.filter(t => t.completed);
-                const allCompleted = incompleteTasks.length === 0;
-
-                return (
-                  <div
-                    key={clientName}
-                    className={`rounded-lg border-2 overflow-hidden ${allCompleted ? 'opacity-50' : ''}`}
-                    style={{ borderColor: allCompleted ? '#d1d5db' : '#ebb582' }}
-                  >
-                    {/* Client header */}
-                    <div
-                      className="px-4 py-2 font-bold flex items-center justify-between"
-                      style={{ backgroundColor: allCompleted ? '#9ca3af' : '#3d59ab', color: 'white' }}
-                    >
-                      <span>{clientName}</span>
-                      {allCompleted && (
-                        <span className="text-xs font-normal flex items-center gap-1">
-                          <Check size={14} /> All done
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Client tasks - incomplete first */}
-                    <div className="p-2 space-y-1" style={{ backgroundColor: '#f9f9ed' }}>
-                      {incompleteTasks.map((task) => {
-                        const priorityStyle = getPriorityStyle(task.priority);
-                        const dueDateInfo = formatDueDate(task.dueDate);
-
-                        return (
-                          <div
-                            key={task.id}
-                            className={`flex items-center gap-3 p-2 rounded ${priorityStyle.border} ${priorityStyle.bg}`}
-                          >
-                            {/* Checkbox */}
-                            <button
-                              onClick={() => {
-                                if (task.isCustom) {
-                                  toggleTaskComplete(task.id);
-                                } else {
-                                  const existingTask = customTasks.find(t => t.id === task.id);
-                                  if (existingTask) {
-                                    toggleTaskComplete(task.id);
-                                  } else {
-                                    updateCustomTasks([...customTasks, { ...task, completed: true }]);
-                                  }
-                                }
-                              }}
-                              className="w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 border-gray-300 bg-white hover:border-green-400"
-                            >
-                            </button>
-
-                            {/* Task label */}
-                            <span className="text-sm flex-1">{task.type}</span>
-
-                            {/* Due date badge */}
-                            {dueDateInfo && (
-                              <span className={`text-xs px-2 py-0.5 rounded ${dueDateInfo.bg} ${dueDateInfo.color}`}>
-                                {dueDateInfo.text}
-                              </span>
-                            )}
-
-                            {/* Delete button for custom tasks */}
-                            {task.isCustom && (
-                              <button
-                                onClick={() => deleteCustomTask(task.id)}
-                                className="text-red-400 hover:text-red-600 p-1"
-                              >
-                                <X size={14} />
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-
-                      {/* Completed tasks - collapsed at bottom */}
-                      {completedTasks.length > 0 && (
-                        <div className="mt-2 pt-2 border-t border-gray-200">
-                          <p className="text-xs text-gray-400 mb-1">Completed ({completedTasks.length})</p>
-                          {completedTasks.map((task) => (
-                            <div
-                              key={task.id}
-                              className="flex items-center gap-3 p-1 opacity-60"
-                            >
-                              <button
-                                onClick={() => {
-                                  if (task.isCustom) {
-                                    toggleTaskComplete(task.id);
-                                  } else {
-                                    const existingTask = customTasks.find(t => t.id === task.id);
-                                    if (existingTask) {
-                                      toggleTaskComplete(task.id);
-                                    } else {
-                                      updateCustomTasks([...customTasks, { ...task, completed: false }]);
-                                    }
-                                  }
-                                }}
-                                className="w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 bg-green-500 border-green-500"
-                              >
-                                <Check size={10} className="text-white" />
-                              </button>
-                              <span className="text-xs line-through text-gray-400">{task.type}</span>
-                              {task.isCustom && (
-                                <button
-                                  onClick={() => deleteCustomTask(task.id)}
-                                  className="text-red-400 hover:text-red-600 p-0.5 ml-auto"
-                                >
-                                  <X size={12} />
-                                </button>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* General tasks (not client-specific) */}
-              {generalTasks.length > 0 && (
-                <div
-                  className="rounded-lg border-2 overflow-hidden"
-                  style={{ borderColor: '#ebb582' }}
-                >
-                  <div
-                    className="px-4 py-2 font-bold"
-                    style={{ backgroundColor: '#6b7280', color: 'white' }}
-                  >
-                    Other Tasks
-                  </div>
-                  <div className="p-3 space-y-2" style={{ backgroundColor: '#f9f9ed' }}>
-                    {generalTasks.map((task) => (
-                      <div
-                        key={task.id}
-                        className="flex items-center gap-3"
-                      >
-                        <button
-                          onClick={() => toggleTaskComplete(task.id)}
-                          className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
-                            task.completed
-                              ? 'bg-green-500 border-green-500'
-                              : 'border-gray-300 bg-white hover:border-green-400'
-                          }`}
-                        >
-                          {task.completed && <Check size={12} className="text-white" />}
-                        </button>
-                        <span className={`text-sm ${task.completed ? 'line-through text-gray-400' : ''}`}>
-                          {task.title}
-                        </span>
-                        <button
-                          onClick={() => deleteCustomTask(task.id)}
-                          className="text-red-400 hover:text-red-600 p-1 ml-auto"
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+          return (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Stops This Week */}
+              <div className="p-6 rounded-lg" style={{ backgroundColor: '#dbeafe' }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <Truck size={28} style={{ color: '#3d59ab' }} />
+                  <span className="text-lg font-medium text-gray-600">Stops this week</span>
                 </div>
-              )}
-            </>
-          )}
-        </div>
+                <p className="text-5xl font-bold mb-2" style={{ color: '#3d59ab' }}>
+                  {clientsWithMenus.length}
+                </p>
+                <p className="text-sm text-gray-500">unique client delivery addresses</p>
+              </div>
+
+              {/* Value of Orders */}
+              <div className="p-6 rounded-lg" style={{ backgroundColor: '#dcfce7' }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <DollarSign size={28} className="text-green-600" />
+                  <span className="text-lg font-medium text-gray-600">Value of orders this week</span>
+                </div>
+                <p className="text-5xl font-bold mb-2 text-green-600">
+                  ${valueOfOrders.toFixed(2)}
+                </p>
+                <p className="text-sm text-gray-500">total from {clientsWithMenus.length} client{clientsWithMenus.length !== 1 ? 's' : ''}</p>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
-      {/* 3. Grocery Input & 4. Weekly Food Cost */}
+      {/* 2. Grocery Input & Weekly Food Cost */}
       <div className="grid md:grid-cols-2 gap-6">
         {/* Grocery Input */}
         <div className="bg-white rounded-lg shadow-lg p-6">
