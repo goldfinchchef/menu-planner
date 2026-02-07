@@ -311,6 +311,24 @@ function DashboardSection({
     });
   };
 
+  // State for expanded clients (top-level, persisted to localStorage)
+  const [expandedClients, setExpandedClients] = useState(() => {
+    try {
+      const saved = localStorage.getItem('groceryAnalysis_expandedClients');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const toggleClientExpanded = (clientName) => {
+    setExpandedClients(prev => {
+      const newValue = { ...prev, [clientName]: !prev[clientName] };
+      localStorage.setItem('groceryAnalysis_expandedClients', JSON.stringify(newValue));
+      return newValue;
+    });
+  };
+
   // State for expanded client-week rows (persisted to localStorage)
   const [expandedClientWeeks, setExpandedClientWeeks] = useState(() => {
     try {
@@ -1044,76 +1062,121 @@ function DashboardSection({
               </div>
             </div>
 
-            {/* Per-Client Breakdown (grouped by week) */}
+            {/* Client Costs by Week (grouped by client) */}
             {(() => {
               const weekData = buildClientBreakdown();
-              const weekIds = Object.keys(weekData).sort((a, b) => b.localeCompare(a)); // newest first
+              const weekIds = Object.keys(weekData);
               if (weekIds.length === 0) return null;
+
+              // Reorganize: group by client, then by week
+              const clientData = {};
+              weekIds.forEach(weekId => {
+                const week = weekData[weekId];
+                Object.entries(week.clients).forEach(([clientName, data]) => {
+                  if (!clientData[clientName]) {
+                    clientData[clientName] = { weeks: {}, total: 0 };
+                  }
+                  clientData[clientName].weeks[weekId] = {
+                    ...data,
+                    label: week.label,
+                    weekStart: week.weekStart
+                  };
+                  clientData[clientName].total += data.total;
+                });
+              });
+
+              const clientNames = Object.keys(clientData).sort();
 
               return (
                 <div className="mt-6 pt-6 border-t-2" style={{ borderColor: '#ebb582' }}>
                   <h4 className="font-bold mb-4" style={{ color: '#3d59ab' }}>Client Costs by Week</h4>
                   <div className="space-y-2">
-                    {weekIds.map(weekId => {
-                      const week = weekData[weekId];
-                      const clientNames = Object.keys(week.clients).sort();
+                    {clientNames.map(clientName => {
+                      const client = clientData[clientName];
+                      const isClientExpanded = expandedClients[clientName] || false;
+                      const clientWeekIds = Object.keys(client.weeks).sort((a, b) => b.localeCompare(a)); // newest first
 
-                      return clientNames.map(clientName => {
-                        const clientData = week.clients[clientName];
-                        const rowKey = `${clientName}_${weekId}`;
-                        const isExpanded = expandedClientWeeks[rowKey] || false;
+                      return (
+                        <div key={clientName} className="border rounded-lg overflow-hidden" style={{ borderColor: '#3d59ab' }}>
+                          {/* Client header */}
+                          <button
+                            onClick={() => toggleClientExpanded(clientName)}
+                            className="w-full px-4 py-3 flex justify-between items-center hover:opacity-90"
+                            style={{ backgroundColor: '#dbeafe' }}
+                          >
+                            <div className="flex items-center gap-3">
+                              <span className="text-gray-500">{isClientExpanded ? '▼' : '▶'}</span>
+                              <span className="font-bold text-lg" style={{ color: '#3d59ab' }}>{clientName}</span>
+                              <span className="text-sm text-gray-500">({clientWeekIds.length} week{clientWeekIds.length !== 1 ? 's' : ''})</span>
+                            </div>
+                            <span className="font-bold text-lg" style={{ color: '#22c55e' }}>${client.total.toFixed(2)}</span>
+                          </button>
 
-                        return (
-                          <div key={rowKey} className="border rounded-lg overflow-hidden" style={{ borderColor: '#ebb582' }}>
-                            <button
-                              onClick={() => toggleClientWeekExpanded(rowKey)}
-                              className="w-full px-4 py-3 flex justify-between items-center hover:opacity-90"
-                              style={{ backgroundColor: '#f9f9ed' }}
-                            >
-                              <div className="flex items-center gap-3">
-                                <span className="text-gray-400">{isExpanded ? '▼' : '▶'}</span>
-                                <span className="font-bold" style={{ color: '#3d59ab' }}>{clientName}</span>
-                                <span className="text-sm text-gray-500">· {week.label}</span>
-                              </div>
-                              <span className="font-bold" style={{ color: '#22c55e' }}>${clientData.total.toFixed(2)}</span>
-                            </button>
-                            {isExpanded && (
-                              <div className="p-3 space-y-2 border-t" style={{ borderColor: '#ebb582' }}>
-                                {clientData.meals.map((meal, mealIdx) => (
-                                  <div key={mealIdx} className="p-2 rounded text-sm" style={{ backgroundColor: '#fafafa' }}>
-                                    <div className="flex flex-wrap gap-x-3 gap-y-1 mb-1">
-                                      {meal.dishes.filter(d => d.type !== 'extra').map((dish, i) => (
-                                        <span key={i} className="inline-flex items-center gap-1">
-                                          <span className="font-medium">{dish.name}</span>
-                                          <span className="text-gray-500">(${dish.costPerPortion.toFixed(2)})</span>
-                                          {i < meal.dishes.filter(d => d.type !== 'extra').length - 1 && (
-                                            <span className="text-gray-300 ml-1">+</span>
-                                          )}
-                                        </span>
-                                      ))}
-                                    </div>
-                                    {meal.dishes.filter(d => d.type === 'extra').length > 0 && (
-                                      <div className="text-gray-500 text-xs mb-1">
-                                        Extras: {meal.dishes.filter(d => d.type === 'extra').map((d, i) => (
-                                          <span key={i}>{d.name} (${d.costPerPortion.toFixed(2)}){i < meal.dishes.filter(x => x.type === 'extra').length - 1 ? ', ' : ''}</span>
+                          {/* Weeks within client */}
+                          {isClientExpanded && (
+                            <div className="border-t" style={{ borderColor: '#3d59ab' }}>
+                              {clientWeekIds.map(weekId => {
+                                const weekInfo = client.weeks[weekId];
+                                const rowKey = `${clientName}_${weekId}`;
+                                const isWeekExpanded = expandedClientWeeks[rowKey] || false;
+
+                                return (
+                                  <div key={weekId} className="border-b last:border-b-0" style={{ borderColor: '#ebb582' }}>
+                                    {/* Week header */}
+                                    <button
+                                      onClick={() => toggleClientWeekExpanded(rowKey)}
+                                      className="w-full px-4 py-2 flex justify-between items-center hover:opacity-90"
+                                      style={{ backgroundColor: '#f9f9ed' }}
+                                    >
+                                      <div className="flex items-center gap-3 pl-4">
+                                        <span className="text-gray-400">{isWeekExpanded ? '▼' : '▶'}</span>
+                                        <span className="text-sm font-medium text-gray-700">{weekInfo.label}</span>
+                                      </div>
+                                      <span className="font-bold" style={{ color: '#22c55e' }}>${weekInfo.total.toFixed(2)}</span>
+                                    </button>
+
+                                    {/* Meal details */}
+                                    {isWeekExpanded && (
+                                      <div className="p-3 pl-8 space-y-2 bg-white">
+                                        {weekInfo.meals.map((meal, mealIdx) => (
+                                          <div key={mealIdx} className="p-2 rounded text-sm" style={{ backgroundColor: '#fafafa' }}>
+                                            <div className="flex flex-wrap gap-x-3 gap-y-1 mb-1">
+                                              {meal.dishes.filter(d => d.type !== 'extra').map((dish, i) => (
+                                                <span key={i} className="inline-flex items-center gap-1">
+                                                  <span className="font-medium">{dish.name}</span>
+                                                  <span className="text-gray-500">(${dish.costPerPortion.toFixed(2)})</span>
+                                                  {i < meal.dishes.filter(d => d.type !== 'extra').length - 1 && (
+                                                    <span className="text-gray-300 ml-1">+</span>
+                                                  )}
+                                                </span>
+                                              ))}
+                                            </div>
+                                            {meal.dishes.filter(d => d.type === 'extra').length > 0 && (
+                                              <div className="text-gray-500 text-xs mb-1">
+                                                Extras: {meal.dishes.filter(d => d.type === 'extra').map((d, i) => (
+                                                  <span key={i}>{d.name} (${d.costPerPortion.toFixed(2)}){i < meal.dishes.filter(x => x.type === 'extra').length - 1 ? ', ' : ''}</span>
+                                                ))}
+                                              </div>
+                                            )}
+                                            <div className="flex justify-between items-center pt-1 border-t border-gray-200 mt-1">
+                                              <span className="text-gray-600">
+                                                ${meal.costPerPortion.toFixed(2)}/portion × {meal.portions}
+                                              </span>
+                                              <span className="font-medium" style={{ color: '#22c55e' }}>
+                                                ${meal.total.toFixed(2)}
+                                              </span>
+                                            </div>
+                                          </div>
                                         ))}
                                       </div>
                                     )}
-                                    <div className="flex justify-between items-center pt-1 border-t border-gray-200 mt-1">
-                                      <span className="text-gray-600">
-                                        ${meal.costPerPortion.toFixed(2)}/portion × {meal.portions}
-                                      </span>
-                                      <span className="font-medium" style={{ color: '#22c55e' }}>
-                                        ${meal.total.toFixed(2)}
-                                      </span>
-                                    </div>
                                   </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      });
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
                     })}
                   </div>
                 </div>
