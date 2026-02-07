@@ -1231,7 +1231,16 @@ function BillingDatesSection({ clients, updateClients, blockedDates, updateBlock
   };
 
   const updateDeliveryDate = async (clientName, index, value) => {
+    console.log('[deliveryDates] updateDeliveryDate called', { clientName, index, value });
+
     const client = clients.find(c => c.name === clientName);
+    if (!client) {
+      console.error('[deliveryDates] client not found by name:', clientName);
+      return;
+    }
+
+    console.log('[deliveryDates] client found', { id: client.id, name: client.name, hasSupabaseFn: !!saveDeliveryDatesToSupabase });
+
     const dates = [...(client.deliveryDates || ['', '', '', ''])];
     // Ensure we have 4 slots
     while (dates.length < 4) dates.push('');
@@ -1240,12 +1249,17 @@ function BillingDatesSection({ clients, updateClients, blockedDates, updateBlock
     const sortedDates = dates.filter(d => d).sort();
     while (sortedDates.length < 4) sortedDates.push('');
 
+    console.log('[deliveryDates] sorted dates', sortedDates);
+
     // Update local state
     updateClientField(clientName, 'deliveryDates', sortedDates);
 
     // Save to Supabase if available
     if (saveDeliveryDatesToSupabase && client.id) {
+      console.log('[deliveryDates] calling saveDeliveryDatesToSupabase...');
       await saveDeliveryDatesToSupabase(client.id, clientName, sortedDates);
+    } else {
+      console.log('[deliveryDates] skip Supabase save', { hasFn: !!saveDeliveryDatesToSupabase, hasId: !!client.id });
     }
   };
 
