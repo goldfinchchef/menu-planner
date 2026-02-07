@@ -298,6 +298,18 @@ function DashboardSection({
 }) {
   const [showAddTask, setShowAddTask] = useState(false);
   const [showGroceryAnalysis, setShowGroceryAnalysis] = useState(false);
+  const [showRecipeBreakdown, setShowRecipeBreakdown] = useState(() => {
+    const saved = localStorage.getItem('groceryAnalysis_showRecipeBreakdown');
+    return saved === 'true';
+  });
+
+  const toggleRecipeBreakdown = () => {
+    setShowRecipeBreakdown(prev => {
+      const newValue = !prev;
+      localStorage.setItem('groceryAnalysis_showRecipeBreakdown', String(newValue));
+      return newValue;
+    });
+  };
 
   // Build aggregated cook list with costs (KDS-style: one entry per unique recipe)
   const buildCookListWithCosts = () => {
@@ -1146,8 +1158,15 @@ function DashboardSection({
             {/* Per-Recipe Breakdown */}
             {cookListEntries.length > 0 && (
               <div className="mb-6">
-                <h4 className="font-bold mb-3" style={{ color: '#3d59ab' }}>Recipe Cost Breakdown</h4>
-                <div className="overflow-x-auto">
+                <button
+                  onClick={toggleRecipeBreakdown}
+                  className="w-full flex justify-between items-center hover:opacity-80"
+                >
+                  <h4 className="font-bold" style={{ color: '#3d59ab' }}>Recipe Cost Breakdown</h4>
+                  <span className="text-xl text-gray-400">{showRecipeBreakdown ? '▼' : '▶'}</span>
+                </button>
+                {showRecipeBreakdown && (
+                <div className="overflow-x-auto mt-3">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b-2" style={{ borderColor: '#3d59ab' }}>
@@ -1193,6 +1212,7 @@ function DashboardSection({
                     </tbody>
                   </table>
                 </div>
+                )}
               </div>
             )}
 
