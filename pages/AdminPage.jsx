@@ -389,6 +389,57 @@ function DashboardSection({
     return months;
   };
 
+  // Build per-client breakdown for Grocery Analysis
+  const buildClientBreakdown = () => {
+    const approvedItems = menuItems.filter(item => item.approved);
+    const clientData = {};
+
+    approvedItems.forEach(item => {
+      const clientName = item.clientName || 'Unknown';
+      if (!clientData[clientName]) {
+        clientData[clientName] = { meals: [], total: 0 };
+      }
+
+      const portions = item.portions || 1;
+      const mealDishes = [];
+      let mealCostPerPortion = 0;
+
+      // Gather protein, veg, starch
+      ['protein', 'veg', 'starch'].forEach(type => {
+        if (item[type]) {
+          const recipe = recipes[type]?.find(r => r.name === item[type]);
+          const costPerPortion = recipe ? getRecipeCost(recipe) : 0;
+          mealDishes.push({ name: item[type], type, costPerPortion });
+          mealCostPerPortion += costPerPortion;
+        }
+      });
+
+      // Add extras if any
+      if (item.extras && item.extras.length > 0) {
+        item.extras.forEach(extra => {
+          const category = ['sauces', 'breakfast', 'soups'].find(cat =>
+            recipes[cat]?.find(r => r.name === extra)
+          );
+          const recipe = category ? recipes[category].find(r => r.name === extra) : null;
+          const costPerPortion = recipe ? getRecipeCost(recipe) : 0;
+          mealDishes.push({ name: extra, type: 'extra', costPerPortion });
+          mealCostPerPortion += costPerPortion;
+        });
+      }
+
+      const mealTotal = mealCostPerPortion * portions;
+      clientData[clientName].meals.push({
+        dishes: mealDishes,
+        portions,
+        costPerPortion: mealCostPerPortion,
+        total: mealTotal
+      });
+      clientData[clientName].total += mealTotal;
+    });
+
+    return clientData;
+  };
+
   const { entries: cookListEntries, projectedTotal: weeklyFoodCost } = buildCookListWithCosts();
   const actualSpending = getThisWeekGrocerySpending();
   const difference = actualSpending - weeklyFoodCost;
@@ -1176,6 +1227,64 @@ function DashboardSection({
                 )}
               </div>
             </div>
+
+            {/* Per-Client Breakdown */}
+            {(() => {
+              const clientBreakdown = buildClientBreakdown();
+              const clientNames = Object.keys(clientBreakdown).sort();
+              if (clientNames.length === 0) return null;
+
+              return (
+                <div className="mt-6 pt-6 border-t-2" style={{ borderColor: '#ebb582' }}>
+                  <h4 className="font-bold mb-4" style={{ color: '#3d59ab' }}>Per-Client Breakdown</h4>
+                  <div className="space-y-4">
+                    {clientNames.map(clientName => {
+                      const clientData = clientBreakdown[clientName];
+                      return (
+                        <div key={clientName} className="border rounded-lg overflow-hidden" style={{ borderColor: '#ebb582' }}>
+                          <div className="px-4 py-2 flex justify-between items-center" style={{ backgroundColor: '#f9f9ed' }}>
+                            <span className="font-bold" style={{ color: '#3d59ab' }}>{clientName}</span>
+                            <span className="font-bold" style={{ color: '#22c55e' }}>${clientData.total.toFixed(2)}</span>
+                          </div>
+                          <div className="p-3 space-y-2">
+                            {clientData.meals.map((meal, mealIdx) => (
+                              <div key={mealIdx} className="p-2 rounded text-sm" style={{ backgroundColor: '#fafafa' }}>
+                                <div className="flex flex-wrap gap-x-3 gap-y-1 mb-1">
+                                  {meal.dishes.filter(d => d.type !== 'extra').map((dish, i) => (
+                                    <span key={i} className="inline-flex items-center gap-1">
+                                      <span className="font-medium">{dish.name}</span>
+                                      <span className="text-gray-500">(${dish.costPerPortion.toFixed(2)})</span>
+                                      {i < meal.dishes.filter(d => d.type !== 'extra').length - 1 && (
+                                        <span className="text-gray-300 ml-1">+</span>
+                                      )}
+                                    </span>
+                                  ))}
+                                </div>
+                                {meal.dishes.filter(d => d.type === 'extra').length > 0 && (
+                                  <div className="text-gray-500 text-xs mb-1">
+                                    Extras: {meal.dishes.filter(d => d.type === 'extra').map((d, i) => (
+                                      <span key={i}>{d.name} (${d.costPerPortion.toFixed(2)}){i < meal.dishes.filter(x => x.type === 'extra').length - 1 ? ', ' : ''}</span>
+                                    ))}
+                                  </div>
+                                )}
+                                <div className="flex justify-between items-center pt-1 border-t border-gray-200 mt-1">
+                                  <span className="text-gray-600">
+                                    ${meal.costPerPortion.toFixed(2)}/portion × {meal.portions}
+                                  </span>
+                                  <span className="font-medium" style={{ color: '#22c55e' }}>
+                                    ${meal.total.toFixed(2)}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
