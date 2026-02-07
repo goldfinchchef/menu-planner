@@ -3594,13 +3594,12 @@ export default function AdminPage() {
     }
 
     if (isSupabaseMode()) {
-      // Save to Supabase
+      // Save to Supabase (only send: week_id, bill_date, store, amount)
       const result = await saveGroceryBillToSupabase({
         weekId: billWeekId,
         date: newGroceryBill.date,
         store: newGroceryBill.store || '',
-        amount: parseFloat(newGroceryBill.amount),
-        notes: newGroceryBill.notes || ''
+        amount: parseFloat(newGroceryBill.amount)
       });
 
       if (result.success) {
