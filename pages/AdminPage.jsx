@@ -311,6 +311,24 @@ function DashboardSection({
     });
   };
 
+  // State for expanded client-week rows (persisted to localStorage)
+  const [expandedClientWeeks, setExpandedClientWeeks] = useState(() => {
+    try {
+      const saved = localStorage.getItem('groceryAnalysis_expandedClientWeeks');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const toggleClientWeekExpanded = (key) => {
+    setExpandedClientWeeks(prev => {
+      const newValue = { ...prev, [key]: !prev[key] };
+      localStorage.setItem('groceryAnalysis_expandedClientWeeks', JSON.stringify(newValue));
+      return newValue;
+    });
+  };
+
   // Build aggregated cook list with costs (KDS-style: one entry per unique recipe)
   const buildCookListWithCosts = () => {
     const approvedItems = menuItems.filter(item => item.approved);
@@ -401,15 +419,46 @@ function DashboardSection({
     return months;
   };
 
-  // Build per-client breakdown for Grocery Analysis
+  // Helper to get week info from a date
+  const getWeekInfo = (dateStr) => {
+    const date = new Date(dateStr + 'T12:00:00');
+    const day = date.getDay();
+    const diffToMonday = date.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(date);
+    monday.setDate(diffToMonday);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const weekId = monday.toISOString().split('T')[0];
+    return {
+      weekId,
+      weekStart: monday,
+      weekEnd: sunday,
+      label: `${monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${sunday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+    };
+  };
+
+  // Build per-client breakdown grouped by week for Grocery Analysis
   const buildClientBreakdown = () => {
     const approvedItems = menuItems.filter(item => item.approved);
-    const clientData = {};
+    const weekData = {};
 
     approvedItems.forEach(item => {
       const clientName = item.clientName || 'Unknown';
-      if (!clientData[clientName]) {
-        clientData[clientName] = { meals: [], total: 0 };
+      const itemDate = item.date || new Date().toISOString().split('T')[0];
+      const weekInfo = getWeekInfo(itemDate);
+      const { weekId, label } = weekInfo;
+
+      if (!weekData[weekId]) {
+        weekData[weekId] = {
+          weekId,
+          label,
+          weekStart: weekInfo.weekStart,
+          clients: {}
+        };
+      }
+
+      if (!weekData[weekId].clients[clientName]) {
+        weekData[weekId].clients[clientName] = { meals: [], total: 0 };
       }
 
       const portions = item.portions || 1;
@@ -440,16 +489,16 @@ function DashboardSection({
       }
 
       const mealTotal = mealCostPerPortion * portions;
-      clientData[clientName].meals.push({
+      weekData[weekId].clients[clientName].meals.push({
         dishes: mealDishes,
         portions,
         costPerPortion: mealCostPerPortion,
         total: mealTotal
       });
-      clientData[clientName].total += mealTotal;
+      weekData[weekId].clients[clientName].total += mealTotal;
     });
 
-    return clientData;
+    return weekData;
   };
 
   const { entries: cookListEntries, projectedTotal: weeklyFoodCost } = buildCookListWithCosts();
@@ -1248,58 +1297,76 @@ function DashboardSection({
               </div>
             </div>
 
-            {/* Per-Client Breakdown */}
+            {/* Per-Client Breakdown (grouped by week) */}
             {(() => {
-              const clientBreakdown = buildClientBreakdown();
-              const clientNames = Object.keys(clientBreakdown).sort();
-              if (clientNames.length === 0) return null;
+              const weekData = buildClientBreakdown();
+              const weekIds = Object.keys(weekData).sort((a, b) => b.localeCompare(a)); // newest first
+              if (weekIds.length === 0) return null;
 
               return (
                 <div className="mt-6 pt-6 border-t-2" style={{ borderColor: '#ebb582' }}>
-                  <h4 className="font-bold mb-4" style={{ color: '#3d59ab' }}>Per-Client Breakdown</h4>
-                  <div className="space-y-4">
-                    {clientNames.map(clientName => {
-                      const clientData = clientBreakdown[clientName];
-                      return (
-                        <div key={clientName} className="border rounded-lg overflow-hidden" style={{ borderColor: '#ebb582' }}>
-                          <div className="px-4 py-2 flex justify-between items-center" style={{ backgroundColor: '#f9f9ed' }}>
-                            <span className="font-bold" style={{ color: '#3d59ab' }}>{clientName}</span>
-                            <span className="font-bold" style={{ color: '#22c55e' }}>${clientData.total.toFixed(2)}</span>
-                          </div>
-                          <div className="p-3 space-y-2">
-                            {clientData.meals.map((meal, mealIdx) => (
-                              <div key={mealIdx} className="p-2 rounded text-sm" style={{ backgroundColor: '#fafafa' }}>
-                                <div className="flex flex-wrap gap-x-3 gap-y-1 mb-1">
-                                  {meal.dishes.filter(d => d.type !== 'extra').map((dish, i) => (
-                                    <span key={i} className="inline-flex items-center gap-1">
-                                      <span className="font-medium">{dish.name}</span>
-                                      <span className="text-gray-500">(${dish.costPerPortion.toFixed(2)})</span>
-                                      {i < meal.dishes.filter(d => d.type !== 'extra').length - 1 && (
-                                        <span className="text-gray-300 ml-1">+</span>
-                                      )}
-                                    </span>
-                                  ))}
-                                </div>
-                                {meal.dishes.filter(d => d.type === 'extra').length > 0 && (
-                                  <div className="text-gray-500 text-xs mb-1">
-                                    Extras: {meal.dishes.filter(d => d.type === 'extra').map((d, i) => (
-                                      <span key={i}>{d.name} (${d.costPerPortion.toFixed(2)}){i < meal.dishes.filter(x => x.type === 'extra').length - 1 ? ', ' : ''}</span>
-                                    ))}
-                                  </div>
-                                )}
-                                <div className="flex justify-between items-center pt-1 border-t border-gray-200 mt-1">
-                                  <span className="text-gray-600">
-                                    ${meal.costPerPortion.toFixed(2)}/portion × {meal.portions}
-                                  </span>
-                                  <span className="font-medium" style={{ color: '#22c55e' }}>
-                                    ${meal.total.toFixed(2)}
-                                  </span>
-                                </div>
+                  <h4 className="font-bold mb-4" style={{ color: '#3d59ab' }}>Client Costs by Week</h4>
+                  <div className="space-y-2">
+                    {weekIds.map(weekId => {
+                      const week = weekData[weekId];
+                      const clientNames = Object.keys(week.clients).sort();
+
+                      return clientNames.map(clientName => {
+                        const clientData = week.clients[clientName];
+                        const rowKey = `${clientName}_${weekId}`;
+                        const isExpanded = expandedClientWeeks[rowKey] || false;
+
+                        return (
+                          <div key={rowKey} className="border rounded-lg overflow-hidden" style={{ borderColor: '#ebb582' }}>
+                            <button
+                              onClick={() => toggleClientWeekExpanded(rowKey)}
+                              className="w-full px-4 py-3 flex justify-between items-center hover:opacity-90"
+                              style={{ backgroundColor: '#f9f9ed' }}
+                            >
+                              <div className="flex items-center gap-3">
+                                <span className="text-gray-400">{isExpanded ? '▼' : '▶'}</span>
+                                <span className="font-bold" style={{ color: '#3d59ab' }}>{clientName}</span>
+                                <span className="text-sm text-gray-500">· {week.label}</span>
                               </div>
-                            ))}
+                              <span className="font-bold" style={{ color: '#22c55e' }}>${clientData.total.toFixed(2)}</span>
+                            </button>
+                            {isExpanded && (
+                              <div className="p-3 space-y-2 border-t" style={{ borderColor: '#ebb582' }}>
+                                {clientData.meals.map((meal, mealIdx) => (
+                                  <div key={mealIdx} className="p-2 rounded text-sm" style={{ backgroundColor: '#fafafa' }}>
+                                    <div className="flex flex-wrap gap-x-3 gap-y-1 mb-1">
+                                      {meal.dishes.filter(d => d.type !== 'extra').map((dish, i) => (
+                                        <span key={i} className="inline-flex items-center gap-1">
+                                          <span className="font-medium">{dish.name}</span>
+                                          <span className="text-gray-500">(${dish.costPerPortion.toFixed(2)})</span>
+                                          {i < meal.dishes.filter(d => d.type !== 'extra').length - 1 && (
+                                            <span className="text-gray-300 ml-1">+</span>
+                                          )}
+                                        </span>
+                                      ))}
+                                    </div>
+                                    {meal.dishes.filter(d => d.type === 'extra').length > 0 && (
+                                      <div className="text-gray-500 text-xs mb-1">
+                                        Extras: {meal.dishes.filter(d => d.type === 'extra').map((d, i) => (
+                                          <span key={i}>{d.name} (${d.costPerPortion.toFixed(2)}){i < meal.dishes.filter(x => x.type === 'extra').length - 1 ? ', ' : ''}</span>
+                                        ))}
+                                      </div>
+                                    )}
+                                    <div className="flex justify-between items-center pt-1 border-t border-gray-200 mt-1">
+                                      <span className="text-gray-600">
+                                        ${meal.costPerPortion.toFixed(2)}/portion × {meal.portions}
+                                      </span>
+                                      <span className="font-medium" style={{ color: '#22c55e' }}>
+                                        ${meal.total.toFixed(2)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      );
+                        );
+                      });
                     })}
                   </div>
                 </div>
