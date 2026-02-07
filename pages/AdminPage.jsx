@@ -28,7 +28,11 @@ import {
   saveRecipeToSupabase,
   deleteRecipeFromSupabase,
   saveIngredientToSupabase,
-  deleteIngredientFromSupabase
+  deleteIngredientFromSupabase,
+  saveGroceryBillToSupabase,
+  deleteGroceryBillFromSupabase,
+  fetchGroceryBillsByWeek,
+  fetchAllGroceryBills
 } from '../lib/database';
 
 const STORAGE_KEY = 'goldfinchChefData';
@@ -85,6 +89,26 @@ function useAdminData() {
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
+
+  // Load grocery bills from Supabase when in Supabase mode
+  useEffect(() => {
+    const loadGroceryBillsFromSupabase = async () => {
+      if (!isSupabaseMode()) return;
+
+      console.log('[loadGroceryBills] fetching from Supabase...');
+      try {
+        const bills = await fetchAllGroceryBills();
+        console.log('[loadGroceryBills] fetched count:', bills.length);
+        setGroceryBills(bills);
+      } catch (err) {
+        console.error('[loadGroceryBills] error:', err);
+      }
+    };
+
+    if (isLoaded) {
+      loadGroceryBillsFromSupabase();
+    }
+  }, [isLoaded]);
 
   const saveData = useCallback((updates) => {
     const savedData = localStorage.getItem(STORAGE_KEY);
@@ -884,7 +908,7 @@ function DashboardSection({
                       <div className="flex items-center gap-2">
                         <span className="font-medium">${bill.amount?.toFixed(2)}</span>
                         <button
-                          onClick={() => deleteGroceryBill(bill.id)}
+                          onClick={() => deleteGroceryBill(bill.id, bill.weekId)}
                           className="text-red-500 hover:text-red-700"
                         >
                           <X size={14} />
@@ -3539,17 +3563,91 @@ export default function AdminPage() {
   };
 
   // Grocery tracking functions
-  const addGroceryBill = () => {
-    if (!newGroceryBill.amount) {
-      alert('Please enter an amount');
+  const addGroceryBill = async () => {
+    console.log('[saveGroceryBill] start + payload', {
+      date: newGroceryBill.date,
+      amount: newGroceryBill.amount,
+      store: newGroceryBill.store
+    });
+
+    // Validation
+    if (!newGroceryBill.amount || parseFloat(newGroceryBill.amount) <= 0) {
+      console.log('[saveGroceryBill] error - amount must be > 0');
+      alert('Please enter a valid amount greater than 0');
       return;
     }
-    updateGroceryBills([...groceryBills, { ...newGroceryBill, id: Date.now(), amount: parseFloat(newGroceryBill.amount) }]);
-    setNewGroceryBill({ date: new Date().toISOString().split('T')[0], amount: '', store: '', notes: '' });
+
+    if (!newGroceryBill.date) {
+      console.log('[saveGroceryBill] error - date is required');
+      alert('Please enter a date');
+      return;
+    }
+
+    // Calculate week ID from the bill date
+    const billWeekId = getWeekIdFromDate(newGroceryBill.date);
+    console.log('[saveGroceryBill] calculated weekId:', billWeekId);
+
+    if (!billWeekId) {
+      console.log('[saveGroceryBill] error - could not calculate weekId');
+      alert('Could not determine week for this date');
+      return;
+    }
+
+    if (isSupabaseMode()) {
+      // Save to Supabase
+      const result = await saveGroceryBillToSupabase({
+        weekId: billWeekId,
+        date: newGroceryBill.date,
+        store: newGroceryBill.store || '',
+        amount: parseFloat(newGroceryBill.amount),
+        notes: newGroceryBill.notes || ''
+      });
+
+      if (result.success) {
+        console.log('[saveGroceryBill] success');
+        console.log('[saveGroceryBill] refetch count:', result.bills?.length || 0);
+        // Update local state with refetched bills
+        if (result.bills) {
+          // Merge with existing bills from other weeks
+          const otherWeekBills = groceryBills.filter(b => b.weekId !== billWeekId);
+          updateGroceryBills([...otherWeekBills, ...result.bills]);
+        }
+        setNewGroceryBill({ date: new Date().toISOString().split('T')[0], amount: '', store: '', notes: '' });
+      } else {
+        console.log('[saveGroceryBill] error', result.error);
+        alert('Failed to save bill: ' + result.error);
+      }
+    } else {
+      // Local storage mode
+      console.log('[saveGroceryBill] using local storage mode');
+      updateGroceryBills([...groceryBills, {
+        ...newGroceryBill,
+        id: Date.now(),
+        weekId: billWeekId,
+        amount: parseFloat(newGroceryBill.amount)
+      }]);
+      console.log('[saveGroceryBill] success (local)');
+      setNewGroceryBill({ date: new Date().toISOString().split('T')[0], amount: '', store: '', notes: '' });
+    }
   };
 
-  const deleteGroceryBill = (id) => {
-    if (window.confirm('Delete this bill?')) {
+  const deleteGroceryBill = async (id, weekId) => {
+    if (!window.confirm('Delete this bill?')) return;
+
+    if (isSupabaseMode()) {
+      const result = await deleteGroceryBillFromSupabase(id, weekId);
+      if (result.success) {
+        // Update local state
+        if (result.bills && weekId) {
+          const otherWeekBills = groceryBills.filter(b => b.weekId !== weekId);
+          updateGroceryBills([...otherWeekBills, ...result.bills]);
+        } else {
+          updateGroceryBills(groceryBills.filter(b => b.id !== id));
+        }
+      } else {
+        alert('Failed to delete bill: ' + result.error);
+      }
+    } else {
       updateGroceryBills(groceryBills.filter(b => b.id !== id));
     }
   };
@@ -3952,7 +4050,7 @@ export default function AdminPage() {
                           )}
                         </div>
                         <button
-                          onClick={() => deleteGroceryBill(bill.id)}
+                          onClick={() => deleteGroceryBill(bill.id, bill.weekId)}
                           className="text-red-600 hover:text-red-800"
                         >
                           <Trash2 size={18} />
