@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Plus, Trash2, Check, AlertTriangle, Circle, Eye, X, ChevronDown, ChevronUp, Edit2, Printer, Calendar } from 'lucide-react';
 import WeekSelector from '../components/WeekSelector';
-import { getWeekIdFromDate, getWeekStartDate } from '../utils/weekUtils';
+import { getWeekIdFromDate, getWeekStartDate, getWeekEndDate } from '../utils/weekUtils';
 import { isSupabaseMode, isLocalMode } from '../lib/dataMode';
 import { saveAllMenus, fetchMenus, ensureWeeksExist } from '../lib/database';
 import { checkConnection } from '../lib/supabase';
@@ -211,12 +211,124 @@ export default function MenuTab({
   const [editingClientName, setEditingClientName] = useState(null);
   const [showMenuBuilder, setShowMenuBuilder] = useState(true);
 
+  // === AUTO-SAVE LOGIC ===
+  const [isDirty, setIsDirty] = useState(false);
+  const initialMountRef = useRef(true);
+  const menuItemsRef = useRef(menuItems);
+  const selectedWeekIdRef = useRef(selectedWeekId);
+
+  // Keep refs in sync for beforeunload handler
+  useEffect(() => {
+    menuItemsRef.current = menuItems;
+    selectedWeekIdRef.current = selectedWeekId;
+  }, [menuItems, selectedWeekId]);
+
+  // Track changes to menuItems (mark as dirty after initial mount)
+  useEffect(() => {
+    if (initialMountRef.current) {
+      initialMountRef.current = false;
+      return;
+    }
+    if (menuItems && menuItems.length >= 0) {
+      setIsDirty(true);
+      console.log('[MenuAutoSave] dirty=true week=' + selectedWeekId);
+    }
+  }, [menuItems, selectedWeekId]);
+
+  // Auto-save function
+  const performAutoSave = useCallback(async () => {
+    const currentMenuItems = menuItemsRef.current;
+    const currentWeekId = selectedWeekIdRef.current;
+
+    if (!isSupabaseMode()) {
+      console.log('[MenuAutoSave] skipped - local mode');
+      return;
+    }
+    if (!currentWeekId) {
+      console.log('[MenuAutoSave] skipped - no week selected');
+      return;
+    }
+    if (!currentMenuItems || currentMenuItems.length === 0) {
+      console.log('[MenuAutoSave] skipped - no menu items');
+      return;
+    }
+
+    // Filter to items for the current week
+    const weekItems = currentMenuItems.filter(item => {
+      const itemWeekId = getWeekIdFromDate(item.date);
+      return itemWeekId === currentWeekId;
+    });
+
+    if (weekItems.length === 0) {
+      console.log('[MenuAutoSave] skipped - no items for this week');
+      return;
+    }
+
+    console.log('[MenuAutoSave] saving...', weekItems.length, 'items');
+    try {
+      // Ensure weeks exist first
+      const weekIds = [...new Set(weekItems.map(item => {
+        if (item.weekId) return item.weekId;
+        return getWeekIdFromDate(item.date);
+      }).filter(Boolean))];
+
+      await ensureWeeksExist(weekIds);
+      await saveAllMenus(weekItems);
+      console.log('[MenuAutoSave] done');
+    } catch (error) {
+      console.error('[MenuAutoSave] failed:', error);
+    }
+  }, []);
+
+  // Save on unmount (tab/route change)
+  useEffect(() => {
+    return () => {
+      if (isDirty && isSupabaseMode() && selectedWeekIdRef.current) {
+        console.log('[MenuAutoSave] unmount - triggering save');
+        performAutoSave();
+      }
+    };
+  }, [isDirty, performAutoSave]);
+
+  // Save on browser close/refresh (best-effort, fire-and-forget)
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (isDirty && isSupabaseMode() && selectedWeekIdRef.current) {
+        console.log('[MenuAutoSave] beforeunload - triggering save');
+        performAutoSave();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty, performAutoSave]);
+  // === END AUTO-SAVE LOGIC ===
+
   // Check if current week is locked
   const currentWeek = weeks?.[selectedWeekId];
   const isWeekLocked = currentWeek?.status === 'locked';
 
-  // Get active clients only
-  const activeClients = (allClients || clients || []).filter(c => c.status === 'active');
+  // Get clients scheduled for this week based on delivery_dates
+  // Filter to clients where ANY date in deliveryDates falls within the week range
+  const activeClients = useMemo(() => {
+    const allClientsList = allClients || clients || [];
+    if (!selectedWeekId) return [];
+
+    const weekStart = getWeekStartDate(selectedWeekId);
+    const weekEnd = getWeekEndDate(selectedWeekId);
+
+    return allClientsList.filter(client => {
+      const dates = client.deliveryDates || client.delivery_dates || [];
+      if (!Array.isArray(dates) || dates.length === 0) return false;
+
+      // Check if any non-blank date falls within the week range
+      return dates.some(dateStr => {
+        if (!dateStr || typeof dateStr !== 'string' || dateStr.trim() === '') return false;
+        // Compare as strings (YYYY-MM-DD format sorts correctly)
+        return dateStr >= weekStart && dateStr <= weekEnd;
+      });
+    });
+  }, [allClients, clients, selectedWeekId]);
 
   // Calculate delivery dates for the selected week
   const weekDeliveryDates = useMemo(() => {
@@ -423,6 +535,7 @@ export default function MenuTab({
         console.log('[saveAllMenus] start, count:', approvedItems.length);
         await saveAllMenus(approvedItems);
         console.log('[saveAllMenus] success');
+        setIsDirty(false); // Reset dirty flag after successful save
 
         // Only update local state AFTER successful persistence
         setMenuItems(prev => {

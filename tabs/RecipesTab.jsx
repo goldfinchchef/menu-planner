@@ -59,7 +59,7 @@ export default function RecipesTab({
 
   const addIngredient = () => setNewRecipe({
     ...newRecipe,
-    ingredients: [...newRecipe.ingredients, { name: '', quantity: '', unit: 'oz', cost: '', source: '', section: 'Other' }]
+    ingredients: [...newRecipe.ingredients, { id: null, name: '', quantity: '', unit: 'oz', cost: '', source: '', section: 'Other' }]
   });
 
   const updateIngredient = (index, field, value) => {
@@ -72,6 +72,7 @@ export default function RecipesTab({
       if (masterIng) {
         updated[index] = {
           ...updated[index],
+          id: masterIng.id, // Store ingredient_id from master
           name: value,
           cost: masterIng.cost || updated[index].cost,
           source: masterIng.source || updated[index].source,
@@ -98,6 +99,7 @@ export default function RecipesTab({
     const updated = [...newRecipe.ingredients];
     updated[index] = {
       ...updated[index],
+      id: masterIng.id, // Store ingredient_id from master
       name: masterIng.name,
       cost: masterIng.cost,
       source: masterIng.source,
