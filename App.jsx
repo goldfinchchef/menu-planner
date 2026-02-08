@@ -318,7 +318,7 @@ export default function App() {
       recipe: {
         ...recipe,
         ingredients: recipe.ingredients.map(ing => ({
-          id: ing.id || null, // Preserve ingredient_id
+          ingredient_id: ing.ingredient_id || ing.id || null, // Preserve master ingredient UUID
           name: ing.name || '',
           quantity: ing.quantity || '',
           unit: ing.unit || 'oz',
@@ -334,18 +334,21 @@ export default function App() {
     const updated = [...editingRecipe.recipe.ingredients];
     updated[index][field] = value;
 
-    // Auto-fill id from master when name changes and matches
+    // Auto-fill ingredient_id from master when name changes and matches
     if (field === 'name' && value.length > 2) {
       const masterIng = findExactMatch(value);
       if (masterIng && masterIng.id) {
         updated[index] = {
           ...updated[index],
-          id: masterIng.id,
+          ingredient_id: masterIng.id, // Store master ingredient UUID
           cost: masterIng.cost || updated[index].cost,
           source: masterIng.source || updated[index].source,
           section: masterIng.section || updated[index].section,
           unit: masterIng.unit || updated[index].unit
         };
+      } else {
+        // Clear ingredient_id if name doesn't match master
+        updated[index].ingredient_id = null;
       }
     }
 
@@ -357,7 +360,7 @@ export default function App() {
       ...editingRecipe,
       recipe: {
         ...editingRecipe.recipe,
-        ingredients: [...editingRecipe.recipe.ingredients, { id: null, name: '', quantity: '', unit: 'oz', cost: '', source: '', section: 'Other' }]
+        ingredients: [...editingRecipe.recipe.ingredients, { ingredient_id: null, name: '', quantity: '', unit: 'oz', cost: '', source: '', section: 'Other' }]
       }
     });
   };

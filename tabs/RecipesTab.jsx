@@ -59,7 +59,7 @@ export default function RecipesTab({
 
   const addIngredient = () => setNewRecipe({
     ...newRecipe,
-    ingredients: [...newRecipe.ingredients, { id: null, name: '', quantity: '', unit: 'oz', cost: '', source: '', section: 'Other' }]
+    ingredients: [...newRecipe.ingredients, { ingredient_id: null, name: '', quantity: '', unit: 'oz', cost: '', source: '', section: 'Other' }]
   });
 
   const updateIngredient = (index, field, value) => {
@@ -72,13 +72,16 @@ export default function RecipesTab({
       if (masterIng) {
         updated[index] = {
           ...updated[index],
-          id: masterIng.id, // Store ingredient_id from master
+          ingredient_id: masterIng.id, // Store master ingredient UUID
           name: value,
           cost: masterIng.cost || updated[index].cost,
           source: masterIng.source || updated[index].source,
           section: masterIng.section || updated[index].section,
           unit: masterIng.unit || updated[index].unit
         };
+      } else {
+        // Clear ingredient_id if name doesn't match master
+        updated[index].ingredient_id = null;
       }
     }
 
@@ -99,7 +102,7 @@ export default function RecipesTab({
     const updated = [...newRecipe.ingredients];
     updated[index] = {
       ...updated[index],
-      id: masterIng.id, // Store ingredient_id from master
+      ingredient_id: masterIng.id, // Store master ingredient UUID
       name: masterIng.name,
       cost: masterIng.cost,
       source: masterIng.source,
@@ -330,9 +333,9 @@ export default function RecipesTab({
             {newRecipe.ingredients.map((ing, index) => {
               const exactMatch = ing.name.length > 2 ? findExactMatch(ing.name) : null;
               const similarIngs = ing.name.length > 2 && !exactMatch ? findSimilarIngredients(ing.name) : [];
-              // Check if ingredient has valid master ingredient id
-              const hasValidId = ing.id && typeof ing.id === 'string' && ing.id.includes('-');
-              const isInMasterList = hasValidId || exactMatch;
+              // Check if ingredient has valid master ingredient_id (UUID format)
+              const hasValidIngredientId = ing.ingredient_id && typeof ing.ingredient_id === 'string' && ing.ingredient_id.includes('-');
+              const isInMasterList = hasValidIngredientId || exactMatch;
               const showNotInMasterWarning = ing.name.length > 2 && !isInMasterList && similarIngs.length === 0;
               return (
                 <div key={index} className="mb-2">
@@ -481,8 +484,8 @@ export default function RecipesTab({
                         <p className="text-sm font-medium mb-2">Ingredients:</p>
                         {editingRecipe.recipe.ingredients.map((ing, ingIndex) => {
                           const masterIng = ing.name.length > 2 ? findExactMatch(ing.name) : null;
-                          const hasValidId = ing.id && typeof ing.id === 'string' && ing.id.includes('-');
-                          const isInMasterList = hasValidId || masterIng;
+                          const hasValidIngredientId = ing.ingredient_id && typeof ing.ingredient_id === 'string' && ing.ingredient_id.includes('-');
+                          const isInMasterList = hasValidIngredientId || masterIng;
                           const showNotInMasterWarning = ing.name.length > 2 && !isInMasterList;
                           return (
                             <div key={ingIndex} className="mb-2">
