@@ -330,9 +330,13 @@ export default function RecipesTab({
             {newRecipe.ingredients.map((ing, index) => {
               const exactMatch = ing.name.length > 2 ? findExactMatch(ing.name) : null;
               const similarIngs = ing.name.length > 2 && !exactMatch ? findSimilarIngredients(ing.name) : [];
+              // Check if ingredient has valid master ingredient id
+              const hasValidId = ing.id && typeof ing.id === 'string' && ing.id.includes('-');
+              const isInMasterList = hasValidId || exactMatch;
+              const showNotInMasterWarning = ing.name.length > 2 && !isInMasterList && similarIngs.length === 0;
               return (
                 <div key={index} className="mb-2">
-                  <div className="flex flex-wrap gap-2 p-2 rounded" style={{ backgroundColor: '#f9f9ed' }}>
+                  <div className="flex flex-wrap gap-2 p-2 rounded" style={{ backgroundColor: showNotInMasterWarning ? '#fef2f2' : '#f9f9ed' }}>
                     <input
                       type="text"
                       value={ing.name}
@@ -409,6 +413,12 @@ export default function RecipesTab({
                       ))}
                     </div>
                   )}
+                  {showNotInMasterWarning && (
+                    <div className="mt-1 text-xs text-red-600 flex items-center gap-1">
+                      <AlertCircle size={12} />
+                      <span>Not in master list - add to Ingredients tab first</span>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -471,9 +481,12 @@ export default function RecipesTab({
                         <p className="text-sm font-medium mb-2">Ingredients:</p>
                         {editingRecipe.recipe.ingredients.map((ing, ingIndex) => {
                           const masterIng = ing.name.length > 2 ? findExactMatch(ing.name) : null;
+                          const hasValidId = ing.id && typeof ing.id === 'string' && ing.id.includes('-');
+                          const isInMasterList = hasValidId || masterIng;
+                          const showNotInMasterWarning = ing.name.length > 2 && !isInMasterList;
                           return (
                             <div key={ingIndex} className="mb-2">
-                              <div className="flex flex-wrap gap-2">
+                              <div className={`flex flex-wrap gap-2 p-1 rounded ${showNotInMasterWarning ? 'bg-red-50' : ''}`}>
                                 <input
                                   type="text"
                                   value={ing.name}
@@ -543,6 +556,12 @@ export default function RecipesTab({
                               {masterIng && (
                                 <div className="text-xs text-green-600 mt-1">
                                   Master: ${masterIng.cost || '?'}/{masterIng.unit} • {masterIng.source || 'No vendor'} • {masterIng.section}
+                                </div>
+                              )}
+                              {showNotInMasterWarning && (
+                                <div className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                                  <AlertCircle size={12} />
+                                  <span>Not in master list - add to Ingredients tab first</span>
                                 </div>
                               )}
                             </div>
