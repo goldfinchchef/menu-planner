@@ -3250,19 +3250,40 @@ export default function AdminPage() {
 
   const startEditingRecipe = (category, index) => {
     const recipe = recipes[category][index];
+
+    // Backfill ingredient_id from master list if missing but name matches
+    const ingredientsWithIds = recipe.ingredients.map(ing => {
+      let ingredientId = ing.ingredient_id || ing.id || null;
+
+      // If no valid ingredient_id but name exists, try to find in master list
+      if (!ingredientId && ing.name) {
+        const normalizedName = (ing.name || '').trim().toLowerCase();
+        const masterMatch = masterIngredients.find(m =>
+          (m.name || '').trim().toLowerCase() === normalizedName
+        );
+        if (masterMatch && masterMatch.id) {
+          ingredientId = masterMatch.id;
+          console.log('[AdminPage.startEditingRecipe] Backfilled ingredient_id for:', ing.name, '->', ingredientId);
+        }
+      }
+
+      return {
+        ingredient_id: ingredientId,
+        name: ing.name || '',
+        quantity: ing.quantity || '',
+        unit: ing.unit || 'oz',
+        cost: ing.cost || '',
+        source: ing.source || '',
+        section: ing.section || 'Other'
+      };
+    });
+
     setEditingRecipe({
       category,
       index,
       recipe: {
         ...recipe,
-        ingredients: recipe.ingredients.map(ing => ({
-          name: ing.name || '',
-          quantity: ing.quantity || '',
-          unit: ing.unit || 'oz',
-          cost: ing.cost || '',
-          source: ing.source || '',
-          section: ing.section || 'Other'
-        }))
+        ingredients: ingredientsWithIds
       }
     });
   };
@@ -3270,6 +3291,28 @@ export default function AdminPage() {
   const updateEditingIngredient = (index, field, value) => {
     const updated = [...editingRecipe.recipe.ingredients];
     updated[index][field] = value;
+
+    // Auto-fill ingredient_id from master when name changes and matches
+    if (field === 'name' && value.length > 2) {
+      const normalizedName = value.trim().toLowerCase();
+      const masterMatch = masterIngredients.find(m =>
+        (m.name || '').trim().toLowerCase() === normalizedName
+      );
+      if (masterMatch && masterMatch.id) {
+        updated[index] = {
+          ...updated[index],
+          ingredient_id: masterMatch.id,
+          cost: masterMatch.cost || updated[index].cost,
+          source: masterMatch.source || updated[index].source,
+          section: masterMatch.section || updated[index].section,
+          unit: masterMatch.unit || updated[index].unit
+        };
+      } else {
+        // Clear ingredient_id if name doesn't match master
+        updated[index].ingredient_id = null;
+      }
+    }
+
     setEditingRecipe({ ...editingRecipe, recipe: { ...editingRecipe.recipe, ingredients: updated } });
   };
 
@@ -3278,7 +3321,7 @@ export default function AdminPage() {
       ...editingRecipe,
       recipe: {
         ...editingRecipe.recipe,
-        ingredients: [...editingRecipe.recipe.ingredients, { name: '', quantity: '', unit: 'oz', cost: '', source: '', section: 'Other' }]
+        ingredients: [...editingRecipe.recipe.ingredients, { ingredient_id: null, name: '', quantity: '', unit: 'oz', cost: '', source: '', section: 'Other' }]
       }
     });
   };

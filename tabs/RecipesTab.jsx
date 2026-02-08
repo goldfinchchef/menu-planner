@@ -494,17 +494,8 @@ export default function RecipesTab({
                                   type="text"
                                   value={ing.name}
                                   onChange={(e) => {
+                                    // updateEditingIngredient handles auto-fill including ingredient_id
                                     updateEditingIngredient(ingIndex, 'name', e.target.value);
-                                    // Auto-fill from master when name changes
-                                    const match = e.target.value.length > 2 ? findExactMatch(e.target.value) : null;
-                                    if (match) {
-                                      setTimeout(() => {
-                                        if (match.cost) updateEditingIngredient(ingIndex, 'cost', match.cost);
-                                        if (match.source) updateEditingIngredient(ingIndex, 'source', match.source);
-                                        if (match.section) updateEditingIngredient(ingIndex, 'section', match.section);
-                                        if (match.unit) updateEditingIngredient(ingIndex, 'unit', match.unit);
-                                      }, 0);
-                                    }
                                   }}
                                   placeholder="Name"
                                   className="flex-1 min-w-[100px] p-1 border rounded text-sm"
@@ -558,6 +549,8 @@ export default function RecipesTab({
                               </div>
                               {masterIng && (
                                 <div className="text-xs text-green-600 mt-1">
+                                  {/* Debug: log if master match exists but ingredient_id is missing */}
+                                  {!ing.ingredient_id && console.warn('[RecipesTab Edit] Master match found but ingredient_id missing:', { ingredient_name: ing.name, ingredient_id: ing.ingredient_id })}
                                   Master: ${masterIng.cost || '?'}/{masterIng.unit} • {masterIng.source || 'No vendor'} • {masterIng.section}
                                 </div>
                               )}

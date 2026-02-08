@@ -357,20 +357,40 @@ export default function App() {
 
   const startEditingRecipe = (category, index) => {
     const recipe = recipes[category][index];
+
+    // Backfill ingredient_id from master list if missing but name matches
+    const ingredientsWithIds = recipe.ingredients.map(ing => {
+      let ingredientId = ing.ingredient_id || ing.id || null;
+
+      // If no valid ingredient_id but name exists, try to find in master list
+      if (!ingredientId && ing.name) {
+        const normalizedName = (ing.name || '').trim().toLowerCase();
+        const masterMatch = masterIngredients.find(m =>
+          (m.name || '').trim().toLowerCase() === normalizedName
+        );
+        if (masterMatch && masterMatch.id) {
+          ingredientId = masterMatch.id;
+          console.log('[startEditingRecipe] Backfilled ingredient_id for:', ing.name, '->', ingredientId);
+        }
+      }
+
+      return {
+        ingredient_id: ingredientId,
+        name: ing.name || '',
+        quantity: ing.quantity || '',
+        unit: ing.unit || 'oz',
+        cost: ing.cost || '',
+        source: ing.source || '',
+        section: ing.section || 'Other'
+      };
+    });
+
     setEditingRecipe({
       category,
       index,
       recipe: {
         ...recipe,
-        ingredients: recipe.ingredients.map(ing => ({
-          ingredient_id: ing.ingredient_id || ing.id || null, // Preserve master ingredient UUID
-          name: ing.name || '',
-          quantity: ing.quantity || '',
-          unit: ing.unit || 'oz',
-          cost: ing.cost || '',
-          source: ing.source || '',
-          section: ing.section || 'Other'
-        }))
+        ingredients: ingredientsWithIds
       }
     });
   };
