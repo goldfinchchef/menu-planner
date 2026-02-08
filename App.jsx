@@ -97,6 +97,40 @@ export default function App() {
   const [kdsDishStatuses, setKdsDishStatuses] = useState({});
   const [kdsStatusLoading, setKdsStatusLoading] = useState(false);
 
+  // KDS loading/syncing state for visual feedback
+  const [kdsLoading, setKdsLoading] = useState(true); // Initial load
+  const [kdsLastRefresh, setKdsLastRefresh] = useState(null); // Timestamp of last successful fetch
+  const [lastMenusApprovedAt, setLastMenusApprovedAt] = useState(() => {
+    // Initialize from localStorage
+    const stored = localStorage.getItem('lastMenusApprovedAt');
+    return stored ? parseInt(stored, 10) : null;
+  });
+
+  // Listen for menu approval events (from MenuTab on /admin page)
+  useEffect(() => {
+    const handleMenusApproved = () => {
+      const timestamp = parseInt(localStorage.getItem('lastMenusApprovedAt') || '0', 10);
+      setLastMenusApprovedAt(timestamp);
+      console.log('[KDS] Menus approved signal received, timestamp:', timestamp);
+    };
+
+    // Listen for custom event
+    window.addEventListener('menusApproved', handleMenusApproved);
+
+    // Also listen for storage changes (cross-tab communication)
+    const handleStorageChange = (e) => {
+      if (e.key === 'lastMenusApprovedAt') {
+        handleMenusApproved();
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('menusApproved', handleMenusApproved);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
+
   // Sync menuDate when selectedWeekId changes
   useEffect(() => {
     if (selectedWeekId) {
@@ -108,14 +142,23 @@ export default function App() {
   // Fetch KDS dish statuses when week changes (Supabase mode)
   useEffect(() => {
     const loadKdsStatuses = async () => {
-      if (!selectedWeekId) return;
-      if (!isSupabaseMode()) {
-        // In local mode, use completedDishes from useAppData
+      if (!selectedWeekId) {
+        setKdsLoading(false);
         return;
       }
-      if (!isConfigured()) return;
+      if (!isSupabaseMode()) {
+        // In local mode, use completedDishes from useAppData
+        setKdsLoading(false);
+        setKdsLastRefresh(Date.now());
+        return;
+      }
+      if (!isConfigured()) {
+        setKdsLoading(false);
+        return;
+      }
 
       setKdsStatusLoading(true);
+      setKdsLoading(true);
       try {
         const statuses = await fetchKdsDishStatuses(selectedWeekId);
         // Convert to completedDishes format: { dishName: true/false }
@@ -125,10 +168,12 @@ export default function App() {
         });
         setKdsDishStatuses(statuses);
         setCompletedDishes(completed);
+        setKdsLastRefresh(Date.now()); // Update last refresh timestamp
       } catch (err) {
         console.error('Failed to load KDS statuses:', err);
       }
       setKdsStatusLoading(false);
+      setKdsLoading(false);
     };
 
     loadKdsStatuses();
@@ -978,6 +1023,10 @@ export default function App() {
             getKDSView={getKDSView}
             selectedWeekId={selectedWeekId}
             currentWeek={currentWeek}
+            kdsLoading={kdsLoading}
+            kdsLastRefresh={kdsLastRefresh}
+            lastMenusApprovedAt={lastMenusApprovedAt}
+            isSyncing={isSyncing}
           />
         )}
 

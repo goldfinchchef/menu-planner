@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Check, ChevronDown, ChevronUp, Utensils, Calendar, Printer, AlertCircle } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Utensils, Calendar, Printer, AlertCircle, RefreshCw, Clock } from 'lucide-react';
 
 // Category display config
 const CATEGORY_CONFIG = {
@@ -232,10 +232,26 @@ export default function KDSTab({
   completeAllOrders,
   getKDSView,
   selectedWeekId,
-  currentWeek
+  currentWeek,
+  kdsLoading = false,
+  kdsLastRefresh = null,
+  lastMenusApprovedAt = null,
+  isSyncing = false
 }) {
   const [expandedTiles, setExpandedTiles] = useState({});
   const kdsView = getKDSView();
+
+  // Format last refresh time
+  const formatRefreshTime = (timestamp) => {
+    if (!timestamp) return null;
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Determine if we're in "syncing" state
+  // Syncing = KDS is empty AND (loading OR menus approved within last 120 seconds OR isSyncing flag)
+  const SYNC_WINDOW_MS = 120000; // 120 seconds
+  const recentlyApproved = lastMenusApprovedAt && (Date.now() - lastMenusApprovedAt) < SYNC_WINDOW_MS;
 
   // Guard: No week selected
   if (!selectedWeekId) {
@@ -331,8 +347,29 @@ export default function KDSTab({
   );
   const hasAnyItems = hasMonTueItems || hasThursdayItems;
 
+  // Determine which state to show when empty
+  const isLoadingState = kdsLoading && !hasAnyItems;
+  const isSyncingState = !hasAnyItems && !kdsLoading && (recentlyApproved || isSyncing);
+  const isEmptyState = !hasAnyItems && !kdsLoading && !isSyncingState;
+
   return (
     <div>
+      {/* Loading Banner - only show when initially loading */}
+      {isLoadingState && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 flex items-center gap-3">
+          <RefreshCw size={20} className="text-blue-500 animate-spin" />
+          <span className="text-blue-700 font-medium">Loading KDS...</span>
+        </div>
+      )}
+
+      {/* Syncing Banner - show when empty but menus recently approved */}
+      {isSyncingState && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4 flex items-center gap-3">
+          <RefreshCw size={20} className="text-amber-500 animate-spin" />
+          <span className="text-amber-700 font-medium">Syncing menus in progress...</span>
+        </div>
+      )}
+
       {/* Main Header */}
       <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
         <div className="flex justify-between items-center">
@@ -342,7 +379,14 @@ export default function KDSTab({
               Dishes grouped by production day and category
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            {/* Last refresh timestamp */}
+            {kdsLastRefresh && (
+              <span className="text-xs text-gray-400 flex items-center gap-1">
+                <Clock size={12} />
+                Last refresh: {formatRefreshTime(kdsLastRefresh)}
+              </span>
+            )}
             {hasAnyItems && (
               <button
                 onClick={printKDS}
@@ -401,21 +445,48 @@ export default function KDSTab({
         </>
       ) : (
         <div className="bg-white rounded-lg shadow-lg p-6">
-          <div className="text-center py-12">
-            <Utensils size={48} className="mx-auto mb-4 text-gray-300" />
-            <p className="text-gray-500 text-lg">No dishes to cook yet</p>
-            <p className="text-gray-400 text-sm mt-2">
-              {selectedWeekId ? (
-                <>Approved menus for week <strong>{selectedWeekId}</strong> will appear here when ready for cooking.</>
-              ) : (
-                <>Select a week and approve menus to see dishes here.</>
-              )}
-            </p>
-            {!currentWeek && selectedWeekId && (
-              <p className="text-amber-500 text-xs mt-3">
-                Week {selectedWeekId} has no data yet. Menus will be created when clients are assigned.
+          {/* Loading skeleton */}
+          {isLoadingState && (
+            <div className="space-y-4 py-8">
+              <div className="h-8 bg-gray-200 rounded animate-pulse w-1/3 mx-auto" />
+              <div className="grid grid-cols-4 gap-4">
+                {[1, 2, 3, 4].map(i => (
+                  <div key={i} className="h-32 bg-gray-100 rounded animate-pulse" />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Syncing state */}
+          {isSyncingState && (
+            <div className="text-center py-12">
+              <RefreshCw size={48} className="mx-auto mb-4 text-amber-400 animate-spin" />
+              <p className="text-amber-600 text-lg font-medium">Syncing menus...</p>
+              <p className="text-gray-400 text-sm mt-2">
+                Menus were recently approved. They should appear shortly.
               </p>
-            )}
+            </div>
+          )}
+
+          {/* Truly empty state */}
+          {isEmptyState && (
+            <div className="text-center py-12">
+              <Utensils size={48} className="mx-auto mb-4 text-gray-300" />
+              <p className="text-gray-500 text-lg">No menus found for this week</p>
+              <p className="text-gray-400 text-sm mt-2">
+                {selectedWeekId ? (
+                  <>Approved menus for week <strong>{selectedWeekId}</strong> will appear here when ready for cooking.</>
+                ) : (
+                  <>Select a week and approve menus to see dishes here.</>
+                )}
+              </p>
+              {!currentWeek && selectedWeekId && (
+                <p className="text-amber-500 text-xs mt-3">
+                  Week {selectedWeekId} has no data yet. Menus will be created when clients are assigned.
+                </p>
+              )}
+            </div>
+          )}
           </div>
         </div>
       )}
