@@ -207,6 +207,19 @@ export default function MenuTab({
   lockWeekAndSnapshot,
   unlockWeekById
 }) {
+  // Debug logging - top of render
+  console.log('[MenuTab] render', { selectedWeekId, menuItemsLength: menuItems?.length });
+  console.log('[MenuTab] menuItems source', { menuItemsLength: menuItems?.length, menuItemsSample: menuItems?.slice?.(0, 2) });
+
+  // Track renders without selectedWeekId
+  const renderCountWithoutWeekRef = useRef(0);
+  if (!selectedWeekId) {
+    renderCountWithoutWeekRef.current += 1;
+  } else {
+    renderCountWithoutWeekRef.current = 0;
+  }
+  const showWeekIdWarning = renderCountWithoutWeekRef.current > 1;
+
   const [previewClient, setPreviewClient] = useState(null);
   const [editingClientName, setEditingClientName] = useState(null);
   const [showMenuBuilder, setShowMenuBuilder] = useState(true);
@@ -864,6 +877,13 @@ export default function MenuTab({
 
   return (
     <div className="space-y-6">
+      {/* Warning banner if selectedWeekId is missing */}
+      {showWeekIdWarning && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+          <strong>Warning:</strong> Week not selected (selectedWeekId missing) — menus cannot load.
+        </div>
+      )}
+
       {/* Toast notification */}
       {approvalToast && (
         <div

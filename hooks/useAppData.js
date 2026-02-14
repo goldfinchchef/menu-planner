@@ -33,6 +33,8 @@ import { isSupabaseMode } from '../lib/dataMode';
 import { isConfigured, checkConnection } from '../lib/supabase';
 
 export function useAppData() {
+  console.log('[useAppData] hook invoked');
+
   const [recipes, setRecipes] = useState(DEFAULT_RECIPES);
   const [menuItems, setMenuItems] = useState([]);
   const [selectedClients, setSelectedClients] = useState([]);
@@ -680,6 +682,8 @@ export function useAppData() {
   const getWeekIds = useCallback(() => {
     return Object.keys(weeks).sort().reverse();
   }, [weeks]);
+
+  console.log('[useAppData] returning', { selectedWeekId, menuItemsCount: menuItems?.length });
 
   return {
     // State
