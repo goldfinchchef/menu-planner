@@ -33,8 +33,10 @@ import {
   deleteGroceryBillFromSupabase,
   fetchGroceryBillsByWeek,
   fetchAllGroceryBills,
-  updateClientDeliveryDates
+  updateClientDeliveryDates,
+  fetchMenusByWeek
 } from '../lib/database';
+import supabase from '../lib/supabase';
 
 const STORAGE_KEY = 'goldfinchChefData';
 
@@ -2577,6 +2579,14 @@ export default function AdminPage() {
     lockWeekWithSnapshot
   } = useAdminData();
 
+  // DIAGNOSTIC LOGGING - AdminPage render
+  console.log('[AdminPage] render', {
+    selectedWeekId: 'will log after useState',
+    menuItemsLength: menuItems?.length,
+    isSupabaseMode: isSupabaseMode(),
+    isConfigured: isConfigured()
+  });
+
   const [searchParams] = useSearchParams();
   const [activeSection, setActiveSection] = useState('overview');
   const [newDriver, setNewDriver] = useState(DEFAULT_NEW_DRIVER);
@@ -2602,6 +2612,70 @@ export default function AdminPage() {
   const [selectedClients, setSelectedClients] = useState([]);
   const [newMenuItem, setNewMenuItem] = useState(DEFAULT_NEW_MENU_ITEM);
   const [selectedWeekId, setSelectedWeekId] = useState(() => getWeekIdFromDate(new Date().toISOString().split('T')[0]));
+
+  // DIAGNOSTIC LOG - after selectedWeekId defined
+  console.log('[AdminPage] selectedWeekId:', selectedWeekId, 'menuItems.length:', menuItems?.length);
+
+  // Fetch menus from Supabase when selectedWeekId changes
+  useEffect(() => {
+    console.log('[AdminPage] menu fetch useEffect triggered', {
+      selectedWeekId,
+      isSupabaseMode: isSupabaseMode(),
+      isConfigured: isConfigured()
+    });
+
+    if (!selectedWeekId) {
+      console.log('[AdminPage] skipping menu fetch - no selectedWeekId');
+      return;
+    }
+
+    if (!isSupabaseMode() || !isConfigured()) {
+      console.log('[AdminPage] skipping menu fetch - not in Supabase mode or not configured');
+      return;
+    }
+
+    const loadMenusForWeek = async () => {
+      console.log('[AdminPage] fetching menus for week:', selectedWeekId);
+
+      try {
+        const { data, error } = await supabase
+          .from('menus')
+          .select('*')
+          .eq('week_id', selectedWeekId)
+          .order('meal_index', { ascending: true });
+
+        if (error) {
+          console.error('[AdminPage] menu fetch error:', error);
+          return;
+        }
+
+        console.log('[AdminPage] menus fetched count:', data?.length);
+        console.log('[AdminPage] first 3 rows:', data?.slice(0, 3));
+
+        // Transform to app format
+        const menus = (data || []).map(m => ({
+          id: m.id,
+          clientName: m.client_name,
+          weekId: m.week_id,
+          date: m.date,
+          mealIndex: m.meal_index || 1,
+          protein: m.protein || '',
+          veg: m.veg || '',
+          starch: m.starch || '',
+          extras: m.extras || [],
+          portions: m.portions || 1,
+          approved: m.approved || false
+        }));
+
+        console.log('[AdminPage] transformed menus:', menus.length, 'setting state...');
+        updateMenuItems(menus);
+      } catch (err) {
+        console.error('[AdminPage] menu fetch exception:', err);
+      }
+    };
+
+    loadMenusForWeek();
+  }, [selectedWeekId, updateMenuItems]);
 
   // Database migration state
   const [migrationStatus, setMigrationStatus] = useState(null);
