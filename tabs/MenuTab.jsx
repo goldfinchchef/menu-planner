@@ -419,17 +419,35 @@ export default function MenuTab({
   }, [scheduledClients, weekDeliveryDates]);
 
   // Filter menu items to only show items for the selected week
+  // Use stored weekId first, fall back to computing from date
   const weekMenuItems = menuItems.filter(item => {
-    const itemWeekId = getWeekIdFromDate(item.date);
-    return itemWeekId === selectedWeekId;
+    // Prefer stored weekId from database
+    if (item.weekId) {
+      return item.weekId === selectedWeekId;
+    }
+    // Fallback: compute from date if weekId is null
+    const computedWeekId = item.date ? getWeekIdFromDate(item.date) : null;
+    return computedWeekId === selectedWeekId;
   });
 
-  // STYLED MENUS DEBUG - log filtering result
+  // STYLED MENUS DEBUG - log filtering with both methods for comparison
+  const countByStoredWeekId = menuItems.filter(item => item.weekId === selectedWeekId).length;
+  const countByComputedWeekId = menuItems.filter(item => {
+    const computed = item.date ? getWeekIdFromDate(item.date) : null;
+    return computed === selectedWeekId;
+  }).length;
+
   console.log('[StyledMenus] weekMenuItems filter result', {
     selectedWeekId,
     totalMenuItems: menuItems?.length,
-    weekMenuItemsCount: weekMenuItems?.length,
-    weekMenuItemsSample: weekMenuItems?.slice(0, 3)
+    countByStoredWeekId,
+    countByComputedWeekId,
+    finalCount: weekMenuItems?.length,
+    sampleItem: menuItems?.[0] ? {
+      weekId: menuItems[0].weekId,
+      date: menuItems[0].date,
+      computedWeekId: menuItems[0].date ? getWeekIdFromDate(menuItems[0].date) : null
+    } : null
   });
 
   // Get week start date (Monday)
