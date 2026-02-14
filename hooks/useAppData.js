@@ -232,41 +232,33 @@ export function useAppData() {
 
   // Fetch menus when selectedWeekId changes (Supabase mode)
   useEffect(() => {
-    const loadMenusForWeek = async () => {
-      if (!selectedWeekId) {
-        console.log('[useAppData] Skipping menu fetch - no weekId');
-        return;
-      }
+    console.log('DEBUG MENU FETCH:', {
+      selectedWeekId,
+      isSupabaseMode: isSupabaseMode(),
+      isConfigured: isConfigured()
+    });
 
-      if (!isSupabaseMode()) {
-        console.log('[useAppData] Skipping menu fetch - local mode');
-        return;
-      }
+    if (!selectedWeekId) {
+      console.log('Skipping menu fetch: no selectedWeekId yet');
+      return;
+    }
 
-      if (!isConfigured()) {
-        console.log('[useAppData] Skipping menu fetch - Supabase not configured');
-        return;
-      }
+    if (!isSupabaseMode() || !isConfigured()) {
+      console.log('Skipping menu fetch: Supabase not ready');
+      return;
+    }
 
-      const online = await checkConnection();
-      if (!online) {
-        console.log('[useAppData] Skipping menu fetch - offline');
-        return;
-      }
-
+    const loadMenus = async () => {
       console.log('Fetching menus for week:', selectedWeekId);
 
-      try {
-        // Fetch all menus for this week (not just approved)
-        const menus = await fetchMenusByWeek(selectedWeekId, false);
-        console.log('Menus response:', menus);
-        setMenuItems(menus);
-      } catch (error) {
-        console.error('[useAppData] Error fetching menus:', error);
-      }
+      const menus = await fetchMenusByWeek(selectedWeekId, false);
+
+      console.log('Menus response:', menus);
+
+      setMenuItems(menus || []);
     };
 
-    loadMenusForWeek();
+    loadMenus();
   }, [selectedWeekId]);
 
   // Save to localStorage and Supabase (debounced)
