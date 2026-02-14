@@ -419,36 +419,46 @@ export default function MenuTab({
   }, [scheduledClients, weekDeliveryDates]);
 
   // Filter menu items to only show items for the selected week
-  // Use stored weekId first, fall back to computing from date
+  // Use stored week_id (snake_case from DB) or weekId (camelCase from transform) as source of truth
+  // Only fall back to computed-from-date if both are null/undefined
   const weekMenuItems = menuItems.filter(item => {
-    // Prefer stored weekId from database
-    if (item.weekId) {
-      return item.weekId === selectedWeekId;
+    // Check both snake_case (raw DB) and camelCase (transformed)
+    const storedWeekId = item.week_id || item.weekId;
+    if (storedWeekId) {
+      return storedWeekId === selectedWeekId;
     }
-    // Fallback: compute from date if weekId is null
+    // Fallback: compute from date only if week_id is null/undefined
     const computedWeekId = item.date ? getWeekIdFromDate(item.date) : null;
     return computedWeekId === selectedWeekId;
   });
 
-  // STYLED MENUS DEBUG - log filtering with both methods for comparison
-  const countByStoredWeekId = menuItems.filter(item => item.weekId === selectedWeekId).length;
-  const countByComputedWeekId = menuItems.filter(item => {
+  // STYLED MENUS DEBUG - log filtering with all methods for comparison
+  const countByWeekIdSnake = menuItems.filter(item => item.week_id === selectedWeekId).length;
+  const countByWeekIdCamel = menuItems.filter(item => item.weekId === selectedWeekId).length;
+  const countByComputedWeek = menuItems.filter(item => {
     const computed = item.date ? getWeekIdFromDate(item.date) : null;
     return computed === selectedWeekId;
   }).length;
 
-  console.log('[StyledMenus] weekMenuItems filter result', {
+  console.log('[StyledMenus] filter debug', {
     selectedWeekId,
-    totalMenuItems: menuItems?.length,
-    countByStoredWeekId,
-    countByComputedWeekId,
-    finalCount: weekMenuItems?.length,
-    sampleItem: menuItems?.[0] ? {
-      weekId: menuItems[0].weekId,
-      date: menuItems[0].date,
-      computedWeekId: menuItems[0].date ? getWeekIdFromDate(menuItems[0].date) : null
-    } : null
+    menuItemsLength: menuItems?.length,
+    matchByWeekId_snake: countByWeekIdSnake,
+    matchByWeekId_camel: countByWeekIdCamel,
+    matchByComputedWeek: countByComputedWeek,
+    finalCount: weekMenuItems?.length
   });
+
+  // Log first 5 items with their week_id values
+  if (menuItems?.length > 0) {
+    console.log('[StyledMenus] first 5 items:', menuItems.slice(0, 5).map(item => ({
+      week_id: item.week_id,
+      weekId: item.weekId,
+      date: item.date,
+      computedWeekId: item.date ? getWeekIdFromDate(item.date) : null,
+      clientName: item.clientName
+    })));
+  }
 
   // Get week start date (Monday)
   const getWeekStart = () => {
