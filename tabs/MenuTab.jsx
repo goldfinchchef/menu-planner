@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { Plus, Trash2, Check, AlertTriangle, Circle, Eye, X, ChevronDown, ChevronUp, Edit2, Printer, Calendar } from 'lucide-react';
+import { Plus, Trash2, Check, AlertTriangle, Circle, Eye, X, ChevronDown, ChevronUp, Edit2, Printer, Calendar, Utensils } from 'lucide-react';
 import WeekSelector from '../components/WeekSelector';
 import { getWeekIdFromDate, getWeekStartDate, getWeekEndDate } from '../utils/weekUtils';
 import { isSupabaseMode, isLocalMode } from '../lib/dataMode';
@@ -211,6 +211,16 @@ export default function MenuTab({
   console.log('[MenuTab] render', { selectedWeekId, menuItemsLength: menuItems?.length });
   console.log('[MenuTab] menuItems source', { menuItemsLength: menuItems?.length, menuItemsSample: menuItems?.slice?.(0, 2) });
 
+  // Log each menuItem's weekId for debugging
+  if (menuItems?.length > 0) {
+    console.log('[MenuTab] menuItems weekIds:', menuItems.map(item => ({
+      clientName: item.clientName,
+      date: item.date,
+      weekId: item.weekId,
+      computedWeekId: item.date ? getWeekIdFromDate(item.date) : 'no date'
+    })).slice(0, 5));
+  }
+
   // Track renders without selectedWeekId
   const renderCountWithoutWeekRef = useRef(0);
   if (!selectedWeekId) {
@@ -414,6 +424,14 @@ export default function MenuTab({
     return itemWeekId === selectedWeekId;
   });
 
+  // STYLED MENUS DEBUG - log filtering result
+  console.log('[StyledMenus] weekMenuItems filter result', {
+    selectedWeekId,
+    totalMenuItems: menuItems?.length,
+    weekMenuItemsCount: weekMenuItems?.length,
+    weekMenuItemsSample: weekMenuItems?.slice(0, 3)
+  });
+
   // Get week start date (Monday)
   const getWeekStart = () => {
     const d = new Date();
@@ -545,9 +563,13 @@ export default function MenuTab({
           console.log('[MenuTab] Created weeks:', weeksResult.created);
         }
 
-        console.log('[saveAllMenus] start, count:', approvedItems.length);
+        console.log('[StyledMenus] save start', {
+          count: approvedItems.length,
+          clientName,
+          weekId: approvedItems[0]?.weekId || getWeekIdFromDate(approvedItems[0]?.date)
+        });
         await saveAllMenus(approvedItems);
-        console.log('[saveAllMenus] success');
+        console.log('[StyledMenus] save success', { savedCount: approvedItems.length });
         setIsDirty(false); // Reset dirty flag after successful save
 
         // Only update local state AFTER successful persistence
@@ -1002,12 +1024,11 @@ export default function MenuTab({
       </div>
 
       {/* 2. Current Orders - Shows styled menu cards for approval */}
-      {weekMenuItems.length > 0 && (
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold" style={{ color: '#3d59ab' }}>
-              Current Orders ({Object.keys(weekOrdersByClient).length} clients)
-            </h2>
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold" style={{ color: '#3d59ab' }}>
+            Current Orders ({weekMenuItems.length > 0 ? Object.keys(weekOrdersByClient).length + ' clients' : 'None'})
+          </h2>
             <div className="flex items-center gap-2">
               <button
                 onClick={printMenuPlanner}
@@ -1028,6 +1049,7 @@ export default function MenuTab({
             </div>
           </div>
 
+          {weekMenuItems.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {Object.entries(weekOrdersByClient).map(([clientName, orders]) => {
               const allApproved = orders.every(o => o.approved);
@@ -1088,8 +1110,16 @@ export default function MenuTab({
               );
             })}
           </div>
+        ) : (
+          <div className="text-center py-8 rounded-lg" style={{ backgroundColor: '#f9f9ed' }}>
+            <Utensils size={32} className="mx-auto mb-2 text-gray-300" />
+            <p className="text-gray-500">No saved menus for this week yet</p>
+            <p className="text-sm text-gray-400 mt-1">
+              Build a menu below and approve it to see it here
+            </p>
+          </div>
+        )}
         </div>
-      )}
 
       {/* 3. Build Menu Section */}
       <div className={`bg-white rounded-lg shadow-lg p-6 ${editingClientName ? 'ring-2 ring-blue-500' : ''}`}>
