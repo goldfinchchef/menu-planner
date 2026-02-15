@@ -86,6 +86,16 @@ export function useAppData() {
       // Try to load from Supabase, fallback to localStorage
       const result = await loadData();
 
+      console.log("[LOAD DATA RESULT]", {
+        ok: result?.ok,
+        hasData: !!result?.data,
+        keys: Object.keys(result?.data || {}),
+        driversType: typeof result?.data?.drivers,
+        driversIsArray: Array.isArray(result?.data?.drivers),
+        driversLen: Array.isArray(result?.data?.drivers) ? result.data.drivers.length : null,
+        rawDrivers: result?.data?.drivers
+      });
+
       if (result.data) {
         // Apply loaded data to state
         if (result.data.recipes) setRecipes(result.data.recipes);
