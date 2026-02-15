@@ -1599,6 +1599,7 @@ if (!driver) {
                               <div className="flex gap-2">
                                 <button
                                   onClick={() => {
+                                    alert('SAVE ROUTE clicked');
   console.log('[BUTTON CLICK]');
   saveRouteForDay(day.date, zone, zoneClients);
 }}
