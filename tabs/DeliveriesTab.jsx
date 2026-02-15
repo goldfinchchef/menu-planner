@@ -1381,8 +1381,13 @@ if (!driver) {
           saveRoutesToStorage(newSavedRoutes);
 
           // Also save to main data storage so driver portal can access it
-          if (saveDriverRoutes) {
-            saveDriverRoutes(newSavedRoutes);
+        // saveRoutesToStorage(newSavedRoutes);
+
+// if (saveDriverRoutes) {
+//   saveDriverRoutes(newSavedRoutes);
+// }
+            console.log('[Routes] Route saved:', ...)
+alert(...)
           }
 
           console.log('[Routes] Route saved:', { date, zone, stopCount: routableStops.length });
