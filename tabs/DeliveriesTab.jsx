@@ -1598,7 +1598,10 @@ if (!driver) {
                               {/* Zone action buttons */}
                               <div className="flex gap-2">
                                 <button
-                                  onClick={() => saveRouteForDay(day.date, zone, zoneClients)}
+                                  onClick={() => {
+  console.log('[BUTTON CLICK]');
+  saveRouteForDay(day.date, zone, zoneClients);
+}}
                                   disabled={routableCount === 0}
                                   className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded text-white text-xs ${
                                     routableCount === 0 ? 'opacity-50 cursor-not-allowed' : ''
