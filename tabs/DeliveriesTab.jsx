@@ -1367,6 +1367,13 @@ if (!driver) {
           };
 
           // Save to local state
+          console.log('[SAVE ROUTE] about to persist', {
+  date,
+  zone,
+  routableStopsCount: routableStops.length,
+  savedRoutesKeys: Object.keys(newSavedRoutes).slice(0, 5),
+  hasSaveDriverRoutes: !!saveDriverRoutes,
+});
           saveRoutesToStorage(newSavedRoutes);
 
           // Also save to main data storage so driver portal can access it
