@@ -1694,7 +1694,7 @@ export default function DeliveriesTab({
               )}
 
               {/* Empty state - no approved deliveries */}
-              {!isLoadingViewStops && !isLoadingMenus && approvedStopsSet.size === 0 && (
+              {!isLoadingViewStops && !isLoadingMenus && approvedStopKeys.size === 0 && (
                 <div className="mt-6 text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
                   <Truck size={40} className="mx-auto text-gray-400 mb-3" />
                   <p className="text-gray-500 font-medium">No approved deliveries for this week yet</p>
@@ -1704,7 +1704,7 @@ export default function DeliveriesTab({
             </div>
 
             {/* Only show grid if we have approved stops or are showing "No Menu" clients */}
-            {(!isLoadingViewStops && !isLoadingMenus && (approvedStopsSet.size > 0 || showNoMenuClients)) && (
+            {(!isLoadingViewStops && !isLoadingMenus && (approvedStopKeys.size > 0 || showNoMenuClients)) && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {deliveryDays.map(day => {
                 const scheduledClients = getScheduledClientsForDay(day.name, day.date);
