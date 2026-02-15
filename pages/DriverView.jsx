@@ -175,38 +175,17 @@ export default function DriverView() {
   };
 
   // Get upcoming delivery dates for this driver's zone (next 14 days)
-  // Uses Supabase delivery_stops when available (only dates with approved menus)
+  // ONLY shows dates with approved menus (from delivery_stops table)
   const getUpcomingDeliveryDates = () => {
     if (!driver) return [];
 
-    // If we have Supabase delivery stops, get dates from them
-    if (deliveryStops && deliveryStops.length > 0) {
-      const uniqueDates = [...new Set(deliveryStops.map(s => s.date))].sort();
-      console.log('[DriverView] upcoming dates from delivery_stops:', uniqueDates);
-      return uniqueDates;
-    }
+    // Get unique dates from delivery_stops (ONLY approved menus)
+    const uniqueDates = [...new Set((deliveryStops || []).map(s => s.date))].sort();
+    console.log('[DriverPortal] upcoming dates from delivery_stops:', uniqueDates);
+    return uniqueDates;
 
-    // Fallback to legacy behavior
-    const dates = [];
-    const startDate = new Date(today);
-
-    // Get next 14 days
-    for (let i = 0; i < 14; i++) {
-      const checkDate = new Date(startDate);
-      checkDate.setDate(startDate.getDate() + i);
-      const dateStr = checkDate.toISOString().split('T')[0];
-
-      // Check if any clients in this zone have deliveries on this day
-      const hasDeliveries = clients.some(
-        c => c.zone === driver.zone && isClientScheduledForDate(c, dateStr)
-      );
-
-      if (hasDeliveries) {
-        dates.push(dateStr);
-      }
-    }
-
-    return dates;
+    // NOTE: Removed legacy fallback - only delivery_stops dates are shown
+    // Clients without approved menus do NOT appear
   };
 
   // Get ALL ready orders for this driver's zone (regardless of date)
@@ -239,81 +218,55 @@ export default function DriverView() {
   const allReadyOrders = getAllReadyOrders();
 
   // Get ALL scheduled stops for this driver's zone on a specific date
-  // Uses Supabase delivery_stops when available (only shows clients with approved menus)
+  // ONLY shows clients with approved menus (from delivery_stops table)
   const getDriverStops = (date) => {
     if (!driver) return [];
 
-    // If we have Supabase delivery stops, use them as the source of truth
-    if (deliveryStops && deliveryStops.length > 0) {
-      console.log('[DriverView] getDriverStops using Supabase delivery_stops for date:', date);
+    // Filter delivery stops for this date (ONLY from Supabase delivery_stops)
+    const stopsForDate = (deliveryStops || []).filter(s => s.date === date);
 
-      // Filter delivery stops for this date
-      const stopsForDate = deliveryStops.filter(s => s.date === date);
+    console.log('[DriverPortal] getDriverStops for date:', date, 'count:', stopsForDate.length);
 
-      console.log('[DriverView] delivery_stops for date:', stopsForDate.length);
+    return stopsForDate.map(stop => {
+      // Get status - delivery_stops have status like MENU_PLANNED, READY_FOR_DELIVERY
+      let statusInfo = DELIVERY_STATUS.IN_KDS; // Default for MENU_PLANNED
+      if (stop.status === 'READY_FOR_DELIVERY') {
+        statusInfo = DELIVERY_STATUS.READY;
+      } else if (stop.status === 'COMPLETED') {
+        statusInfo = DELIVERY_STATUS.DELIVERED;
+      }
 
-      return stopsForDate.map(stop => {
-        // Get status - delivery_stops have status like MENU_PLANNED, READY_FOR_DELIVERY
-        let statusInfo = DELIVERY_STATUS.IN_KDS; // Default for MENU_PLANNED
-        if (stop.status === 'READY_FOR_DELIVERY') {
-          statusInfo = DELIVERY_STATUS.READY;
-        } else if (stop.status === 'COMPLETED') {
-          statusInfo = DELIVERY_STATUS.DELIVERED;
-        }
+      // Also check local deliveryLog for completion status
+      if (deliveryLog.some(e => e.clientName === stop.client_name && e.date === date)) {
+        statusInfo = DELIVERY_STATUS.DELIVERED;
+      }
 
-        // Also check local deliveryLog for completion status
-        if (deliveryLog.some(e => e.clientName === stop.client_name && e.date === date)) {
-          statusInfo = DELIVERY_STATUS.DELIVERED;
-        }
+      // Check local readyForDelivery
+      const orders = readyForDelivery.filter(o =>
+        (o.clientName === stop.client_name || o.clientName === stop.displayName) && o.date === date
+      );
+      if (orders.length > 0) {
+        statusInfo = DELIVERY_STATUS.READY;
+      }
 
-        // Check local readyForDelivery
-        const orders = readyForDelivery.filter(o =>
-          (o.clientName === stop.client_name || o.clientName === stop.displayName) && o.date === date
-        );
-        if (orders.length > 0) {
-          statusInfo = DELIVERY_STATUS.READY;
-        }
+      return {
+        clientName: stop.client_name,
+        displayName: stop.displayName || stop.client_name,
+        address: stop.address || '',
+        orders,
+        zone: stop.zone,
+        date,
+        status: statusInfo.key,
+        statusInfo,
+        isReady: statusInfo.key === 'ready',
+        isDelivered: statusInfo.key === 'delivered',
+        missingClient: stop.missingClient || false
+      };
+    });
 
-        return {
-          clientName: stop.client_name,
-          displayName: stop.displayName || stop.client_name,
-          address: stop.address || '',
-          orders,
-          zone: stop.zone,
-          date,
-          status: statusInfo.key,
-          statusInfo,
-          isReady: statusInfo.key === 'ready',
-          isDelivered: statusInfo.key === 'delivered',
-          missingClient: stop.missingClient || false,
-          fromDeliveryStops: true // Flag to indicate this came from Supabase
-        };
-      });
-    }
-
-    // Fallback to legacy behavior (localStorage-based, shows all scheduled clients)
-    console.log('[DriverView] getDriverStops using legacy method for date:', date);
-
-    // Get all scheduled clients for this day/zone (checking all date sources)
-    const stops = clients
-      .filter(c => c.zone === driver.zone && isClientScheduledForDate(c, date))
-      .map(client => {
-        const status = getClientStatus(client.name, date);
-        const orders = readyForDelivery.filter(o => o.clientName === client.name && o.date === date);
-
-        return {
-          clientName: client.name,
-          displayName: client.displayName || client.name,
-          address: client.address || '',
-          orders,
-          zone: client.zone,
-          date,
-          status: status.key,
-          statusInfo: status,
-          isReady: status.key === 'ready',
-          isDelivered: status.key === 'delivered'
-        };
-      });
+    // NOTE: Removed legacy fallback - only delivery_stops are shown
+    // Clients without approved menus do NOT appear
+    const stops = [];
 
     // Check if there's a saved route for this date/zone
     const routeKey = `${date}-${driver.zone}`;
