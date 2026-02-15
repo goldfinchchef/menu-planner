@@ -1550,6 +1550,7 @@ export default function DeliveriesTab({
             return;
           }
 
+          console.log("[DEBUG DRIVERS]", { drivers, zone });
           const driver = drivers.find(d => d.zone === zone);
           if (!driver) {
             console.warn('[SAVE ROUTE] EARLY RETURN: No driver for zone', zone);
