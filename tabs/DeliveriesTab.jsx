@@ -1586,7 +1586,8 @@ export default function DeliveriesTab({
               driver_name: driver.name
             });
 
-            throw new Error("STOP: Save Route reached legacy success message (Supabase write not wired yet)");
+            console.log("[SaveRoute] saved successfully, id:", savedId);
+            alert(`Route saved for ${driver?.name || "UNASSIGNED"} on ${date}!\n${routableStops.length} stop(s) scheduled.`);
           } catch (err) {
             console.error('[SaveRoute] error:', err);
             alert(`Failed to save route: ${err.message}`);
