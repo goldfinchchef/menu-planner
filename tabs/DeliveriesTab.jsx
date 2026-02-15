@@ -1310,6 +1310,13 @@ export default function DeliveriesTab({
         // Save route to driver portal - includes ALL scheduled/routable clients
         // Routable = has menu items OR scheduled delivery for this date (regardless of KDS status)
         const saveRouteForDay = (date, zone, stops) => {
+          console.log('[saveRouteForDay] click', {
+  selectedWeekId,
+  date,
+  zone,
+  stopsCount: stops?.length,
+  driverFound: !!drivers.find(d => d.zone === zone)
+});
           const driver = drivers.find(d => d.zone === zone);
           if (!driver) {
             alert('No driver assigned to this zone');
