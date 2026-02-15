@@ -1318,10 +1318,11 @@ export default function DeliveriesTab({
   driverFound: !!drivers.find(d => d.zone === zone)
 });
           const driver = drivers.find(d => d.zone === zone);
-          if (!driver) {
-            alert('No driver assigned to this zone yet — saving route as UNASSIGNED.');
-            return;
-          }
+
+if (!driver) {
+  alert('No driver assigned to this zone yet — saving route as UNASSIGNED.');
+  // IMPORTANT: do NOT return
+}
 
           // Only include clients with APPROVED menus in route (delivered, ready, kds status)
           const routableStops = stops.filter(s => APPROVED_MENU_STATUSES.includes(s.status));
