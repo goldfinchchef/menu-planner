@@ -66,6 +66,32 @@ export default function DeliveriesTab({
   clientPortalData = {},
   saveDriverRoutes
 }) {
+  // Helper: Check if client has an approved menu for the selected week
+  // Uses client name matching (clientName or displayName) and week_id/weekId
+  const hasApprovedMenu = (client, weekId) => {
+    if (!client || !weekId) return false;
+    const clientName = client.name;
+    const displayName = client.displayName;
+
+    const result = menuItems.some(item => {
+      const matchesClient = item.clientName === clientName || item.clientName === displayName;
+      const matchesWeek = (item.week_id === weekId) || (item.weekId === weekId);
+      const isApproved = item.approved === true;
+      return matchesClient && matchesWeek && isApproved;
+    });
+
+    console.log('[DeliveryPlanner]', {
+      client: client.name,
+      hasMenu: result,
+      weekId: weekId
+    });
+
+    return result;
+  };
+
+  // Statuses that indicate an approved menu exists
+  const APPROVED_MENU_STATUSES = ['delivered', 'ready', 'kds'];
+
   // Saved routes state (persisted to localStorage and pushed to driver portal)
   const [savedRoutes, setSavedRoutes] = useState(() => {
     try {
@@ -1290,11 +1316,15 @@ export default function DeliveriesTab({
             return;
           }
 
-          // All scheduled stops are routable (status is display-only, doesn't block routing)
-          const routableStops = stops.filter(s => s.status !== 'none'); // Exclude only "No Menu" clients
+          // Only include clients with APPROVED menus in route (delivered, ready, kds status)
+          const routableStops = stops.filter(s => APPROVED_MENU_STATUSES.includes(s.status));
 
-          console.log('[Routes] routableStops count:', routableStops.length);
-          console.log('[Routes] stops by status:', stops.map(s => ({ name: s.displayName, status: s.status })));
+          console.log('[DeliveryPlanner] saveRouteForDay routableStops:', routableStops.length);
+          console.log('[DeliveryPlanner] stops by status:', stops.map(s => ({
+            name: s.displayName,
+            status: s.status,
+            hasApprovedMenu: APPROVED_MENU_STATUSES.includes(s.status)
+          })));
 
           if (routableStops.length === 0) {
             const disabledReason = 'No clients scheduled for delivery in this zone';
@@ -1440,6 +1470,9 @@ export default function DeliveriesTab({
 
                 const zonesForDay = Object.keys(clientsByZone);
                 const readyCount = scheduledClients.filter(s => s.status === 'ready').length;
+                // Count only clients with approved menus for the main count
+                const clientsWithMenuCount = scheduledClients.filter(s => APPROVED_MENU_STATUSES.includes(s.status)).length;
+                const noMenuCount = scheduledClients.length - clientsWithMenuCount;
 
                 return (
                   <div key={day.name} className="bg-white rounded-lg shadow-lg p-4">
@@ -1455,10 +1488,10 @@ export default function DeliveriesTab({
                       </div>
                       <div className="text-right">
                         <span className="text-2xl font-bold" style={{ color: readyCount > 0 ? '#22c55e' : '#3d59ab' }}>
-                          {scheduledClients.length}
+                          {clientsWithMenuCount}
                         </span>
                         <p className="text-xs text-gray-500">
-                          {readyCount > 0 ? `${readyCount} ready` : 'scheduled'}
+                          {readyCount > 0 ? `${readyCount} ready` : 'with menu'}{noMenuCount > 0 && ` (${noMenuCount} no menu)`}
                         </p>
                       </div>
                     </div>
@@ -1475,8 +1508,8 @@ export default function DeliveriesTab({
                           const orderedClients = getOrderedStopsForZone(day.date, zone, zoneClients);
                           const driver = zone !== 'Unassigned' ? drivers.find(d => d.zone === zone) : null;
                           const isRouteSaved = savedRoutes[`${day.date}-${zone}`];
-                          // Routable = any client with menu/schedule (not just 'ready' from KDS)
-                          const routableCount = zoneClients.filter(c => c.status !== 'none').length;
+                          // Routable = ONLY clients with approved menus (delivered, ready, kds status)
+                          const routableCount = zoneClients.filter(c => APPROVED_MENU_STATUSES.includes(c.status)).length;
                           const readyCount = zoneClients.filter(c => c.status === 'ready').length;
 
                           // Log routing eligibility
@@ -1503,7 +1536,7 @@ export default function DeliveriesTab({
                                   )}
                                 </div>
                                 <span className="text-xs text-gray-500">
-                                  {zoneClients.length} stops {readyCount > 0 && `(${readyCount} ready)`}
+                                  {routableCount} stops {zoneClients.length !== routableCount && `(${zoneClients.length - routableCount} no menu)`}
                                 </span>
                               </div>
 
