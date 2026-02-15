@@ -51,12 +51,15 @@ export default function DriverView() {
     menuItems,
     savedRoutes,
     clientPortalData,
+    deliveryStops,
     isLoaded,
     updateDeliveryLog,
     updateReadyForDelivery,
     updateOrderHistory,
     authenticateDriver,
-    getDriverByName
+    getDriverByName,
+    fetchStopsForDriver,
+    fetchClientsFromSupabase
   } = useDriverData();
 
   // Auth state
@@ -78,6 +81,28 @@ export default function DriverView() {
       }
     }
   }, [isLoaded, searchParams, driver, getDriverByName]);
+
+  // Fetch delivery stops and clients from Supabase when driver is authenticated
+  useEffect(() => {
+    if (driver?.zone) {
+      console.log('[DriverView] driver authenticated, fetching data for zone:', driver.zone);
+      fetchClientsFromSupabase();
+      fetchStopsForDriver(driver.zone);
+    }
+  }, [driver?.zone, fetchClientsFromSupabase, fetchStopsForDriver]);
+
+  // Debug log delivery stops
+  useEffect(() => {
+    console.log('[DriverView] deliveryStops updated:', {
+      count: deliveryStops?.length,
+      sample3: deliveryStops?.slice(0, 3).map(s => ({
+        client_id: s.client_id,
+        date: s.date,
+        status: s.status,
+        displayName: s.displayName
+      }))
+    });
+  }, [deliveryStops]);
 
   // Delivery state
   const [currentStopIndex, setCurrentStopIndex] = useState(0);
@@ -150,8 +175,18 @@ export default function DriverView() {
   };
 
   // Get upcoming delivery dates for this driver's zone (next 14 days)
+  // Uses Supabase delivery_stops when available (only dates with approved menus)
   const getUpcomingDeliveryDates = () => {
     if (!driver) return [];
+
+    // If we have Supabase delivery stops, get dates from them
+    if (deliveryStops && deliveryStops.length > 0) {
+      const uniqueDates = [...new Set(deliveryStops.map(s => s.date))].sort();
+      console.log('[DriverView] upcoming dates from delivery_stops:', uniqueDates);
+      return uniqueDates;
+    }
+
+    // Fallback to legacy behavior
     const dates = [];
     const startDate = new Date(today);
 
@@ -204,8 +239,60 @@ export default function DriverView() {
   const allReadyOrders = getAllReadyOrders();
 
   // Get ALL scheduled stops for this driver's zone on a specific date
+  // Uses Supabase delivery_stops when available (only shows clients with approved menus)
   const getDriverStops = (date) => {
     if (!driver) return [];
+
+    // If we have Supabase delivery stops, use them as the source of truth
+    if (deliveryStops && deliveryStops.length > 0) {
+      console.log('[DriverView] getDriverStops using Supabase delivery_stops for date:', date);
+
+      // Filter delivery stops for this date
+      const stopsForDate = deliveryStops.filter(s => s.date === date);
+
+      console.log('[DriverView] delivery_stops for date:', stopsForDate.length);
+
+      return stopsForDate.map(stop => {
+        // Get status - delivery_stops have status like MENU_PLANNED, READY_FOR_DELIVERY
+        let statusInfo = DELIVERY_STATUS.IN_KDS; // Default for MENU_PLANNED
+        if (stop.status === 'READY_FOR_DELIVERY') {
+          statusInfo = DELIVERY_STATUS.READY;
+        } else if (stop.status === 'COMPLETED') {
+          statusInfo = DELIVERY_STATUS.DELIVERED;
+        }
+
+        // Also check local deliveryLog for completion status
+        if (deliveryLog.some(e => e.clientName === stop.client_name && e.date === date)) {
+          statusInfo = DELIVERY_STATUS.DELIVERED;
+        }
+
+        // Check local readyForDelivery
+        const orders = readyForDelivery.filter(o =>
+          (o.clientName === stop.client_name || o.clientName === stop.displayName) && o.date === date
+        );
+        if (orders.length > 0) {
+          statusInfo = DELIVERY_STATUS.READY;
+        }
+
+        return {
+          clientName: stop.client_name,
+          displayName: stop.displayName || stop.client_name,
+          address: stop.address || '',
+          orders,
+          zone: stop.zone,
+          date,
+          status: statusInfo.key,
+          statusInfo,
+          isReady: statusInfo.key === 'ready',
+          isDelivered: statusInfo.key === 'delivered',
+          missingClient: stop.missingClient || false,
+          fromDeliveryStops: true // Flag to indicate this came from Supabase
+        };
+      });
+    }
+
+    // Fallback to legacy behavior (localStorage-based, shows all scheduled clients)
+    console.log('[DriverView] getDriverStops using legacy method for date:', date);
 
     // Get all scheduled clients for this day/zone (checking all date sources)
     const stops = clients
@@ -1467,6 +1554,12 @@ function StopCard({
                 >
                   <StatusIcon size={12} />
                   {stop.statusInfo.label}
+                </span>
+              )}
+              {stop.missingClient && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600 flex items-center gap-1 shrink-0">
+                  <AlertTriangle size={12} />
+                  Missing client record
                 </span>
               )}
             </div>

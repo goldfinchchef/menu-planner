@@ -3,7 +3,7 @@ import { Plus, Trash2, Check, AlertTriangle, Circle, Eye, X, ChevronDown, Chevro
 import WeekSelector from '../components/WeekSelector';
 import { getWeekIdFromDate, getWeekStartDate, getWeekEndDate } from '../utils/weekUtils';
 import { isSupabaseMode, isLocalMode } from '../lib/dataMode';
-import { saveAllMenus, fetchMenus, ensureWeeksExist } from '../lib/database';
+import { saveAllMenus, fetchMenus, ensureWeeksExist, syncDeliveryStopsForWeek } from '../lib/database';
 import { checkConnection } from '../lib/supabase';
 
 // Styled Menu Card Component - matches client portal
@@ -591,13 +591,22 @@ export default function MenuTab({
           console.log('[MenuTab] Created weeks:', weeksResult.created);
         }
 
+        const menuWeekId = approvedItems[0]?.weekId || getWeekIdFromDate(approvedItems[0]?.date);
         console.log('[StyledMenus] save start', {
           count: approvedItems.length,
           clientName,
-          weekId: approvedItems[0]?.weekId || getWeekIdFromDate(approvedItems[0]?.date)
+          weekId: menuWeekId
         });
         await saveAllMenus(approvedItems);
         console.log('[StyledMenus] save success', { savedCount: approvedItems.length });
+
+        // Sync delivery stops for this week (creates MENU_PLANNED stops)
+        if (menuWeekId) {
+          console.log('[StyledMenus] syncing delivery stops for week:', menuWeekId);
+          const syncResult = await syncDeliveryStopsForWeek(menuWeekId);
+          console.log('[StyledMenus] delivery stops sync result:', syncResult);
+        }
+
         setIsDirty(false); // Reset dirty flag after successful save
 
         // Only update local state AFTER successful persistence
