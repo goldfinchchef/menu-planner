@@ -13,7 +13,9 @@ import {
   saveRouteOrder,
   fetchRouteOrder,
   saveStartingAddress,
-  fetchStartingAddress
+  fetchStartingAddress,
+  upsertDeliveryStop,
+  insertDeliveryPhoto
 } from '../lib/database';
 
 const ViewToggle = ({ activeView, setActiveView }) => (
@@ -432,10 +434,36 @@ export default function DeliveriesTab({
     );
   };
 
-  const markDeliveryComplete = (clientName, zone, contactIndex = 0, contactName = '', problem = null, problemNote = '', bagsReturned = false) => {
+  const markDeliveryComplete = async (clientName, zone, contactIndex = 0, contactName = '', problem = null, problemNote = '', bagsReturned = false) => {
     if (isReadOnly) return; // Don't allow changes to read-only weeks
 
     const driver = getDriverForZone(zone);
+    const completedAt = new Date().toISOString();
+
+    // Find client for additional data
+    const client = clients.find(c => c.name === clientName);
+    const contacts = getClientContacts(client);
+    const contact = contacts[contactIndex] || {};
+
+    // ---- Write to Supabase delivery_stops ----
+    const stopPayload = {
+      client_id: client?.id || null,
+      client_name: clientName,
+      address: contact.address || client?.address || '',
+      zone: zone,
+      status: problem ? 'failed' : 'completed',
+      handoff_type: 'hand', // Admin flow defaults to hand delivery
+      problem_type: problem || null,
+      problem_notes: problemNote || null,
+      completed_at: completedAt
+    };
+
+    const stopResult = await upsertDeliveryStop(stopPayload);
+    if (!stopResult.success) {
+      alert(`Failed to save delivery: ${stopResult.error}`);
+      return;
+    }
+
     const newEntry = {
       id: Date.now(),
       date: selectedDate,
@@ -444,7 +472,7 @@ export default function DeliveriesTab({
       contactName,
       zone,
       driverName: driver?.name || 'Unknown',
-      completedAt: new Date().toISOString(),
+      completedAt,
       problem,
       problemNote,
       bagsReturned
@@ -459,8 +487,6 @@ export default function DeliveriesTab({
     }
 
     // Check if all contacts for this client are delivered
-    const client = clients.find(c => c.name === clientName);
-    const contacts = getClientContacts(client);
     const contactsWithAddress = contacts.filter(c => c.address);
     const totalStops = contactsWithAddress.length || 1;
 

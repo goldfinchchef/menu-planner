@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useDriverData } from '../hooks/useDriverData';
 import { DELIVERY_PROBLEMS } from '../constants';
+import { upsertDeliveryStop, insertDeliveryPhoto } from '../lib/database';
 
 const HANDOFF_TYPES = {
   HAND: 'hand',
@@ -401,7 +402,7 @@ export default function DriverView() {
     }
   };
 
-  const handleCompleteDelivery = (problem = null, note = '') => {
+  const handleCompleteDelivery = async (problem = null, note = '') => {
     // Use activeOrder if set (from All Ready view), otherwise use currentStop
     const stopToComplete = activeOrder || currentStop;
     if (!stopToComplete) return;
@@ -421,13 +422,52 @@ export default function DriverView() {
       return;
     }
 
+    const completedAt = new Date().toISOString();
+
+    // ---- Write to Supabase delivery_stops ----
+    const stopPayload = {
+      client_id: stopToComplete.clientId || null,
+      client_name: stopToComplete.clientName,
+      address: stopToComplete.address || '',
+      zone: driver?.zone || '',
+      status: problem ? 'failed' : 'completed',
+      handoff_type: handoffType,
+      problem_type: problem || null,
+      problem_notes: note || null,
+      completed_at: completedAt,
+      dishes: stopToComplete.dishes || [],
+      portions: stopToComplete.portions || null
+    };
+
+    const stopResult = await upsertDeliveryStop(stopPayload);
+    if (!stopResult.success) {
+      alert(`Failed to save delivery: ${stopResult.error}`);
+      return;
+    }
+
+    // ---- If porch drop, save photo to delivery_photos ----
+    if (handoffType === HANDOFF_TYPES.PORCH && photoPreview) {
+      const photoResult = await insertDeliveryPhoto({
+        stop_id: stopResult.stopId,
+        client_id: stopToComplete.clientId || null,
+        client_name: stopToComplete.clientName,
+        date: deliveryDate,
+        photo_data: photoPreview
+      });
+      if (!photoResult.success) {
+        console.error('[handleCompleteDelivery] Photo save failed:', photoResult.error);
+        // Continue anyway - stop was saved
+      }
+    }
+
+    // ---- Keep existing deliveryLog for UI compatibility ----
     const newEntry = {
       id: Date.now(),
       date: deliveryDate,
       clientName: stopToComplete.clientName,
       zone: driver.zone,
       driverName: driver.name,
-      completedAt: new Date().toISOString(),
+      completedAt,
       handoffType,
       photoData: photoPreview,
       bagsReturned,
@@ -456,6 +496,7 @@ export default function DriverView() {
     if (activeOrder) {
       // If completing from All Ready view, go back to that view
       setActiveOrder(null);
+      setShowAllReady(true);
       resetDeliveryForm();
       setShowProblemModal(false);
     } else {
@@ -651,6 +692,17 @@ export default function DriverView() {
                   index={index}
                   deliveryEntry={deliveryEntry}
                   onNavigate={openMaps}
+                  onDeliver={(s) => {
+                    console.log("[STOP CLICKED]", s.clientName);
+                    setShowAllStops(false);
+                    setActiveOrder({
+                      clientName: s.clientName,
+                      displayName: s.displayName,
+                      address: s.address,
+                      date: s.date || viewingDate,
+                      orders: s.orders
+                    });
+                  }}
                 />
               );
             })}
@@ -756,13 +808,17 @@ export default function DriverView() {
                           key={`${clientStop.clientName}-${date}`}
                           stop={clientStop}
                           onNavigate={openMaps}
-                          onDeliver={(stop) => setActiveOrder({
-                            clientName: stop.clientName,
-                            displayName: stop.displayName,
-                            address: stop.address,
-                            date: stop.date,
-                            orders: stop.orders
-                          })}
+                          onDeliver={(stop) => {
+                            console.log("[STOP CLICKED]", stop.clientName);
+                            setShowAllReady(false);
+                            setActiveOrder({
+                              clientName: stop.clientName,
+                              displayName: stop.displayName,
+                              address: stop.address,
+                              date: stop.date,
+                              orders: stop.orders
+                            });
+                          }}
                           showDeliverButton={true}
                         />
                       ))}
@@ -793,6 +849,7 @@ export default function DriverView() {
               <button
                 onClick={() => {
                   setActiveOrder(null);
+                  setShowAllReady(true);
                   resetDeliveryForm();
                 }}
                 className="flex items-center gap-2 text-gray-600"
@@ -1602,12 +1659,15 @@ function StopCard({
   const summary = getMealSummary();
   const sortedMeals = getSortedMeals();
 
+  console.log("[StopCard props]", { clientName: stop.clientName, hasOnDeliver: !!onDeliver });
+
   return (
     <div
       className={`bg-white rounded-lg shadow overflow-hidden border-l-4 ${
         stop.isDelivered ? 'opacity-60' : ''
-      }`}
+      } ${onDeliver ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
       style={{ borderLeftColor: stop.statusInfo?.color || '#3d59ab' }}
+      onClick={onDeliver ? () => onDeliver(stop) : undefined}
     >
       {/* Main card header - always visible */}
       <div className="p-4">
@@ -1667,7 +1727,7 @@ function StopCard({
             {/* Compact summary line */}
             {summary && stop.isReady && (
               <button
-                onClick={() => setExpanded(!expanded)}
+                onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
                 className="mt-2 flex items-center gap-2 text-sm font-medium px-2 py-1 rounded-lg transition-colors hover:bg-gray-100"
                 style={{ color: '#3d59ab' }}
               >
@@ -1690,7 +1750,7 @@ function StopCard({
           <div className="flex gap-2 ml-2 shrink-0">
             {stop.address && !stop.isPickup && (
               <button
-                onClick={() => onNavigate(stop.address)}
+                onClick={(e) => { e.stopPropagation(); onNavigate(stop.address); }}
                 className="p-2 rounded-lg text-white"
                 style={{ backgroundColor: '#27ae60' }}
                 title="Navigate"
@@ -1700,7 +1760,7 @@ function StopCard({
             )}
             {showDeliverButton && onDeliver && (
               <button
-                onClick={() => onDeliver(stop)}
+                onClick={(e) => { e.stopPropagation(); onDeliver(stop); }}
                 className="p-2 rounded-lg text-white"
                 style={{ backgroundColor: '#f59e0b' }}
                 title="Deliver Now"
