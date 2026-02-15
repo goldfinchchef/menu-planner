@@ -36,9 +36,7 @@ import {
   updateClientDeliveryDates,
   fetchMenusByWeek
 } from '../lib/database';
-import supabase from '../lib/supabase';
-
-const STORAGE_KEY = 'goldfinchChefData';
+import { supabase } from '../lib/supabase';
 
 // Custom hook for admin data
 function useAdminData() {
@@ -58,39 +56,45 @@ function useAdminData() {
   const [weeks, setWeeks] = useState({});
   const [isLoaded, setIsLoaded] = useState(false);
 
+  // Load data from Supabase on mount
   useEffect(() => {
-    const loadData = () => {
-      const savedData = localStorage.getItem(STORAGE_KEY);
-      if (savedData) {
-        try {
-          const parsed = JSON.parse(savedData);
-          if (parsed.clients) setClients(parsed.clients);
-          if (parsed.drivers) setDrivers(parsed.drivers);
-          if (parsed.menuItems) setMenuItems(parsed.menuItems);
-          if (parsed.deliveryLog) setDeliveryLog(parsed.deliveryLog);
-          if (parsed.readyForDelivery) setReadyForDelivery(parsed.readyForDelivery);
-          if (parsed.clientPortalData) setClientPortalData(parsed.clientPortalData);
-          if (parsed.blockedDates) setBlockedDates(parsed.blockedDates);
-          if (parsed.adminSettings) setAdminSettings(parsed.adminSettings);
-          if (parsed.customTasks) setCustomTasks(parsed.customTasks);
-          if (parsed.weeklyTasks) setWeeklyTasks(parsed.weeklyTasks);
-          if (parsed.recipes) setRecipes(parsed.recipes);
-          if (parsed.masterIngredients) setMasterIngredients(parsed.masterIngredients);
-          if (parsed.groceryBills) setGroceryBills(parsed.groceryBills);
-          if (parsed.weeks) setWeeks(parsed.weeks);
-        } catch (e) {
-          console.error('Error loading saved data:', e);
-        }
+    const loadData = async () => {
+      if (!isSupabaseMode()) {
+        console.log('[AdminPage] not in Supabase mode');
+        setIsLoaded(true);
+        return;
       }
+
+      try {
+        // Import loadData from sync to get full data from Supabase
+        const { loadData: loadFromSupabase } = await import('../lib/sync');
+        const result = await loadFromSupabase();
+
+        if (result.data) {
+          if (result.data.clients) setClients(result.data.clients);
+          if (result.data.drivers) setDrivers(result.data.drivers);
+          if (result.data.menuItems) setMenuItems(result.data.menuItems);
+          if (result.data.deliveryLog) setDeliveryLog(result.data.deliveryLog);
+          if (result.data.readyForDelivery) setReadyForDelivery(result.data.readyForDelivery);
+          if (result.data.clientPortalData) setClientPortalData(result.data.clientPortalData);
+          if (result.data.blockedDates) setBlockedDates(result.data.blockedDates);
+          if (result.data.adminSettings) setAdminSettings(result.data.adminSettings);
+          if (result.data.customTasks) setCustomTasks(result.data.customTasks);
+          if (result.data.weeklyTasks) setWeeklyTasks(result.data.weeklyTasks);
+          if (result.data.recipes) setRecipes(result.data.recipes);
+          if (result.data.masterIngredients) setMasterIngredients(result.data.masterIngredients);
+          if (result.data.groceryBills) setGroceryBills(result.data.groceryBills);
+          if (result.data.weeks) setWeeks(result.data.weeks);
+        }
+      } catch (e) {
+        console.error('[AdminPage] Error loading data from Supabase:', e);
+        alert(`Failed to load data: ${e.message}`);
+      }
+
       setIsLoaded(true);
     };
-    loadData();
 
-    const handleStorageChange = (e) => {
-      if (e.key === STORAGE_KEY) loadData();
-    };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    loadData();
   }, []);
 
   // Load grocery bills from Supabase when in Supabase mode
@@ -113,22 +117,43 @@ function useAdminData() {
     }
   }, [isLoaded]);
 
-  const saveData = useCallback((updates) => {
-    const savedData = localStorage.getItem(STORAGE_KEY);
-    let existing = {};
-    if (savedData) {
-      try {
-        existing = JSON.parse(savedData);
-      } catch (e) {
-        console.error('Error parsing saved data:', e);
-      }
+  // Save data to Supabase (no localStorage)
+  const saveData = useCallback(async (updates) => {
+    if (!isSupabaseMode()) {
+      console.log('[AdminPage] not in Supabase mode, skipping save');
+      return;
     }
-    const merged = { ...existing, ...updates, lastSaved: new Date().toISOString() };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
 
-    // Dispatch custom event to notify other components in the same tab
-    window.dispatchEvent(new CustomEvent('goldfinchDataUpdated'));
-  }, []);
+    try {
+      const { syncToSupabase } = await import('../lib/sync');
+      const dataToSave = {
+        clients,
+        drivers,
+        menuItems,
+        deliveryLog,
+        readyForDelivery,
+        clientPortalData,
+        blockedDates,
+        adminSettings,
+        customTasks,
+        weeklyTasks,
+        recipes,
+        masterIngredients,
+        groceryBills,
+        weeks,
+        ...updates,
+        lastSaved: new Date().toISOString()
+      };
+
+      const result = await syncToSupabase(dataToSave);
+      if (!result.success) {
+        alert(`Failed to save: ${result.error}`);
+      }
+    } catch (e) {
+      console.error('[AdminPage] Error saving to Supabase:', e);
+      alert(`Failed to save: ${e.message}`);
+    }
+  }, [clients, drivers, menuItems, deliveryLog, readyForDelivery, clientPortalData, blockedDates, adminSettings, customTasks, weeklyTasks, recipes, masterIngredients, groceryBills, weeks]);
 
   const updateDrivers = useCallback((newDrivers) => {
     setDrivers(newDrivers);

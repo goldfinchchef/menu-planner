@@ -1,9 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { isSupabaseMode } from '../lib/dataMode';
 import { isConfigured, checkConnection } from '../lib/supabase';
-import { fetchDeliveryStopsForZone, fetchClients } from '../lib/database';
-
-const STORAGE_KEY = 'goldfinchChefData';
+import {
+  fetchDeliveryStopsFromView,
+  fetchClients,
+  fetchDrivers,
+  fetchDeliveryRunsForWeek,
+  saveDelivery,
+  normalizeName
+} from '../lib/database';
 
 export function useDriverData() {
   const [drivers, setDrivers] = useState([]);
@@ -12,132 +17,155 @@ export function useDriverData() {
   const [deliveryLog, setDeliveryLog] = useState([]);
   const [orderHistory, setOrderHistory] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
-  const [savedRoutes, setSavedRoutes] = useState({});
+  const [savedRoutes, setSavedRoutes] = useState([]); // Array of saved routes from delivery_runs
   const [clientPortalData, setClientPortalData] = useState({});
-  const [deliveryStops, setDeliveryStops] = useState([]); // From Supabase delivery_stops table
+  const [deliveryStops, setDeliveryStops] = useState([]); // Aggregated from approved menus
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isLoadingDeliveries, setIsLoadingDeliveries] = useState(false);
+  const [isLoadingRoutes, setIsLoadingRoutes] = useState(false);
+  const [missingClients, setMissingClients] = useState([]); // Clients in menus but not in clients table
 
-  // Load from localStorage
+  // Load drivers and clients from Supabase on mount
   useEffect(() => {
-    const loadData = () => {
-      const savedData = localStorage.getItem(STORAGE_KEY);
-      if (savedData) {
-        try {
-          const parsed = JSON.parse(savedData);
-          if (parsed.drivers) setDrivers(parsed.drivers);
-          if (parsed.clients) setClients(parsed.clients);
-          if (parsed.readyForDelivery) setReadyForDelivery(parsed.readyForDelivery);
-          if (parsed.deliveryLog) setDeliveryLog(parsed.deliveryLog);
-          if (parsed.orderHistory) setOrderHistory(parsed.orderHistory);
-          if (parsed.menuItems) setMenuItems(parsed.menuItems);
-          if (parsed.savedRoutes) setSavedRoutes(parsed.savedRoutes);
-          if (parsed.clientPortalData) setClientPortalData(parsed.clientPortalData);
-        } catch (e) {
-          console.error('Error loading saved data:', e);
-        }
+    const loadData = async () => {
+      if (!isSupabaseMode() || !isConfigured()) {
+        setIsLoaded(true);
+        return;
       }
+
+      const online = await checkConnection();
+      if (!online) {
+        setIsLoaded(true);
+        return;
+      }
+
+      try {
+        const [fetchedDrivers, fetchedClients] = await Promise.all([
+          fetchDrivers(),
+          fetchClients()
+        ]);
+        setDrivers(fetchedDrivers);
+        setClients(fetchedClients);
+      } catch (err) {
+        console.error('[useDriverData]', err);
+      }
+
       setIsLoaded(true);
     };
-    loadData();
 
-    // Listen for storage changes from other tabs
-    const handleStorageChange = (e) => {
-      if (e.key === STORAGE_KEY) {
-        loadData();
-      }
-    };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    loadData();
   }, []);
 
-  // Fetch delivery stops from Supabase (when in Supabase mode)
-  const fetchStopsForDriver = useCallback(async (driverZone) => {
-    console.log('[DriverData] fetchStopsForDriver zone:', driverZone);
-
+  // Fetch approved stops from menus view (fallback when no saved route)
+  const fetchDeliveriesForWeek = useCallback(async (weekId, zone = null) => {
     if (!isSupabaseMode() || !isConfigured()) {
-      console.log('[DriverData] skipping - not in Supabase mode');
-      return [];
+      setIsLoadingDeliveries(false);
+      return { stops: [], missingAddresses: [] };
     }
 
     const online = await checkConnection();
     if (!online) {
-      console.log('[DriverData] skipping - offline');
-      return [];
+      setIsLoadingDeliveries(false);
+      return { stops: [], missingAddresses: [] };
     }
 
+    setIsLoadingDeliveries(true);
+
     try {
-      const stops = await fetchDeliveryStopsForZone(driverZone, 14);
-      console.log('[DriverData] delivery stops fetched:', stops.length);
-      console.log('[DriverData] sample 3:', stops.slice(0, 3).map(s => ({
-        client_id: s.client_id,
-        date: s.date,
-        status: s.status
-      })));
+      const { stops, missingAddresses, stats } = await fetchDeliveryStopsFromView(weekId, zone);
       setDeliveryStops(stops);
-      return stops;
+      setMissingClients(missingAddresses.map(m => m.clientName));
+      setIsLoadingDeliveries(false);
+      return { stops, missingAddresses, stats };
     } catch (err) {
-      console.error('[DriverData] fetchStopsForDriver error:', err);
-      return [];
+      console.error('[fetchDeliveriesForWeek]', err);
+      setIsLoadingDeliveries(false);
+      return { stops: [], missingAddresses: [], stats: {} };
     }
   }, []);
 
   // Fetch clients from Supabase (for driver portal to get addresses)
   const fetchClientsFromSupabase = useCallback(async () => {
-    console.log('[DriverData] fetchClientsFromSupabase');
-
-    if (!isSupabaseMode() || !isConfigured()) {
-      console.log('[DriverData] skipping - not in Supabase mode');
-      return;
-    }
+    if (!isSupabaseMode() || !isConfigured()) return;
 
     const online = await checkConnection();
-    if (!online) {
-      console.log('[DriverData] skipping - offline');
-      return;
-    }
+    if (!online) return;
 
     try {
       const fetchedClients = await fetchClients();
-      console.log('[DriverData] clients fetched count:', fetchedClients.length);
       setClients(fetchedClients);
     } catch (err) {
       console.error('[DriverData] fetchClientsFromSupabase error:', err);
     }
   }, []);
 
-  // Save function that merges with existing data
-  const saveData = useCallback((updates) => {
-    const savedData = localStorage.getItem(STORAGE_KEY);
-    let existing = {};
-    if (savedData) {
-      try {
-        existing = JSON.parse(savedData);
-      } catch (e) {
-        console.error('Error parsing saved data:', e);
-      }
+  // Fetch saved routes from delivery_runs table for the week
+  const fetchSavedRoutes = useCallback(async (weekId, zone = null) => {
+    if (!isSupabaseMode() || !isConfigured()) {
+      console.log('[DriverData] skipping route fetch - not in Supabase mode');
+      return [];
     }
-    const merged = {
-      ...existing,
-      ...updates,
-      lastSaved: new Date().toISOString()
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+
+    const online = await checkConnection();
+    if (!online) {
+      console.log('[DriverData] skipping route fetch - offline');
+      return [];
+    }
+
+    setIsLoadingRoutes(true);
+
+    try {
+      // Fetch raw delivery_runs rows
+      const runs = await fetchDeliveryRunsForWeek(weekId, zone);
+      console.log('[DriverView] loaded delivery_runs', { weekId, count: runs.length });
+
+      // Transform to internal format
+      const routes = runs.map(run => ({
+        id: run.id,
+        weekId: run.week_id,
+        date: run.date,
+        zone: run.zone,
+        driverName: run.driver_name,
+        driverId: run.driver_id,
+        status: run.status,
+        totalStops: run.total_stops || 0,
+        completedStops: run.completed_stops || 0,
+        // Keep stops as-is from JSONB (already in correct format)
+        stops: run.stops || [],
+        savedAt: run.updated_at || run.created_at
+      }));
+
+      setSavedRoutes(routes);
+      return routes;
+    } catch (err) {
+      console.error('[fetchSavedRoutes]', err);
+      return [];
+    } finally {
+      setIsLoadingRoutes(false);
+    }
   }, []);
 
-  const updateDeliveryLog = useCallback((newLog) => {
+  // Update delivery log - save to Supabase
+  const updateDeliveryLog = useCallback(async (newLog) => {
     setDeliveryLog(newLog);
-    saveData({ deliveryLog: newLog });
-  }, [saveData]);
 
+    // Find new entries to save to Supabase
+    if (!isSupabaseMode()) return;
+
+    // For now, just update local state
+    // The actual delivery completion is saved via saveDelivery in DriverView
+  }, []);
+
+  // Update ready for delivery - state only (KDS pushes this)
   const updateReadyForDelivery = useCallback((newReady) => {
     setReadyForDelivery(newReady);
-    saveData({ readyForDelivery: newReady });
-  }, [saveData]);
+    // readyForDelivery is managed by KDS, not driver portal
+  }, []);
 
+  // Update order history - state only
   const updateOrderHistory = useCallback((newHistory) => {
     setOrderHistory(newHistory);
-    saveData({ orderHistory: newHistory });
-  }, [saveData]);
+  }, []);
 
   const authenticateDriver = useCallback((accessCode) => {
     return drivers.find(d => d.accessCode === accessCode);
@@ -158,12 +186,17 @@ export function useDriverData() {
     clientPortalData,
     deliveryStops,
     isLoaded,
+    isLoadingDeliveries,
+    isLoadingRoutes,
+    missingClients,
     updateDeliveryLog,
     updateReadyForDelivery,
     updateOrderHistory,
     authenticateDriver,
     getDriverByName,
-    fetchStopsForDriver,
-    fetchClientsFromSupabase
+    fetchDeliveriesForWeek,
+    fetchSavedRoutes,
+    fetchClientsFromSupabase,
+    normalizeName
   };
 }

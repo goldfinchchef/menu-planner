@@ -23,10 +23,7 @@ import {
   syncToSupabase,
   getSyncStatus,
   checkOnlineStatus,
-  migrateLocalStorageToSupabase,
-  queueSave,
-  loadPendingSaves,
-  processPendingSaves
+  migrateLocalStorageToSupabase
 } from '../lib/sync';
 import { fetchMenusByWeek } from '../lib/database';
 import { isSupabaseMode } from '../lib/dataMode';
@@ -127,104 +124,19 @@ export function useAppData() {
         await migrateLocalStorageToSupabase();
       }
 
-      // Process any pending saves
-      if (online) {
-        await processPendingSaves();
-      }
-
       setIsSyncing(false);
       isInitialLoadRef.current = false;
     };
 
     initializeData();
 
-    // Listen for storage changes from other tabs/windows
-    const handleStorageChange = (e) => {
-      if (e.key === 'goldfinchChefData') {
-        // Reload from localStorage (other tab saved)
-        const savedData = localStorage.getItem('goldfinchChefData');
-        if (savedData) {
-          try {
-            const parsed = JSON.parse(savedData);
-            if (parsed.recipes) setRecipes(parsed.recipes);
-            if (parsed.clients) setClients(parsed.clients);
-            if (parsed.menuItems) setMenuItems(parsed.menuItems);
-            if (parsed.masterIngredients) setMasterIngredients(parsed.masterIngredients);
-            if (parsed.orderHistory) setOrderHistory(parsed.orderHistory);
-            if (parsed.weeklyTasks) setWeeklyTasks(parsed.weeklyTasks);
-            if (parsed.drivers) setDrivers(parsed.drivers);
-            if (parsed.deliveryLog) setDeliveryLog(parsed.deliveryLog);
-            if (parsed.bagReminders) setBagReminders(parsed.bagReminders);
-            if (parsed.readyForDelivery) setReadyForDelivery(parsed.readyForDelivery);
-            if (parsed.clientPortalData) setClientPortalData(parsed.clientPortalData);
-            if (parsed.blockedDates) setBlockedDates(parsed.blockedDates);
-            if (parsed.adminSettings) setAdminSettings(parsed.adminSettings);
-            if (parsed.customTasks) setCustomTasks(parsed.customTasks);
-            if (parsed.groceryBills) setGroceryBills(parsed.groceryBills);
-            if (parsed.weeks) setWeeks(parsed.weeks);
-            if (parsed.units) setUnits(parsed.units);
-          } catch (e) {
-            console.error('Error loading saved data:', e);
-          }
-        }
-      }
-    };
-
-    // Listen for custom event from same-tab updates (Admin page)
-    const handleDataUpdate = () => {
-      const savedData = localStorage.getItem('goldfinchChefData');
-      if (savedData) {
-        try {
-          const parsed = JSON.parse(savedData);
-          if (parsed.recipes) setRecipes(parsed.recipes);
-          if (parsed.clients) setClients(parsed.clients);
-          if (parsed.menuItems) setMenuItems(parsed.menuItems);
-          if (parsed.masterIngredients) setMasterIngredients(parsed.masterIngredients);
-          if (parsed.orderHistory) setOrderHistory(parsed.orderHistory);
-          if (parsed.weeklyTasks) setWeeklyTasks(parsed.weeklyTasks);
-          if (parsed.drivers) setDrivers(parsed.drivers);
-          if (parsed.deliveryLog) setDeliveryLog(parsed.deliveryLog);
-          if (parsed.bagReminders) setBagReminders(parsed.bagReminders);
-          if (parsed.readyForDelivery) setReadyForDelivery(parsed.readyForDelivery);
-          if (parsed.clientPortalData) setClientPortalData(parsed.clientPortalData);
-          if (parsed.blockedDates) setBlockedDates(parsed.blockedDates);
-          if (parsed.adminSettings) setAdminSettings(parsed.adminSettings);
-          if (parsed.customTasks) setCustomTasks(parsed.customTasks);
-          if (parsed.groceryBills) setGroceryBills(parsed.groceryBills);
-          if (parsed.weeks) setWeeks(parsed.weeks);
-          if (parsed.units) setUnits(parsed.units);
-        } catch (e) {
-          console.error('Error loading saved data:', e);
-        }
-      }
-    };
-
-    // Reload data when tab becomes visible
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        handleDataUpdate();
-      }
-    };
-
-    // Check online status periodically
+    // Check online status periodically (no localStorage sync)
     const onlineCheckInterval = setInterval(async () => {
       const online = await checkOnlineStatus();
       setIsOnline(online);
-
-      // If we came back online, process pending saves
-      if (online) {
-        await processPendingSaves();
-      }
     }, 30000); // Check every 30 seconds
 
-    window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('goldfinchDataUpdated', handleDataUpdate);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('goldfinchDataUpdated', handleDataUpdate);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearInterval(onlineCheckInterval);
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
@@ -263,7 +175,7 @@ export function useAppData() {
     loadMenus();
   }, [selectedWeekId]);
 
-  // Save to localStorage and Supabase (debounced)
+  // Save to Supabase only (no localStorage for business data)
   useEffect(() => {
     // Skip save during initial load
     if (isInitialLoadRef.current) return;
@@ -289,9 +201,6 @@ export function useAppData() {
       lastSaved: new Date().toISOString()
     };
 
-    // Always save to localStorage immediately
-    localStorage.setItem('goldfinchChefData', JSON.stringify(dataToSave));
-
     // Debounce Supabase save to avoid too many requests
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -301,29 +210,32 @@ export function useAppData() {
       const online = await checkOnlineStatus();
       setIsOnline(online);
 
-      if (online) {
-        setIsSyncing(true);
-        setSyncError(null);
-
-        try {
-          const result = await syncToSupabase(dataToSave);
-          if (result.success) {
-            setLastSyncedAt(new Date().toISOString());
-          } else {
-            setSyncError(result.error);
-            // Queue for later if failed
-            queueSave(dataToSave);
-          }
-        } catch (error) {
-          setSyncError(error.message);
-          queueSave(dataToSave);
-        }
-
-        setIsSyncing(false);
-      } else {
-        // Queue for later when offline
-        queueSave(dataToSave);
+      if (!online) {
+        const errorMsg = 'Cannot save: You are offline. Please check your internet connection.';
+        setSyncError(errorMsg);
+        alert(errorMsg);
+        return;
       }
+
+      setIsSyncing(true);
+      setSyncError(null);
+
+      try {
+        const result = await syncToSupabase(dataToSave);
+        if (result.success) {
+          setLastSyncedAt(new Date().toISOString());
+        } else {
+          const errorMsg = `Save failed: ${result.error}`;
+          setSyncError(errorMsg);
+          alert(errorMsg);
+        }
+      } catch (error) {
+        const errorMsg = `Save failed: ${error.message}`;
+        setSyncError(errorMsg);
+        alert(errorMsg);
+      }
+
+      setIsSyncing(false);
     }, 2000); // Wait 2 seconds after last change before syncing
 
   }, [recipes, clients, menuItems, masterIngredients, orderHistory, weeklyTasks, drivers, deliveryLog, bagReminders, readyForDelivery, clientPortalData, blockedDates, adminSettings, customTasks, groceryBills, weeks, units]);

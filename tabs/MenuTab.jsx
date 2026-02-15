@@ -634,8 +634,7 @@ export default function MenuTab({
         showToast(`Menu approved for ${clientName}`, 'success');
 
         // Signal to KDS that menus were just approved (for syncing indicator)
-        localStorage.setItem('lastMenusApprovedAt', String(Date.now()));
-        window.dispatchEvent(new CustomEvent('menusApproved'));
+        window.dispatchEvent(new CustomEvent('menusApproved', { detail: { timestamp: Date.now() } }));
       } catch (error) {
         console.error('[MenuTab] ❌ SAVE FAILED:', error);
         console.error('[MenuTab] Error details:', JSON.stringify(error, null, 2));
@@ -650,8 +649,7 @@ export default function MenuTab({
       ));
 
       // Signal to KDS that menus were just approved
-      localStorage.setItem('lastMenusApprovedAt', String(Date.now()));
-      window.dispatchEvent(new CustomEvent('menusApproved'));
+      window.dispatchEvent(new CustomEvent('menusApproved', { detail: { timestamp: Date.now() } }));
       showToast(`Menu approved for ${clientName} (local only - not persisted)`, 'info');
     }
   };

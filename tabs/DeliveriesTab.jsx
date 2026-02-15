@@ -1,8 +1,20 @@
-import React, { useState } from 'react';
-import { MapPin, Clock, ExternalLink, GripVertical, Truck, Activity, FileText, Check, AlertTriangle, User, Phone, ShoppingBag, Bell, Calendar, Plus, Trash2, Edit2, X, Car, Save, Navigation } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { MapPin, Clock, ExternalLink, GripVertical, Truck, Activity, FileText, Check, AlertTriangle, User, Phone, ShoppingBag, Bell, Calendar, Plus, Trash2, Edit2, X, Car, Save, Navigation, Eye, EyeOff } from 'lucide-react';
 import { ZONES, DAYS, DELIVERY_PROBLEMS, DEFAULT_NEW_DRIVER } from '../constants';
 import { isSupabaseMode } from '../lib/dataMode';
-import { saveDriverToSupabase, deleteDriverFromSupabase } from '../lib/database';
+import {
+  saveDriverToSupabase,
+  deleteDriverFromSupabase,
+  normalizeName,
+  fetchDeliveryPlannerStops,
+  fetchMenusByWeek,
+  saveDeliveryRoute,
+  fetchDeliveryRoutes,
+  saveRouteOrder,
+  fetchRouteOrder,
+  saveStartingAddress,
+  fetchStartingAddress
+} from '../lib/database';
 
 const ViewToggle = ({ activeView, setActiveView }) => (
   <div className="flex rounded-lg overflow-hidden border-2 flex-wrap" style={{ borderColor: '#ebb582' }}>
@@ -39,10 +51,6 @@ const FormField = ({ label, children }) => (
 const inputStyle = "p-2 border-2 rounded-lg";
 const borderStyle = { borderColor: '#ebb582' };
 
-const ROUTE_ORDER_KEY = 'goldfinchRouteOrder';
-
-const SAVED_ROUTES_KEY = 'goldfinchSavedRoutes';
-
 export default function DeliveriesTab({
   clients,
   drivers,
@@ -66,65 +74,188 @@ export default function DeliveriesTab({
   clientPortalData = {},
   saveDriverRoutes
 }) {
-  // Helper: Check if client has an approved menu for the selected week
-  // Uses client name matching (clientName or displayName) and week_id/weekId
-  const hasApprovedMenu = (client, weekId) => {
-    if (!client || !weekId) return false;
-    const clientName = client.name;
-    const displayName = client.displayName;
+  // ============ DEBUG FLAG (set to true to enable console logging) ============
+  const enableDebug = false;
 
-    const result = menuItems.some(item => {
-      const matchesClient = item.clientName === clientName || item.clientName === displayName;
-      const matchesWeek = (item.week_id === weekId) || (item.weekId === weekId);
-      const isApproved = item.approved === true;
-      return matchesClient && matchesWeek && isApproved;
-    });
+  // ============ DERIVED VALUES FROM PROPS ============
+  // Derive monday from weeks/selectedWeekId (source of truth from props)
+  const monday = weeks?.[selectedWeekId]?.dates?.monday || null;
 
-    console.log('[DeliveryPlanner]', {
-      client: client.name,
-      hasMenu: result,
-      weekId: weekId
-    });
+  // ============ VIEW-BASED DELIVERY STOPS (Single Source of Truth) ============
+  const [viewStops, setViewStops] = useState([]);
+  const [viewStopsByDate, setViewStopsByDate] = useState(new Map());
+  const [viewUniqueDates, setViewUniqueDates] = useState([]);
+  const [isLoadingViewStops, setIsLoadingViewStops] = useState(false);
 
-    return result;
-  };
+  // ============ APPROVED STOP KEYS SET (keyed by ${date}::${client_id}) ============
+  // This determines if a stop is ROUTABLE (has approved menu)
+  const [approvedStopKeys, setApprovedStopKeys] = useState(new Set());
+  const [isLoadingMenus, setIsLoadingMenus] = useState(false);
 
-  // Statuses that indicate an approved menu exists
-  const APPROVED_MENU_STATUSES = ['delivered', 'ready', 'kds'];
+  // Toggle for showing "No Menu" clients (default: HIDE)
+  const [showNoMenuClients, setShowNoMenuClients] = useState(false);
 
-  // Saved routes state (persisted to localStorage and pushed to driver portal)
-  const [savedRoutes, setSavedRoutes] = useState(() => {
-    try {
-      const saved = localStorage.getItem(SAVED_ROUTES_KEY);
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
+  // ============ ONE-TIME DEBUG LOG ON WEEK CHANGE ============
+  useEffect(() => {
+    if (enableDebug) {
+      console.log('[DeliveriesTab] weekChange:', {
+        selectedWeekId,
+        approvedMenusCount: approvedStopKeys.size,
+        approvedStopKeysCount: approvedStopKeys.size
+      });
     }
-  });
+  }, [selectedWeekId, approvedStopKeys.size]);
 
-  const saveRoutesToStorage = (routes) => {
-    setSavedRoutes(routes);
-    localStorage.setItem(SAVED_ROUTES_KEY, JSON.stringify(routes));
+  // ============ FETCH DELIVERY STOPS (depends only on selectedWeekId) ============
+  useEffect(() => {
+    if (!selectedWeekId || !isSupabaseMode()) return;
+
+    const fetchViewData = async () => {
+      setIsLoadingViewStops(true);
+      try {
+        const { allStops, stopsByDate, uniqueDates } = await fetchDeliveryPlannerStops(selectedWeekId);
+        setViewStops(allStops);
+        setViewStopsByDate(stopsByDate);
+        setViewUniqueDates(uniqueDates);
+      } catch (err) {
+        console.error('[DeliveryPlanner] failed to load view data:', err);
+      } finally {
+        setIsLoadingViewStops(false);
+      }
+    };
+
+    fetchViewData();
+  }, [selectedWeekId]);
+
+  // ============ FETCH APPROVED MENUS & BUILD STOP KEYS (depends only on selectedWeekId) ============
+  useEffect(() => {
+    if (!selectedWeekId || !isSupabaseMode()) return;
+
+    const fetchApprovedMenus = async () => {
+      setIsLoadingMenus(true);
+      try {
+        // Fetch approved menus only (approvedOnly = true)
+        const menus = await fetchMenusByWeek(selectedWeekId, true);
+
+        // Build approvedStopKeys Set using ${date}::${client_id}
+        // This is the source of truth for what stops are ROUTABLE
+        const stopKeys = new Set();
+        menus.forEach(menu => {
+          if (menu.clientId) {
+            // Primary key: ${date}::${client_id}
+            stopKeys.add(`${menu.date}::${menu.clientId}`);
+          } else if (menu.clientName) {
+            // Fallback for legacy data without client_id
+            stopKeys.add(`${menu.date}::name::${normalizeName(menu.clientName)}`);
+          }
+        });
+
+        setApprovedStopKeys(stopKeys);
+      } catch (err) {
+        console.error('[DeliveryPlanner] failed to load approved menus:', err);
+        setApprovedStopKeys(new Set());
+      } finally {
+        setIsLoadingMenus(false);
+      }
+    };
+
+    fetchApprovedMenus();
+  }, [selectedWeekId]);
+
+  // ============ HELPER: Check if client has approved menu for a specific date ============
+  // Uses approvedStopKeys (source of truth for routable stops)
+  const isStopRoutable = (clientId, clientName, date) => {
+    // Primary: check by client_id
+    if (clientId) {
+      const stopKey = `${date}::${clientId}`;
+      if (approvedStopKeys.has(stopKey)) {
+        return true;
+      }
+    }
+    // Fallback: check by normalized name (for legacy data)
+    if (clientName) {
+      const stopKeyByName = `${date}::name::${normalizeName(clientName)}`;
+      if (approvedStopKeys.has(stopKeyByName)) {
+        return true;
+      }
+    }
+    return false;
   };
+
+  // Helper: Get the stop key for a client on a specific date
+  const getStopKeyForClient = (clientId, clientName, date) => {
+    if (clientId) {
+      return `${date}::${clientId}`;
+    }
+    return `${date}::name::${normalizeName(clientName)}`;
+  };
+
+  // Saved routes state (fetched from Supabase)
+  const [savedRoutes, setSavedRoutes] = useState({});
+  const [isLoadingRoutes, setIsLoadingRoutes] = useState(false);
+
+  // Fetch saved routes from Supabase on week change
+  useEffect(() => {
+    if (!selectedWeekId || !isSupabaseMode()) return;
+
+    const loadRoutes = async () => {
+      setIsLoadingRoutes(true);
+      try {
+        const routes = await fetchDeliveryRoutes(selectedWeekId);
+        setSavedRoutes(routes);
+      } catch (err) {
+        console.error('[DeliveriesTab] failed to load routes:', err);
+        alert(`Failed to load saved routes: ${err.message}`);
+      } finally {
+        setIsLoadingRoutes(false);
+      }
+    };
+    loadRoutes();
+  }, [selectedWeekId]);
+
   const [activeView, setActiveView] = useState('week');
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // selectedDate defaults to monday (derived from props), no logging
+  const [selectedDate, setSelectedDate] = useState(() => monday || new Date().toISOString().split('T')[0]);
+
+  // Sync selectedDate when week changes (no logging)
+  useEffect(() => {
+    if (monday) {
+      setSelectedDate(monday);
+    }
+  }, [selectedWeekId, monday]);
   const [draggedItem, setDraggedItem] = useState(null);
   const [dragOverItem, setDragOverItem] = useState(null);
 
   // Route order state: { [date]: { [zone]: [stopKey1, stopKey2, ...] } }
-  const [routeOrder, setRouteOrder] = useState(() => {
-    try {
-      const saved = localStorage.getItem(ROUTE_ORDER_KEY);
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
+  const [routeOrder, setRouteOrder] = useState({});
 
-  // Save route order to localStorage
-  const saveRouteOrder = (newOrder) => {
+  // Fetch route order from Supabase on mount
+  useEffect(() => {
+    if (!isSupabaseMode()) return;
+
+    const loadRouteOrder = async () => {
+      try {
+        const order = await fetchRouteOrder();
+        setRouteOrder(order);
+      } catch (err) {
+        console.error('[DeliveriesTab] failed to load route order:', err);
+      }
+    };
+    loadRouteOrder();
+  }, []);
+
+  // Save route order to Supabase
+  const updateRouteOrder = async (newOrder) => {
     setRouteOrder(newOrder);
-    localStorage.setItem(ROUTE_ORDER_KEY, JSON.stringify(newOrder));
+    if (isSupabaseMode()) {
+      try {
+        await saveRouteOrder(newOrder);
+      } catch (err) {
+        console.error('[DeliveriesTab] failed to save route order:', err);
+        alert(`Failed to save route order: ${err.message}`);
+      }
+    }
   };
 
   // Drivers state
@@ -138,18 +269,35 @@ export default function DeliveriesTab({
   const [logZoneFilter, setLogZoneFilter] = useState('');
   const [logProblemsOnly, setLogProblemsOnly] = useState(false);
 
-  // Starting address for routes (persisted to localStorage)
-  const [startingAddress, setStartingAddress] = useState(() => {
-    try {
-      return localStorage.getItem('goldfinchStartingAddress') || '';
-    } catch {
-      return '';
-    }
-  });
+  // Starting address for routes (fetched from Supabase)
+  const [startingAddress, setStartingAddressState] = useState('');
 
-  const updateStartingAddress = (value) => {
-    setStartingAddress(value);
-    localStorage.setItem('goldfinchStartingAddress', value);
+  // Fetch starting address from Supabase on mount
+  useEffect(() => {
+    if (!isSupabaseMode()) return;
+
+    const loadStartingAddress = async () => {
+      try {
+        const address = await fetchStartingAddress();
+        setStartingAddressState(address);
+      } catch (err) {
+        console.error('[DeliveriesTab] failed to load starting address:', err);
+      }
+    };
+    loadStartingAddress();
+  }, []);
+
+  // Save starting address to Supabase
+  const updateStartingAddress = async (value) => {
+    setStartingAddressState(value);
+    if (isSupabaseMode()) {
+      try {
+        await saveStartingAddress(value);
+      } catch (err) {
+        console.error('[DeliveriesTab] failed to save starting address:', err);
+        alert(`Failed to save starting address: ${err.message}`);
+      }
+    }
   };
 
   // Time windows
@@ -546,7 +694,7 @@ export default function DeliveriesTab({
         [zone]: newOrder
       }
     };
-    saveRouteOrder(newRouteOrder);
+    updateRouteOrder(newRouteOrder);
 
     setDraggedItem(null);
     setDragOverItem(null);
@@ -1099,8 +1247,17 @@ export default function DeliveriesTab({
 
       {/* Week View */}
       {activeView === 'week' && (() => {
-        // Get the Monday of selected week
+        // Get dates from shared week state (source of truth)
         const getWeekDates = () => {
+          const weekData = weeks[selectedWeekId];
+          if (weekData?.dates) {
+            return {
+              monday: weekData.dates.monday || '',
+              tuesday: weekData.dates.tuesday || '',
+              thursday: weekData.dates.thursday || ''
+            };
+          }
+          // Fallback: derive from selectedDate if no week data
           try {
             const date = new Date(selectedDate + 'T12:00:00');
             if (isNaN(date.getTime())) {
@@ -1125,25 +1282,33 @@ export default function DeliveriesTab({
 
         // Get client status for a specific date
         const getClientStatus = (client, date) => {
-          // Helper to check if menu item matches this client
+          // Helper to check if menu item matches this client using normalized names
+          const normalizedClientName = normalizeName(client.name);
+          const normalizedDisplayName = normalizeName(client.displayName);
+
           const matchesClient = (m) => {
-            const clientName = client.name;
-            const displayName = client.displayName;
-            return m.clientName === clientName || m.clientName === displayName;
+            const normalizedMenuClient = normalizeName(m.clientName);
+            return normalizedMenuClient === normalizedClientName || normalizedMenuClient === normalizedDisplayName;
           };
 
           // Get menu items for this client on this date
           const clientMenuItems = menuItems.filter(m => matchesClient(m) && m.date === date);
 
           // Check if delivered
-          if (deliveryLog.some(e => (e.clientName === client.name || e.clientName === client.displayName) && e.date === date)) {
+          if (deliveryLog.some(e => {
+            const normalizedLogClient = normalizeName(e.clientName);
+            return (normalizedLogClient === normalizedClientName || normalizedLogClient === normalizedDisplayName) && e.date === date;
+          })) {
             return { status: 'delivered', label: 'Delivered', color: '#22c55e', bgColor: '#dcfce7' };
           }
           // Check if ready for delivery
-          if (readyForDelivery.some(o => (o.clientName === client.name || o.clientName === client.displayName) && o.date === date)) {
+          if (readyForDelivery.some(o => {
+            const normalizedOrderClient = normalizeName(o.clientName);
+            return (normalizedOrderClient === normalizedClientName || normalizedOrderClient === normalizedDisplayName) && o.date === date;
+          })) {
             return { status: 'ready', label: 'Ready', color: '#f59e0b', bgColor: '#fef3c7' };
           }
-          // Check if has approved menu (in KDS)
+          // Check if has approved menu (in KDS) - blue highlight
           if (clientMenuItems.some(m => m.approved)) {
             return { status: 'kds', label: 'In KDS', color: '#3b82f6', bgColor: '#dbeafe' };
           }
@@ -1151,90 +1316,153 @@ export default function DeliveriesTab({
           if (clientMenuItems.some(m => !m.approved)) {
             return { status: 'pending', label: 'Menu Pending', color: '#6b7280', bgColor: '#f3f4f6' };
           }
-          // No menu yet
+          // No menu yet - excluded from Driver Portal
           return { status: 'none', label: 'No Menu', color: '#9ca3af', bgColor: '#f9fafb' };
         };
 
-        // Get ALL scheduled clients for a specific date
-        // Checks: 1) has menu items for date, 2) client.deliveryDay matches day name, 3) admin-set deliveryDates, 4) client-set selectedDates
+        // Get scheduled clients for a specific date
+        // Routable = has approved menu in approvedStopKeys (NOT dependent on KDS)
         const getScheduledClientsForDay = (dayName, date) => {
           const scheduledClients = [];
-          const addedClients = new Set();
+          const addedClientIds = new Set();
+          const addedClientNames = new Set();
 
-          // Helper to check if client has menu items for this date
-          const hasMenuForDate = (client) => {
-            return menuItems.some(m =>
-              (m.clientName === client.name || m.clientName === client.displayName) &&
-              m.date === date
-            );
-          };
+          // 1. Get stops from the view for this date (clients with approved menus)
+          const viewStopsForDate = viewStopsByDate.get(date) || [];
 
-          // Helper to check if client has ready orders for this date
-          const hasReadyOrdersForDate = (client) => {
-            return readyForDelivery.some(o =>
-              (o.clientName === client.name || o.clientName === client.displayName) &&
-              o.date === date
-            );
-          };
-
-          clients.forEach(client => {
-            if (client.status !== 'active' || client.pickup) return;
-            if (addedClients.has(client.name)) return;
-
-            let isScheduled = false;
-
-            // Check 1: Has menu items or ready orders for this date (most important)
-            if (hasMenuForDate(client) || hasReadyOrdersForDate(client)) {
-              isScheduled = true;
+          viewStopsForDate.forEach(stop => {
+            // Track by clientId when available, otherwise by normalized name
+            if (stop.clientId) {
+              if (addedClientIds.has(stop.clientId)) return;
+              addedClientIds.add(stop.clientId);
+            } else {
+              const normalizedName = normalizeName(stop.clientName);
+              if (addedClientNames.has(normalizedName)) return;
+              addedClientNames.add(normalizedName);
             }
 
-            // Check 2: Regular delivery day matches
-            if (!isScheduled && client.deliveryDay === dayName) {
-              isScheduled = true;
+            const normalizedName = normalizeName(stop.clientName);
+
+            // Check if delivered
+            const isDelivered = stop.clientId
+              ? deliveryLog.some(e => (e.clientId === stop.clientId || normalizeName(e.clientName) === normalizedName) && e.date === date)
+              : deliveryLog.some(e => normalizeName(e.clientName) === normalizedName && e.date === date);
+
+            // Check if KDS says ready (separate from routable)
+            const isReady = stop.clientId
+              ? readyForDelivery.some(o => (o.clientId === stop.clientId || normalizeName(o.clientName) === normalizedName) && o.date === date)
+              : readyForDelivery.some(o => normalizeName(o.clientName) === normalizedName && o.date === date);
+
+            const readyOrders = stop.clientId
+              ? readyForDelivery.filter(o => (o.clientId === stop.clientId || normalizeName(o.clientName) === normalizedName) && o.date === date)
+              : readyForDelivery.filter(o => normalizeName(o.clientName) === normalizedName && o.date === date);
+
+            // Check if has approved menu (this determines ROUTABLE, not KDS status)
+            const hasApprovedMenu = isStopRoutable(stop.clientId, stop.clientName, date);
+
+            // Determine display status (KDS completion is separate from routable)
+            // Status hierarchy: Delivered > Ready (KDS complete) > In KDS (has approved menu)
+            let status, label, color, bgColor;
+            if (isDelivered) {
+              status = 'delivered'; label = 'Delivered'; color = '#22c55e'; bgColor = '#dcfce7';
+            } else if (isReady) {
+              // KDS says ready - food is prepared
+              status = 'ready'; label = 'Ready'; color = '#f59e0b'; bgColor = '#fef3c7';
+            } else if (hasApprovedMenu) {
+              // Has approved menu - routable, waiting for KDS
+              status = 'kds'; label = 'In KDS'; color = '#3b82f6'; bgColor = '#dbeafe';
+            } else {
+              // No approved menu - shouldn't happen for viewStops, but handle gracefully
+              status = 'none'; label = 'No Menu'; color = '#9ca3af'; bgColor = '#f9fafb';
             }
 
-            // Check 3: Admin-set specific delivery dates
-            if (!isScheduled && client.deliveryDates?.length > 0) {
-              if (client.deliveryDates.includes(date)) {
-                isScheduled = true;
-              }
-            }
+            // Get client record for additional info
+            const clientRecord = stop.clientId
+              ? clients.find(c => c.id === stop.clientId)
+              : clients.find(c => normalizeName(c.name) === normalizedName);
+            const contacts = clientRecord?.contacts || [];
 
-            // Check 4: Client-set delivery dates from portal
-            const portalData = clientPortalData[client.name];
-            if (!isScheduled && portalData?.selectedDates?.length > 0) {
-              if (portalData.selectedDates.includes(date)) {
-                isScheduled = true;
-              }
-            }
+            const stopKey = stop.clientId ? `id:${stop.clientId}` : stop.clientName;
 
-            if (isScheduled) {
-              addedClients.add(client.name);
-              const contacts = client.contacts || [];
-              const firstAddr = contacts.find(ct => ct.address)?.address || client.address || '';
-              const statusInfo = getClientStatus(client, date);
-              const readyOrders = readyForDelivery.filter(o => (o.clientName === client.name || o.clientName === client.displayName) && o.date === date);
+            scheduledClients.push({
+              clientId: stop.clientId,
+              clientName: stop.clientName,
+              displayName: stop.displayName,
+              zone: stop.zone || 'Unassigned',
+              address: stop.address || '',
+              hasAddress: stop.hasAddress,
+              phone: contacts[0]?.phone || clientRecord?.phone || '',
+              orders: readyOrders,
+              stopKey,
+              status,
+              label,
+              color,
+              bgColor,
+              // ROUTABLE = has approved menu (NOT dependent on KDS)
+              hasApprovedMenu,
+              isRoutable: hasApprovedMenu
+            });
+          });
 
-              // Only add if they have menu items, ready orders, or scheduled delivery
-              // Skip clients with "No Menu" status unless they have a scheduled delivery day
-              const hasDeliverySchedule = client.deliveryDay === dayName ||
+          // 2. Optionally add "No Menu" clients if toggle is enabled
+          if (showNoMenuClients) {
+            clients.forEach(client => {
+              if (client.status !== 'active' || client.pickup) return;
+
+              // Skip if already added (by clientId or name)
+              if (client.id && addedClientIds.has(client.id)) return;
+              if (addedClientNames.has(normalizeName(client.name))) return;
+
+              // Check if client should be scheduled for this date
+              const portalData = clientPortalData[client.name];
+              const hasDeliverySchedule =
+                client.deliveryDay === dayName ||
                 client.deliveryDates?.includes(date) ||
                 portalData?.selectedDates?.includes(date);
 
-              if (statusInfo.status !== 'none' || hasDeliverySchedule) {
+              if (hasDeliverySchedule) {
+                // Verify against weekMenus using client_id matching
+                const menuMatch = hasMenuForClientOnDate(client.id, client.name, date);
+
+                // If client has approved menu, they should have been in viewStops
+                // This shouldn't happen, but handle it gracefully
+                if (menuMatch.matched) {
+                  // Skip - they should be showing from viewStops
+                  return;
+                }
+
+                // Track by clientId when available
+                if (client.id) addedClientIds.add(client.id);
+                addedClientNames.add(normalizeName(client.name));
+
+                const contacts = client.contacts || [];
+                const firstAddr = contacts.find(ct => ct.address)?.address || client.address || '';
+
+                // Use clientId for stopKey when available
+                const stopKey = client.id ? `id:${client.id}` : client.name;
+
                 scheduledClients.push({
+                  clientId: client.id || null,
                   clientName: client.name,
                   displayName: client.displayName || client.name,
                   zone: client.zone || 'Unassigned',
                   address: firstAddr,
+                  hasAddress: !!firstAddr,
                   phone: contacts[0]?.phone || client.phone || '',
-                  orders: readyOrders,
-                  stopKey: client.name,
-                  ...statusInfo
+                  orders: [],
+                  stopKey,
+                  status: 'none',
+                  label: 'No Menu',
+                  color: '#9ca3af',
+                  bgColor: '#f9fafb',
+                  hasApprovedMenu: false,
+                  isRoutable: false,
+                  matchedByClientId: false,
+                  matchedByName: false
                 });
               }
-            }
-          });
+            });
+          }
 
           return scheduledClients;
         };
@@ -1301,97 +1529,67 @@ export default function DeliveriesTab({
               [zone]: newOrder
             }
           };
-          saveRouteOrder(newRouteOrder);
+          updateRouteOrder(newRouteOrder);
 
           setDraggedItem(null);
           setDragOverItem(null);
         };
 
-        // Save route to driver portal - includes ALL scheduled/routable clients
-        // Routable = has menu items OR scheduled delivery for this date (regardless of KDS status)
-        const saveRouteForDay = (date, zone, stops) => {
-  console.log("🔥 SAVE ROUTE FUNCTION HIT", { date, zone, stopsCount: stops?.length });
-  debugger;
+        // Save route to Supabase delivery_runs table
+        const saveRouteForDay = async (date, zone, stops) => {
+          // IMMEDIATE LOG - this MUST appear in console when button is clicked
+          console.log('[SAVE ROUTE CLICKED]', { weekId: selectedWeekId, date, zone, stops: stops?.length });
 
-  console.log('[saveRouteForDay] click', {
-    selectedWeekId,
-    date,
-    zone,
-    stopsCount: stops?.length,
-    driverFound: !!drivers.find(d => d.zone === zone)
-  });
-
-          const driver = drivers.find(d => d.zone === zone);
-
-if (!driver) {
-  alert('No driver assigned to this zone yet — saving route as UNASSIGNED.');
-  // IMPORTANT: do NOT return
-}
-
-          // Only include clients with APPROVED menus in route (delivered, ready, kds status)
-          const routableStops = stops.filter(s => APPROVED_MENU_STATUSES.includes(s.status));
-
-          console.log('[DeliveryPlanner] saveRouteForDay routableStops:', routableStops.length);
-          console.log('[DeliveryPlanner] stops by status:', stops.map(s => ({
-            name: s.displayName,
-            status: s.status,
-            hasApprovedMenu: APPROVED_MENU_STATUSES.includes(s.status)
-          })));
+          // Get routable stops (clients with approved menus)
+          const routableStops = (stops || []).filter(s => s.isRoutable);
+          console.log('[SAVE ROUTE] routableStops:', routableStops.length, 'of', stops?.length);
 
           if (routableStops.length === 0) {
-            const disabledReason = 'No clients scheduled for delivery in this zone';
-            console.log('[Routes] disabledReason:', disabledReason);
-            alert(disabledReason);
+            console.warn('[SAVE ROUTE] EARLY RETURN: No routable stops');
+            alert('No clients with approved menus in this zone.');
+            return;
+          }
+
+          const driver = drivers.find(d => d.zone === zone);
+          if (!driver) {
+            console.warn('[SAVE ROUTE] EARLY RETURN: No driver for zone', zone);
+            alert(`No driver assigned to zone "${zone}". Please assign a driver first.`);
             return;
           }
 
           const orderedStops = getOrderedStopsForZone(date, zone, routableStops);
 
-          const routeData = {
-            date,
-            zone,
-            driverName: driver.name,
-            driverId: driver.id,
-            stops: orderedStops.map((stop, idx) => ({
-              order: idx + 1,
-              clientName: stop.clientName,
-              displayName: stop.displayName,
-              address: stop.address,
-              phone: stop.phone,
-              status: stop.status, // Include status for display in driver portal
-              dishes: stop.orders.flatMap(o => o.dishes || []),
-              portions: stop.orders.reduce((sum, o) => sum + (o.portions || 0), 0)
-            })),
-            savedAt: new Date().toISOString()
-          };
+          // Build stops array for JSONB storage
+          const stopsJsonArray = orderedStops.map((stop, idx) => ({
+            stop_index: idx,
+            order: idx + 1,
+            client_id: stop.clientId || null,
+            client_name: stop.clientName,
+            display_name: stop.displayName || stop.clientName,
+            address: stop.address || '',
+            phone: stop.phone || '',
+            zone: zone,
+            pickup: stop.isPickup || false,
+            delivery_day: date,
+            dishes: stop.orders?.flatMap(o => o.dishes || []) || [],
+            portions: stop.orders?.reduce((sum, o) => sum + (o.portions || 0), 0) || 0,
+            status: 'pending'
+          }));
 
-          const newSavedRoutes = {
-            ...savedRoutes,
-            [`${date}-${zone}`]: routeData
-          };
+          console.log('[SAVE ROUTE] Calling saveDeliveryRoute...', { weekId: selectedWeekId, date, zone, stopsCount: stopsJsonArray.length });
 
-          // Save to local state
-          console.log('[SAVE ROUTE] about to persist', {
-  date,
-  zone,
-  routableStopsCount: routableStops.length,
-  savedRoutesKeys: Object.keys(newSavedRoutes).slice(0, 5),
-  hasSaveDriverRoutes: !!saveDriverRoutes,
-});
-          saveRoutesToStorage(newSavedRoutes);
+          try {
+            // Call the database function that does the actual upsert
+            const savedId = await saveDeliveryRoute(selectedWeekId, date, zone, stopsJsonArray, {
+              driver_id: driver.id,
+              driver_name: driver.name
+            });
 
-          // Also save to main data storage so driver portal can access it
-        // saveRoutesToStorage(newSavedRoutes);
-
-// if (saveDriverRoutes) {
-//   saveDriverRoutes(newSavedRoutes);
-// }
-            console.log('[Routes] Route saved:', ...)
-alert(...)
+            throw new Error("STOP: Save Route reached legacy success message (Supabase write not wired yet)");
+          } catch (err) {
+            console.error('[SaveRoute] error:', err);
+            alert(`Failed to save route: ${err.message}`);
           }
-
-          console.log('[Routes] Route saved:', { date, zone, stopCount: routableStops.length });
-          alert(`Route saved for ${driver.name} on ${date}!\n${routableStops.length} stop(s) scheduled.\nThe driver can now view this route in the Driver Portal.`);
         };
 
         // Generate maps link for a zone on a date
@@ -1419,13 +1617,13 @@ alert(...)
           { name: 'Thursday', date: weekDates.thursday }
         ];
 
-        // Count totals
-        const totalScheduled = deliveryDays.reduce((sum, day) =>
-          sum + getScheduledClientsForDay(day.name, day.date).length, 0
+        // Count totals from view data (approved menus only, unless toggle enabled)
+        const allScheduledForWeek = deliveryDays.flatMap(day =>
+          getScheduledClientsForDay(day.name, day.date)
         );
-        const totalReady = deliveryDays.reduce((sum, day) =>
-          sum + getScheduledClientsForDay(day.name, day.date).filter(s => s.status === 'ready').length, 0
-        );
+        const totalScheduled = allScheduledForWeek.filter(s => s.hasApprovedMenu).length;
+        const totalNoMenu = allScheduledForWeek.filter(s => !s.hasApprovedMenu).length;
+        const totalReady = allScheduledForWeek.filter(s => s.status === 'ready').length;
 
         return (
           <>
@@ -1436,7 +1634,7 @@ alert(...)
                     Week Deliveries
                   </h3>
                   <p className="text-gray-600">
-                    {totalScheduled} scheduled • {totalReady} ready for delivery
+                    {totalScheduled} with menu{totalNoMenu > 0 && showNoMenuClients ? ` + ${totalNoMenu} no menu` : ''} • {totalReady} ready
                   </p>
                 </div>
                 <div>
@@ -1450,31 +1648,63 @@ alert(...)
                 </div>
               </div>
 
-              {/* Status legend */}
-              <div className="flex flex-wrap gap-3 text-xs">
-                <span className="flex items-center gap-1">
-                  <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#22c55e' }}></span>
-                  Delivered
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#f59e0b' }}></span>
-                  Ready
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#3b82f6' }}></span>
-                  In KDS
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#6b7280' }}></span>
-                  Menu Pending
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#9ca3af' }}></span>
-                  No Menu
-                </span>
+              {/* Status legend and toggle */}
+              <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
+                <div className="flex flex-wrap gap-3 text-xs">
+                  <span className="flex items-center gap-1">
+                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#22c55e' }}></span>
+                    Delivered
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#f59e0b' }}></span>
+                    Ready
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#3b82f6' }}></span>
+                    In KDS
+                  </span>
+                  {showNoMenuClients && (
+                    <span className="flex items-center gap-1">
+                      <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#9ca3af' }}></span>
+                      No Menu
+                    </span>
+                  )}
+                </div>
+
+                {/* Toggle for showing "No Menu" clients */}
+                <button
+                  onClick={() => setShowNoMenuClients(!showNoMenuClients)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    showNoMenuClients
+                      ? 'bg-gray-200 text-gray-700'
+                      : 'bg-gray-100 text-gray-500'
+                  }`}
+                  title={showNoMenuClients ? 'Hide clients without menus' : 'Show clients without menus'}
+                >
+                  {showNoMenuClients ? <Eye size={14} /> : <EyeOff size={14} />}
+                  {showNoMenuClients ? 'Showing No Menu' : 'No Menu Hidden'}
+                </button>
               </div>
+
+              {/* Loading indicator */}
+              {(isLoadingViewStops || isLoadingMenus) && (
+                <div className="mt-4 text-center text-gray-500 text-sm">
+                  <span className="animate-pulse">Loading delivery stops...</span>
+                </div>
+              )}
+
+              {/* Empty state - no approved deliveries */}
+              {!isLoadingViewStops && !isLoadingMenus && approvedStopsSet.size === 0 && (
+                <div className="mt-6 text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                  <Truck size={40} className="mx-auto text-gray-400 mb-3" />
+                  <p className="text-gray-500 font-medium">No approved deliveries for this week yet</p>
+                  <p className="text-gray-400 text-sm mt-1">Approve menus in the Menu Planner to see deliveries here</p>
+                </div>
+              )}
             </div>
 
+            {/* Only show grid if we have approved stops or are showing "No Menu" clients */}
+            {(!isLoadingViewStops && !isLoadingMenus && (approvedStopsSet.size > 0 || showNoMenuClients)) && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {deliveryDays.map(day => {
                 const scheduledClients = getScheduledClientsForDay(day.name, day.date);
@@ -1494,8 +1724,8 @@ alert(...)
 
                 const zonesForDay = Object.keys(clientsByZone);
                 const readyCount = scheduledClients.filter(s => s.status === 'ready').length;
-                // Count only clients with approved menus for the main count
-                const clientsWithMenuCount = scheduledClients.filter(s => APPROVED_MENU_STATUSES.includes(s.status)).length;
+                // Count only clients with approved menus for the main count (routable = has approved menu)
+                const clientsWithMenuCount = scheduledClients.filter(s => s.isRoutable).length;
                 const noMenuCount = scheduledClients.length - clientsWithMenuCount;
 
                 return (
@@ -1532,14 +1762,9 @@ alert(...)
                           const orderedClients = getOrderedStopsForZone(day.date, zone, zoneClients);
                           const driver = zone !== 'Unassigned' ? drivers.find(d => d.zone === zone) : null;
                           const isRouteSaved = savedRoutes[`${day.date}-${zone}`];
-                          // Routable = ONLY clients with approved menus (delivered, ready, kds status)
-                          const routableCount = zoneClients.filter(c => APPROVED_MENU_STATUSES.includes(c.status)).length;
+                          // Routable = has approved menu (NOT dependent on KDS status)
+                          const routableCount = zoneClients.filter(c => c.isRoutable).length;
                           const readyCount = zoneClients.filter(c => c.status === 'ready').length;
-
-                          // Log routing eligibility
-                          if (zoneClients.length > 0) {
-                            console.log(`[Routes] ${day.name} Zone ${zone}: ${routableCount} routable, ${readyCount} ready (KDS complete)`);
-                          }
 
                           return (
                             <div key={zone} className="border-2 rounded-lg p-3" style={{ borderColor: isRouteSaved ? '#22c55e' : '#ebb582' }}>
@@ -1647,6 +1872,7 @@ alert(...)
                 );
               })}
             </div>
+            )}
           </>
         );
       })()}

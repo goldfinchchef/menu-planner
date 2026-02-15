@@ -53,13 +53,18 @@ export default function DriverView() {
     clientPortalData,
     deliveryStops,
     isLoaded,
+    isLoadingDeliveries,
+    isLoadingRoutes,
+    missingClients,
     updateDeliveryLog,
     updateReadyForDelivery,
     updateOrderHistory,
     authenticateDriver,
     getDriverByName,
-    fetchStopsForDriver,
-    fetchClientsFromSupabase
+    fetchDeliveriesForWeek,
+    fetchSavedRoutes,
+    fetchClientsFromSupabase,
+    normalizeName
   } = useDriverData();
 
   // Auth state
@@ -82,27 +87,30 @@ export default function DriverView() {
     }
   }, [isLoaded, searchParams, driver, getDriverByName]);
 
-  // Fetch delivery stops and clients from Supabase when driver is authenticated
+  // Get current week ID (ISO format: YYYY-Www)
+  const getCurrentWeekId = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const startOfYear = new Date(year, 0, 1);
+    const dayOfYear = Math.floor((now - startOfYear) / (24 * 60 * 60 * 1000)) + 1;
+    const weekNum = Math.ceil((dayOfYear + startOfYear.getDay()) / 7);
+    return `${year}-W${String(weekNum).padStart(2, '0')}`;
+  };
+
+  const [currentWeekId, setCurrentWeekId] = useState(getCurrentWeekId);
+
+  // Fetch saved routes and approved stops when driver is authenticated
   useEffect(() => {
     if (driver?.zone) {
-      console.log('[DriverView] driver authenticated, fetching data for zone:', driver.zone);
+      const weekId = getCurrentWeekId();
+      setCurrentWeekId(weekId);
+      // Fetch all data for the week: clients, saved routes, and approved stops
       fetchClientsFromSupabase();
-      fetchStopsForDriver(driver.zone);
+      fetchSavedRoutes(weekId, driver.zone);
+      fetchDeliveriesForWeek(weekId, driver.zone);
     }
-  }, [driver?.zone, fetchClientsFromSupabase, fetchStopsForDriver]);
+  }, [driver?.zone, fetchClientsFromSupabase, fetchSavedRoutes, fetchDeliveriesForWeek]);
 
-  // Debug log delivery stops
-  useEffect(() => {
-    console.log('[DriverView] deliveryStops updated:', {
-      count: deliveryStops?.length,
-      sample3: deliveryStops?.slice(0, 3).map(s => ({
-        client_id: s.client_id,
-        date: s.date,
-        status: s.status,
-        displayName: s.displayName
-      }))
-    });
-  }, [deliveryStops]);
 
   // Delivery state
   const [currentStopIndex, setCurrentStopIndex] = useState(0);
@@ -174,18 +182,28 @@ export default function DriverView() {
     return false;
   };
 
-  // Get upcoming delivery dates for this driver's zone (next 14 days)
-  // ONLY shows dates with approved menus (from delivery_stops table)
+  // Get upcoming delivery dates for this driver's zone
+  // Priority: saved routes first, then approved stops from view
   const getUpcomingDeliveryDates = () => {
     if (!driver) return [];
 
-    // Get unique dates from delivery_stops (ONLY approved menus)
-    const uniqueDates = [...new Set((deliveryStops || []).map(s => s.date))].sort();
-    console.log('[DriverPortal] upcoming dates from delivery_stops:', uniqueDates);
-    return uniqueDates;
+    const today = new Date().toISOString().split('T')[0];
+    const dateSet = new Set();
 
-    // NOTE: Removed legacy fallback - only delivery_stops dates are shown
-    // Clients without approved menus do NOT appear
+    // 1. Add dates from saved routes (these have been saved by admin)
+    (savedRoutes || []).forEach(r => {
+      if (r.date >= today) dateSet.add(r.date);
+    });
+
+    // 2. Also add dates from approved stops (from view) that aren't already in saved routes
+    //    This shows upcoming work even before routes are saved
+    (deliveryStops || []).forEach(stop => {
+      if (stop.date >= today && stop.zone === driver.zone) {
+        dateSet.add(stop.date);
+      }
+    });
+
+    return [...dateSet].sort();
   };
 
   // Get ALL ready orders for this driver's zone (regardless of date)
@@ -217,86 +235,92 @@ export default function DriverView() {
   const upcomingDates = getUpcomingDeliveryDates();
   const allReadyOrders = getAllReadyOrders();
 
+  // Check if a saved route exists for a date
+  const hasSavedRoute = (date) => {
+    return (savedRoutes || []).some(r => r.date === date);
+  };
+
   // Get ALL scheduled stops for this driver's zone on a specific date
-  // ONLY shows clients with approved menus (from delivery_stops table)
+  // Priority: saved route stops (ordered) > approved stops from view (unordered)
   const getDriverStops = (date) => {
     if (!driver) return [];
 
-    // Filter delivery stops for this date (ONLY from Supabase delivery_stops)
-    const stopsForDate = (deliveryStops || []).filter(s => s.date === date);
+    // Find the saved route for this date
+    const route = (savedRoutes || []).find(r => r.date === date);
 
-    console.log('[DriverPortal] getDriverStops for date:', date, 'count:', stopsForDate.length);
+    // If we have a saved route, use its stops (ordered)
+    if (route && route.stops && route.stops.length > 0) {
+      return route.stops.map(stop => mapStopToDisplayFormat(stop, date, true));
+    }
 
-    return stopsForDate.map(stop => {
-      // Get status - delivery_stops have status like MENU_PLANNED, READY_FOR_DELIVERY
-      let statusInfo = DELIVERY_STATUS.IN_KDS; // Default for MENU_PLANNED
-      if (stop.status === 'READY_FOR_DELIVERY') {
-        statusInfo = DELIVERY_STATUS.READY;
-      } else if (stop.status === 'COMPLETED') {
-        statusInfo = DELIVERY_STATUS.DELIVERED;
-      }
+    // Fallback: use approved stops from the view (unordered)
+    const approvedStops = (deliveryStops || [])
+      .filter(stop => stop.date === date && stop.zone === driver.zone);
 
-      // Also check local deliveryLog for completion status
-      if (deliveryLog.some(e => e.clientName === stop.client_name && e.date === date)) {
-        statusInfo = DELIVERY_STATUS.DELIVERED;
-      }
+    return approvedStops.map(stop => mapStopToDisplayFormat(stop, date, false));
+  };
 
-      // Check local readyForDelivery
-      const orders = readyForDelivery.filter(o =>
-        (o.clientName === stop.client_name || o.clientName === stop.displayName) && o.date === date
-      );
+  // Helper to map a stop to display format
+  // Handles both snake_case (from JSONB) and camelCase (from view)
+  const mapStopToDisplayFormat = (stop, date, isFromSavedRoute) => {
+    // Handle both snake_case (JSONB) and camelCase (view) field names
+    const clientName = stop.client_name || stop.clientName;
+    const clientId = stop.client_id || stop.clientId;
+    const displayName = stop.display_name || stop.displayName || clientName;
+    const stopAddress = stop.address || '';
+    const stopPhone = stop.phone || '';
+    const isPickup = stop.pickup || false;
+
+    const stopNormalizedName = normalizeName(clientName);
+
+    const isDelivered = clientId
+      ? deliveryLog.some(e => (e.clientId === clientId || normalizeName(e.clientName) === stopNormalizedName) && e.date === date)
+      : deliveryLog.some(e => normalizeName(e.clientName) === stopNormalizedName && e.date === date);
+
+    // Determine status
+    let statusInfo = isFromSavedRoute ? DELIVERY_STATUS.IN_KDS : DELIVERY_STATUS.PENDING;
+
+    if (isDelivered) {
+      statusInfo = DELIVERY_STATUS.DELIVERED;
+    } else {
+      const orders = clientId
+        ? readyForDelivery.filter(o => (o.clientId === clientId || normalizeName(o.clientName) === stopNormalizedName) && o.date === date)
+        : readyForDelivery.filter(o => normalizeName(o.clientName) === stopNormalizedName && o.date === date);
       if (orders.length > 0) {
         statusInfo = DELIVERY_STATUS.READY;
       }
-
-      return {
-        clientName: stop.client_name,
-        displayName: stop.displayName || stop.client_name,
-        address: stop.address || '',
-        orders,
-        zone: stop.zone,
-        date,
-        status: statusInfo.key,
-        statusInfo,
-        isReady: statusInfo.key === 'ready',
-        isDelivered: statusInfo.key === 'delivered',
-        missingClient: stop.missingClient || false
-      };
-    });
-
-    // NOTE: Removed legacy fallback - only delivery_stops are shown
-    // Clients without approved menus do NOT appear
-    const stops = [];
-
-    // Check if there's a saved route for this date/zone
-    const routeKey = `${date}-${driver.zone}`;
-    const savedRoute = savedRoutes?.[routeKey];
-
-    if (savedRoute?.stops?.length > 0) {
-      // Sort stops according to saved route order
-      const orderedStops = [];
-      const addedClients = new Set();
-
-      // First, add stops in saved route order
-      savedRoute.stops.forEach(savedStop => {
-        const stop = stops.find(s => s.clientName === savedStop.clientName);
-        if (stop && !addedClients.has(stop.clientName)) {
-          orderedStops.push(stop);
-          addedClients.add(stop.clientName);
-        }
-      });
-
-      // Then add any remaining stops that weren't in the saved route
-      stops.forEach(stop => {
-        if (!addedClients.has(stop.clientName)) {
-          orderedStops.push(stop);
-        }
-      });
-
-      return orderedStops;
     }
 
-    return stops;
+    // Get ready orders for this client
+    const orders = clientId
+      ? readyForDelivery.filter(o => (o.clientId === clientId || normalizeName(o.clientName) === stopNormalizedName) && o.date === date)
+      : readyForDelivery.filter(o => normalizeName(o.clientName) === stopNormalizedName && o.date === date);
+
+    // For address: show "Pickup" if pickup is true, otherwise show address
+    const displayAddress = isPickup ? 'Pickup' : stopAddress;
+    const hasAddress = !!stopAddress;
+    const missingAddress = !isPickup && !hasAddress;
+
+    return {
+      clientName,
+      clientId,
+      displayName,
+      address: displayAddress,
+      phone: stopPhone,
+      isPickup,
+      missingAddress,
+      isFromSavedRoute,
+      hasAddress,
+      orders,
+      dishes: stop.dishes || [],
+      portions: stop.portions || 0,
+      zone: stop.zone,
+      date,
+      status: statusInfo.key,
+      statusInfo,
+      isReady: statusInfo.key === 'ready',
+      isDelivered: statusInfo.key === 'delivered'
+    };
   };
 
   // Get only READY stops (for the active delivery flow)
@@ -521,6 +545,19 @@ export default function DriverView() {
     );
   }
 
+  // Loading routes state (after auth)
+  if (driver && isLoadingRoutes) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#f9f9ed' }}>
+        <div className="text-center">
+          <Truck size={48} className="mx-auto mb-4 animate-pulse" style={{ color: '#3d59ab' }} />
+          <p className="text-gray-600">Loading routes...</p>
+          <p className="text-sm text-gray-400 mt-2">Week {currentWeekId}</p>
+        </div>
+      </div>
+    );
+  }
+
   // Login screen
   if (!driver) {
     return (
@@ -622,7 +659,16 @@ export default function DriverView() {
           {allStops.length === 0 && (
             <div className="bg-white rounded-lg shadow-lg p-8 text-center">
               <Package size={48} className="mx-auto mb-4 text-gray-300" />
-              <p className="text-gray-500">No deliveries scheduled for your zone</p>
+              <p className="text-gray-500">No deliveries scheduled for this date</p>
+              <p className="text-xs text-gray-400 mt-2">Deliveries appear when routes are saved in the Admin Portal</p>
+            </div>
+          )}
+
+          {/* Show indicator when stops exist but no saved route */}
+          {allStops.length > 0 && !hasSavedRoute(viewingDate) && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-4 text-center">
+              <p className="text-amber-700 text-sm">No saved route for this date yet</p>
+              <p className="text-amber-600 text-xs mt-1">Showing approved menus (unordered). Admin can save a route to set delivery order.</p>
             </div>
           )}
         </div>
@@ -1068,6 +1114,53 @@ export default function DriverView() {
               View All Scheduled
             </button>
           </div>
+
+          {/* Saved Routes Section */}
+          {upcomingDates.length > 0 && (
+            <div className="bg-white rounded-lg shadow-lg p-4 mt-4">
+              <h3 className="font-bold text-lg mb-3 flex items-center gap-2" style={{ color: '#3d59ab' }}>
+                <Calendar size={20} />
+                Upcoming Routes
+              </h3>
+              <div className="space-y-2">
+                {upcomingDates.map(date => {
+                  const isSaved = hasSavedRoute(date);
+                  const stops = getDriverStops(date);
+                  const readyCount = stops.filter(s => s.isReady).length;
+                  const isToday = date === today;
+                  const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString('en-US', {
+                    weekday: 'short', month: 'short', day: 'numeric'
+                  });
+
+                  return (
+                    <button
+                      key={date}
+                      onClick={() => setSelectedDate(date === today ? null : date)}
+                      className={`w-full p-3 rounded-lg border-2 text-left flex items-center justify-between transition-colors ${
+                        isToday ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
+                      }`}
+                    >
+                      <div>
+                        <span className="font-medium">{dateLabel}</span>
+                        {isToday && <span className="ml-2 text-xs text-blue-600">(Today)</span>}
+                        <div className="text-sm text-gray-500 mt-0.5">
+                          {stops.length} stop{stops.length !== 1 ? 's' : ''}
+                          {readyCount > 0 && (
+                            <span className="text-amber-600 ml-2">• {readyCount} ready</span>
+                          )}
+                        </div>
+                      </div>
+                      {isSaved && (
+                        <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 flex items-center gap-1">
+                          <Check size={12} /> Saved
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1103,6 +1196,32 @@ export default function DriverView() {
               }}
             />
           </div>
+
+          {/* Quick date selector for saved routes */}
+          {upcomingDates.length > 1 && (
+            <div className="mt-3 flex gap-2 flex-wrap">
+              {upcomingDates.slice(0, 5).map(date => {
+                const isActive = date === viewingDate;
+                const isSaved = hasSavedRoute(date);
+                const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' });
+
+                return (
+                  <button
+                    key={date}
+                    onClick={() => setSelectedDate(date === today ? null : date)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1 ${
+                      isActive
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {dateLabel}
+                    {isSaved && !isActive && <Check size={10} className="text-green-500" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Current stop card */}
@@ -1168,15 +1287,17 @@ export default function DriverView() {
               )}
             </div>
 
-            {/* Navigate button */}
-            <button
-              onClick={() => openMaps(currentStop.address)}
-              className="w-full py-4 rounded-lg text-white font-bold text-lg flex items-center justify-center gap-2 mb-6"
-              style={{ backgroundColor: '#27ae60' }}
-            >
-              <MapPin size={24} />
-              Navigate in Maps
-            </button>
+            {/* Navigate button (hide for pickup clients) */}
+            {!currentStop.isPickup && currentStop.address && (
+              <button
+                onClick={() => openMaps(currentStop.address)}
+                className="w-full py-4 rounded-lg text-white font-bold text-lg flex items-center justify-center gap-2 mb-6"
+                style={{ backgroundColor: '#27ae60' }}
+              >
+                <MapPin size={24} />
+                Navigate in Maps
+              </button>
+            )}
 
             {/* Hand-off type toggle */}
             <div className="mb-6">
@@ -1509,16 +1630,16 @@ function StopCard({
                   {stop.statusInfo.label}
                 </span>
               )}
-              {stop.missingClient && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600 flex items-center gap-1 shrink-0">
+              {stop.missingAddress && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 flex items-center gap-1 shrink-0">
                   <AlertTriangle size={12} />
-                  Missing client record
+                  Missing address
                 </span>
               )}
             </div>
 
             {/* Address - smaller */}
-            {stop.address && (
+            {stop.address && !stop.missingAddress && (
               <p className="text-sm text-gray-600 mt-1 flex items-center gap-1">
                 <MapPin size={14} className="shrink-0" />
                 <span className="truncate">{stop.address}</span>
@@ -1567,7 +1688,7 @@ function StopCard({
 
           {/* Action buttons */}
           <div className="flex gap-2 ml-2 shrink-0">
-            {stop.address && (
+            {stop.address && !stop.isPickup && (
               <button
                 onClick={() => onNavigate(stop.address)}
                 className="p-2 rounded-lg text-white"

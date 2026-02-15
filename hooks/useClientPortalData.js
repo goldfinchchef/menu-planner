@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-
-const STORAGE_KEY = 'goldfinchChefData';
+import { isSupabaseMode } from '../lib/dataMode';
+import { isConfigured, checkConnection } from '../lib/supabase';
+import { fetchClients, saveClientPortalData as savePortalDataToSupabase } from '../lib/database';
 
 export function useClientPortalData() {
   const [clients, setClients] = useState([]);
@@ -13,57 +14,48 @@ export function useClientPortalData() {
   const [blockedDates, setBlockedDates] = useState([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load from localStorage
+  // Load data from Supabase on mount
   useEffect(() => {
-    const loadData = () => {
-      const savedData = localStorage.getItem(STORAGE_KEY);
-      if (savedData) {
-        try {
-          const parsed = JSON.parse(savedData);
-          if (parsed.clients) setClients(parsed.clients);
-          if (parsed.menuItems) setMenuItems(parsed.menuItems);
-          if (parsed.readyForDelivery) setReadyForDelivery(parsed.readyForDelivery);
-          if (parsed.deliveryLog) setDeliveryLog(parsed.deliveryLog);
-          if (parsed.orderHistory) setOrderHistory(parsed.orderHistory);
-          if (parsed.recipes) setRecipes(parsed.recipes);
-          if (parsed.clientPortalData) setClientPortalData(parsed.clientPortalData);
-          if (parsed.blockedDates) setBlockedDates(parsed.blockedDates);
-        } catch (e) {
-          console.error('Error loading saved data:', e);
-        }
+    const loadData = async () => {
+      if (!isSupabaseMode() || !isConfigured()) {
+        console.log('[ClientPortalData] not in Supabase mode');
+        setIsLoaded(true);
+        return;
       }
+
+      const online = await checkConnection();
+      if (!online) {
+        console.log('[ClientPortalData] offline');
+        setIsLoaded(true);
+        return;
+      }
+
+      try {
+        // Import loadData from sync to get full data
+        const { loadData: loadFromSupabase } = await import('../lib/sync');
+        const result = await loadFromSupabase();
+
+        if (result.data) {
+          if (result.data.clients) setClients(result.data.clients);
+          if (result.data.menuItems) setMenuItems(result.data.menuItems);
+          if (result.data.readyForDelivery) setReadyForDelivery(result.data.readyForDelivery);
+          if (result.data.deliveryLog) setDeliveryLog(result.data.deliveryLog);
+          if (result.data.orderHistory) setOrderHistory(result.data.orderHistory);
+          if (result.data.recipes) setRecipes(result.data.recipes);
+          if (result.data.clientPortalData) setClientPortalData(result.data.clientPortalData);
+          if (result.data.blockedDates) setBlockedDates(result.data.blockedDates);
+        }
+      } catch (e) {
+        console.error('[ClientPortalData] Error loading data:', e);
+      }
+
       setIsLoaded(true);
     };
+
     loadData();
-
-    const handleStorageChange = (e) => {
-      if (e.key === STORAGE_KEY) {
-        loadData();
-      }
-    };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  const saveData = useCallback((updates) => {
-    const savedData = localStorage.getItem(STORAGE_KEY);
-    let existing = {};
-    if (savedData) {
-      try {
-        existing = JSON.parse(savedData);
-      } catch (e) {
-        console.error('Error parsing saved data:', e);
-      }
-    }
-    const merged = {
-      ...existing,
-      ...updates,
-      lastSaved: new Date().toISOString()
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-  }, []);
-
-  const updateClientPortalData = useCallback((clientId, data) => {
+  const updateClientPortalData = useCallback(async (clientId, data) => {
     const updated = {
       ...clientPortalData,
       [clientId]: {
@@ -72,8 +64,17 @@ export function useClientPortalData() {
       }
     };
     setClientPortalData(updated);
-    saveData({ clientPortalData: updated });
-  }, [clientPortalData, saveData]);
+
+    // Save to Supabase
+    if (isSupabaseMode()) {
+      try {
+        await savePortalDataToSupabase(clientId, updated[clientId]);
+      } catch (err) {
+        console.error('[ClientPortalData] Error saving to Supabase:', err);
+        alert(`Failed to save: ${err.message}`);
+      }
+    }
+  }, [clientPortalData]);
 
   // Convert name to URL-friendly slug (e.g., "Tim Brown" -> "tim-brown")
   const toUrlSlug = (name) => {

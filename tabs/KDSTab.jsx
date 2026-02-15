@@ -487,7 +487,6 @@ export default function KDSTab({
               )}
             </div>
           )}
-          </div>
         </div>
       )}
     </div>

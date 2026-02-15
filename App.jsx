@@ -100,16 +100,12 @@ export default function App() {
   // KDS loading/syncing state for visual feedback
   const [kdsLoading, setKdsLoading] = useState(true); // Initial load
   const [kdsLastRefresh, setKdsLastRefresh] = useState(null); // Timestamp of last successful fetch
-  const [lastMenusApprovedAt, setLastMenusApprovedAt] = useState(() => {
-    // Initialize from localStorage
-    const stored = localStorage.getItem('lastMenusApprovedAt');
-    return stored ? parseInt(stored, 10) : null;
-  });
+  const [lastMenusApprovedAt, setLastMenusApprovedAt] = useState(null);
 
   // Listen for menu approval events (from MenuTab on /admin page)
   useEffect(() => {
-    const handleMenusApproved = () => {
-      const timestamp = parseInt(localStorage.getItem('lastMenusApprovedAt') || '0', 10);
+    const handleMenusApproved = (e) => {
+      const timestamp = e.detail?.timestamp || Date.now();
       setLastMenusApprovedAt(timestamp);
       console.log('[KDS] Menus approved signal received, timestamp:', timestamp);
     };
@@ -117,17 +113,8 @@ export default function App() {
     // Listen for custom event
     window.addEventListener('menusApproved', handleMenusApproved);
 
-    // Also listen for storage changes (cross-tab communication)
-    const handleStorageChange = (e) => {
-      if (e.key === 'lastMenusApprovedAt') {
-        handleMenusApproved();
-      }
-    };
-    window.addEventListener('storage', handleStorageChange);
-
     return () => {
       window.removeEventListener('menusApproved', handleMenusApproved);
-      window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
 
@@ -294,17 +281,10 @@ export default function App() {
       console.log('[App.saveRecipe] result:', result.success, result.error || '');
       if (result.success) {
         setRecipes(result.recipes);
-        // Update localStorage for cross-component sync
-        const savedData = localStorage.getItem('goldfinchChefData');
-        let existing = {};
-        if (savedData) { try { existing = JSON.parse(savedData); } catch (e) { /* ignore */ } }
-        const merged = { ...existing, recipes: result.recipes, lastSaved: new Date().toISOString() };
-        localStorage.setItem('goldfinchChefData', JSON.stringify(merged));
-        window.dispatchEvent(new CustomEvent('goldfinchDataUpdated'));
         setNewRecipe(DEFAULT_NEW_RECIPE);
         alert('Recipe saved!');
       } else {
-        alert(`Cannot save recipe: ${result.error}`);
+        alert(`Failed to save recipe: ${result.error}`);
       }
     } else {
       console.log('[App.saveRecipe] LOCAL MODE - not calling Supabase');
@@ -329,15 +309,8 @@ export default function App() {
       console.log('[App.deleteRecipe] result:', result.success, result.error || '');
       if (result.success) {
         setRecipes(result.recipes);
-        // Update localStorage for cross-component sync
-        const savedData = localStorage.getItem('goldfinchChefData');
-        let existing = {};
-        if (savedData) { try { existing = JSON.parse(savedData); } catch (e) { /* ignore */ } }
-        const merged = { ...existing, recipes: result.recipes, lastSaved: new Date().toISOString() };
-        localStorage.setItem('goldfinchChefData', JSON.stringify(merged));
-        window.dispatchEvent(new CustomEvent('goldfinchDataUpdated'));
       } else {
-        alert(`Cannot delete recipe: ${result.error}`);
+        alert(`Failed to delete recipe: ${result.error}`);
       }
     } else {
       console.log('[App.deleteRecipe] LOCAL MODE - not calling Supabase');
@@ -464,21 +437,11 @@ export default function App() {
       console.log('[App.saveEditingRecipe] calling saveRecipeToSupabase...');
       const result = await saveRecipeToSupabase(recipeToSave, category);
       if (result.success) {
-        // Update React state
         setRecipes(result.recipes);
-        // Update localStorage and dispatch event for cross-component sync
-        const savedData = localStorage.getItem('goldfinchChefData');
-        let existing = {};
-        if (savedData) {
-          try { existing = JSON.parse(savedData); } catch (e) { /* ignore */ }
-        }
-        const merged = { ...existing, recipes: result.recipes, lastSaved: new Date().toISOString() };
-        localStorage.setItem('goldfinchChefData', JSON.stringify(merged));
-        window.dispatchEvent(new CustomEvent('goldfinchDataUpdated'));
         setEditingRecipe(null);
         alert('Recipe updated!');
       } else {
-        alert(`Save failed: ${result.error}`);
+        alert(`Failed to update recipe: ${result.error}`);
       }
     } else {
       // Local mode - just update local state
@@ -901,23 +864,10 @@ export default function App() {
   // Additional week-related helpers
   const isCurrentWeekReadOnly = isWeekReadOnly(selectedWeekId);
 
-  // Save driver routes to main storage (so driver portal can access them)
+  // Driver routes are now saved directly to Supabase by DeliveriesTab
+  // This function is kept for backward compatibility but is a no-op
   const saveDriverRoutes = (routes) => {
-    const savedData = localStorage.getItem('goldfinchChefData');
-    let existing = {};
-    if (savedData) {
-      try {
-        existing = JSON.parse(savedData);
-      } catch (e) {
-        console.error('Error parsing saved data:', e);
-      }
-    }
-    const merged = {
-      ...existing,
-      savedRoutes: routes,
-      lastSaved: new Date().toISOString()
-    };
-    localStorage.setItem('goldfinchChefData', JSON.stringify(merged));
+    // Routes are saved to Supabase directly, no localStorage needed
   };
 
   const getWeekReadyForDelivery = () => {
@@ -1055,6 +1005,7 @@ export default function App() {
             prepList={prepList}
             shoppingListsByDay={getShoppingListsByDay()}
             exportPrepList={exportPrepList}
+            selectedWeekId={selectedWeekId}
           />
         )}
 

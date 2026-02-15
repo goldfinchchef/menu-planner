@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Download, Trash2, Check, Plus, ChevronRight, X, RefreshCw, MoveRight, FolderOpen, GripVertical } from 'lucide-react';
+import { isSupabaseMode } from '../lib/dataMode';
+import { saveAppSetting } from '../lib/database';
 
-const SHOP_DATA_KEY = 'goldfinchShopData';
-const SHOP_CHECKED_KEY = 'goldfinchShopChecked';
-const SHOP_OVERRIDES_KEY = 'goldfinchShopOverrides';
 const SHOP_DAYS = ['Sunday', 'Tuesday', 'Thursday'];
 
 // Standard sections for organizing items
@@ -33,34 +32,13 @@ const STANDARD_SOURCES = [
   'Other'
 ];
 
-export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepList }) {
-  // Checked items state (persisted separately so it survives list regeneration)
-  // Keys now include day: `${day}-${itemId}`
-  const [checkedItems, setCheckedItems] = useState(() => {
-    try {
-      const saved = localStorage.getItem(SHOP_CHECKED_KEY);
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
-
-  // Manual items added by user (persisted)
-  const [manualItems, setManualItems] = useState(() => {
-    try {
-      const saved = localStorage.getItem(SHOP_DATA_KEY);
-      if (saved) {
-        const data = JSON.parse(saved);
-        // Extract only manual items
-        const manual = {};
-        SHOP_DAYS.forEach(day => {
-          manual[day] = (data[day] || []).filter(item => item.manual);
-        });
-        return manual;
-      }
-    } catch {}
-    return { Sunday: [], Tuesday: [], Thursday: [] };
-  });
+export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepList, selectedWeekId }) {
+  // Shopping list state (loaded from Supabase, saved on change)
+  const [checkedItems, setCheckedItems] = useState({});
+  const [manualItems, setManualItems] = useState({ Sunday: [], Tuesday: [], Thursday: [] });
+  const [itemOverrides, setItemOverrides] = useState({});
+  const [isLoaded, setIsLoaded] = useState(false);
+  const saveTimeoutRef = useRef(null);
 
   const [newItemText, setNewItemText] = useState('');
   const [addingToDay, setAddingToDay] = useState(null);
@@ -70,51 +48,67 @@ export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepL
   const [draggedItem, setDraggedItem] = useState(null); // { day, item }
   const [dragOverDay, setDragOverDay] = useState(null);
 
-  // Item overrides for section/source (persisted)
-  // Key format: `${day}-${itemId}` -> { section?, source? }
-  const [itemOverrides, setItemOverrides] = useState(() => {
-    try {
-      const saved = localStorage.getItem(SHOP_OVERRIDES_KEY);
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
-
-  // Save overrides to localStorage
-  useEffect(() => {
-    localStorage.setItem(SHOP_OVERRIDES_KEY, JSON.stringify(itemOverrides));
-  }, [itemOverrides]);
-
-  // Save checked items to localStorage
-  useEffect(() => {
-    localStorage.setItem(SHOP_CHECKED_KEY, JSON.stringify(checkedItems));
-  }, [checkedItems]);
-
   // Normalize name for ID generation
   const normalizeNameForStorage = (name) => (name || '').toLowerCase().trim().replace(/\s+/g, ' ');
 
-  // Save manual items to localStorage
+  // Load shopping list state from Supabase on week change
   useEffect(() => {
-    // Combine auto-generated and manual items for storage
-    const combined = {};
-    SHOP_DAYS.forEach(day => {
-      const autoItems = (shoppingListsByDay[day] || []).map(item => {
-        // Use ingredient_id if present, otherwise normalized name (matches App.jsx aggregation)
-        const ingredientKey = item.ingredient_id
-          ? String(item.ingredient_id)
-          : normalizeNameForStorage(item.name);
-        const normalizedUnit = (item.unit || 'oz').toLowerCase().trim();
-        return {
-          ...item,
-          id: `auto-${ingredientKey}|${normalizedUnit}`,
-          manual: false
-        };
+    const loadState = async () => {
+      if (!isSupabaseMode() || !selectedWeekId) {
+        setIsLoaded(true);
+        return;
+      }
+
+      try {
+        const { fetchShoppingListState } = await import('../lib/database');
+        const state = await fetchShoppingListState(selectedWeekId);
+        setCheckedItems(state.checkedItems || {});
+        setManualItems(state.manualItems || { Sunday: [], Tuesday: [], Thursday: [] });
+        setItemOverrides(state.itemOverrides || {});
+      } catch (err) {
+        console.error('[PrepTab] Failed to load shopping list state:', err);
+      }
+      setIsLoaded(true);
+    };
+
+    loadState();
+  }, [selectedWeekId]);
+
+  // Save shopping list state to Supabase (debounced)
+  const saveState = useCallback(async () => {
+    if (!isSupabaseMode() || !selectedWeekId || !isLoaded) return;
+
+    try {
+      const { saveShoppingListState } = await import('../lib/database');
+      await saveShoppingListState(selectedWeekId, {
+        checkedItems,
+        manualItems,
+        itemOverrides
       });
-      combined[day] = [...autoItems, ...(manualItems[day] || [])];
-    });
-    localStorage.setItem(SHOP_DATA_KEY, JSON.stringify(combined));
-  }, [manualItems, shoppingListsByDay]);
+    } catch (err) {
+      console.error('[PrepTab] Failed to save shopping list state:', err);
+      alert(`Failed to save shopping list: ${err.message}`);
+    }
+  }, [selectedWeekId, checkedItems, manualItems, itemOverrides, isLoaded]);
+
+  // Debounced save effect
+  useEffect(() => {
+    if (!isLoaded) return;
+
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    saveTimeoutRef.current = setTimeout(() => {
+      saveState();
+    }, 1000);
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [checkedItems, manualItems, itemOverrides, saveState, isLoaded]);
 
   // Generate day-specific ID for checked state
   const getDayItemId = (day, itemId) => `${day}-${itemId}`;
