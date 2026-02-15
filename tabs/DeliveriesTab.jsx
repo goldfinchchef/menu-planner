@@ -1537,30 +1537,21 @@ export default function DeliveriesTab({
 
         // Save route to Supabase delivery_runs table
         const saveRouteForDay = async (date, zone, stops) => {
-          // IMMEDIATE LOG - this MUST appear in console when button is clicked
-          console.log('[SAVE ROUTE CLICKED]', { weekId: selectedWeekId, date, zone, stops: stops?.length });
-
-          // Get routable stops (clients with approved menus)
           const routableStops = (stops || []).filter(s => s.isRoutable);
-          console.log('[SAVE ROUTE] routableStops:', routableStops.length, 'of', stops?.length);
 
           if (routableStops.length === 0) {
-            console.warn('[SAVE ROUTE] EARLY RETURN: No routable stops');
             alert('No clients with approved menus in this zone.');
             return;
           }
 
-          console.log("[DEBUG DRIVERS]", { drivers, zone });
           const driver = drivers.find(d => d.zone === zone);
           if (!driver) {
-            console.warn('[SAVE ROUTE] EARLY RETURN: No driver for zone', zone);
             alert(`No driver assigned to zone "${zone}". Please assign a driver first.`);
             return;
           }
 
           const orderedStops = getOrderedStopsForZone(date, zone, routableStops);
 
-          // Build stops array for JSONB storage
           const stopsJsonArray = orderedStops.map((stop, idx) => ({
             stop_index: idx,
             order: idx + 1,
@@ -1577,16 +1568,12 @@ export default function DeliveriesTab({
             status: 'pending'
           }));
 
-          console.log('[SAVE ROUTE] Calling saveDeliveryRoute...', { weekId: selectedWeekId, date, zone, stopsCount: stopsJsonArray.length });
-
           try {
-            // Call the database function that does the actual upsert
             const savedId = await saveDeliveryRoute(selectedWeekId, date, zone, stopsJsonArray, {
               driver_id: driver.id,
               driver_name: driver.name
             });
 
-            console.log("[SaveRoute] saved successfully, id:", savedId);
             alert(`Route saved for ${driver?.name || "UNASSIGNED"} on ${date}!\n${routableStops.length} stop(s) scheduled.`);
           } catch (err) {
             console.error('[SaveRoute] error:', err);
