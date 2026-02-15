@@ -1319,7 +1319,7 @@ export default function DeliveriesTab({
 });
           const driver = drivers.find(d => d.zone === zone);
           if (!driver) {
-            alert('No driver assigned to this zone');
+            alert('No driver assigned to this zone yet — saving route as UNASSIGNED.');
             return;
           }
 
