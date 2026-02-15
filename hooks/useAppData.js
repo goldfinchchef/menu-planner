@@ -104,13 +104,7 @@ export function useAppData() {
         if (result.data.masterIngredients) setMasterIngredients(result.data.masterIngredients);
         if (result.data.orderHistory) setOrderHistory(result.data.orderHistory);
         if (result.data.weeklyTasks) setWeeklyTasks(result.data.weeklyTasks);
-        console.log("[SET DRIVERS]", {
-          hasDriversKey: Object.prototype.hasOwnProperty.call(result?.data || {}, "drivers"),
-          driversIsArray: Array.isArray(result?.data?.drivers),
-          driversLen: Array.isArray(result?.data?.drivers) ? result.data.drivers.length : null,
-          drivers: result?.data?.drivers
-        });
-
+        console.log("[LOAD DRIVERS FROM SUPABASE]", result?.data?.drivers);
         setDrivers(Array.isArray(result?.data?.drivers) ? result.data.drivers : []);
         if (result.data.deliveryLog) setDeliveryLog(result.data.deliveryLog);
         if (result.data.bagReminders) setBagReminders(result.data.bagReminders);
