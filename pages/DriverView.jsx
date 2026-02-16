@@ -66,6 +66,9 @@ export default function DriverView() {
     normalizeName
   } = useDriverData();
 
+  // Check if drivers are loaded
+  const driversLoaded = Array.isArray(drivers) && drivers.length > 0;
+
   // Auth state
   const [accessCode, setAccessCode] = useState('');
   const [driver, setDriver] = useState(null);
@@ -337,6 +340,12 @@ export default function DriverView() {
   const handleLogin = (e) => {
     e.preventDefault();
 
+    // Guard: don't attempt auth if drivers not loaded
+    if (!driversLoaded) {
+      setAuthError("Loading driver codes… try again in a moment.");
+      return;
+    }
+
     // Normalize input (trim whitespace, lowercase)
     const code = (accessCode || "").trim().toLowerCase();
 
@@ -344,6 +353,7 @@ export default function DriverView() {
     console.log("[LOGIN DEBUG]", {
       rawInput: accessCode,
       normalized: code,
+      driversLen: drivers?.length,
       driverCodes: drivers.map(d => d.accessCode || d.access_code)
     });
 
@@ -619,10 +629,11 @@ export default function DriverView() {
             )}
             <button
               type="submit"
-              className="w-full py-4 rounded-lg text-white font-bold text-lg"
+              className="w-full py-4 rounded-lg text-white font-bold text-lg disabled:opacity-50"
               style={{ backgroundColor: '#3d59ab' }}
+              disabled={!driversLoaded}
             >
-              Start Deliveries
+              {driversLoaded ? 'Start Deliveries' : 'Loading...'}
             </button>
           </form>
         </div>
