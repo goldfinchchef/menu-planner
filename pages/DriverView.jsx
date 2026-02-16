@@ -33,18 +33,16 @@ const countUniqueStops = (orders) => {
   return uniqueAddresses.size;
 };
 
-// Status definitions for driver view
+// Status definitions for driver view (simplified: only READY and DELIVERED)
 const DELIVERY_STATUS = {
   DELIVERED: { key: 'delivered', label: 'Delivered', color: '#22c55e', icon: Check },
-  READY: { key: 'ready', label: 'Ready', color: '#f59e0b', icon: Truck },
-  IN_KDS: { key: 'kds', label: 'In Kitchen', color: '#3b82f6', icon: ChefHat },
-  PENDING: { key: 'pending', label: 'Menu Pending', color: '#6b7280', icon: FileText },
-  NONE: { key: 'none', label: 'No Menu', color: '#9ca3af', icon: Clock }
+  READY: { key: 'ready', label: 'Ready', color: '#f59e0b', icon: Truck }
 };
 
 export default function DriverView() {
   const [searchParams] = useSearchParams();
   const {
+    drivers,
     clients,
     readyForDelivery,
     deliveryLog,
@@ -136,26 +134,14 @@ export default function DriverView() {
   const viewingDate = selectedDate || today;
   const isViewingFuture = viewingDate !== today;
 
-  // Get client delivery status
+  // Get client delivery status (simplified: READY or DELIVERED only)
   const getClientStatus = (clientName, date) => {
     // Check if delivered
     if (deliveryLog.some(e => e.clientName === clientName && e.date === date)) {
       return DELIVERY_STATUS.DELIVERED;
     }
-    // Check if ready for delivery
-    if (readyForDelivery.some(o => o.clientName === clientName && o.date === date)) {
-      return DELIVERY_STATUS.READY;
-    }
-    // Check if has approved menu (in KDS)
-    if (menuItems.some(m => m.clientName === clientName && m.approved && m.date === date)) {
-      return DELIVERY_STATUS.IN_KDS;
-    }
-    // Check if has menu pending approval
-    if (menuItems.some(m => m.clientName === clientName && !m.approved && m.date === date)) {
-      return DELIVERY_STATUS.PENDING;
-    }
-    // No menu yet
-    return DELIVERY_STATUS.NONE;
+    // All scheduled stops are READY by default
+    return DELIVERY_STATUS.READY;
   };
 
   // Get the day name from a date string
@@ -278,19 +264,8 @@ export default function DriverView() {
       ? deliveryLog.some(e => (e.clientId === clientId || normalizeName(e.clientName) === stopNormalizedName) && e.date === date)
       : deliveryLog.some(e => normalizeName(e.clientName) === stopNormalizedName && e.date === date);
 
-    // Determine status
-    let statusInfo = isFromSavedRoute ? DELIVERY_STATUS.IN_KDS : DELIVERY_STATUS.PENDING;
-
-    if (isDelivered) {
-      statusInfo = DELIVERY_STATUS.DELIVERED;
-    } else {
-      const orders = clientId
-        ? readyForDelivery.filter(o => (o.clientId === clientId || normalizeName(o.clientName) === stopNormalizedName) && o.date === date)
-        : readyForDelivery.filter(o => normalizeName(o.clientName) === stopNormalizedName && o.date === date);
-      if (orders.length > 0) {
-        statusInfo = DELIVERY_STATUS.READY;
-      }
-    }
+    // Determine status (simplified: READY or DELIVERED only)
+    const statusInfo = isDelivered ? DELIVERY_STATUS.DELIVERED : DELIVERY_STATUS.READY;
 
     // Get ready orders for this client
     const orders = clientId
@@ -361,7 +336,23 @@ export default function DriverView() {
 
   const handleLogin = (e) => {
     e.preventDefault();
-    const foundDriver = authenticateDriver(accessCode);
+
+    // Normalize input (trim whitespace, lowercase)
+    const code = (accessCode || "").trim().toLowerCase();
+
+    // Debug log for mobile issues
+    console.log("[LOGIN DEBUG]", {
+      rawInput: accessCode,
+      normalized: code,
+      driverCodes: drivers.map(d => d.accessCode || d.access_code)
+    });
+
+    // Find driver with normalized matching
+    const foundDriver = drivers.find(d => {
+      const driverCode = (d.accessCode || d.access_code || "").trim().toLowerCase();
+      return driverCode === code;
+    });
+
     if (foundDriver) {
       setDriver(foundDriver);
       setAuthError('');
@@ -618,6 +609,10 @@ export default function DriverView() {
               className="w-full p-4 text-center text-2xl border-2 rounded-lg mb-4 tracking-widest"
               style={{ borderColor: '#ebb582' }}
               autoFocus
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
             />
             {authError && (
               <p className="text-red-600 text-center mb-4">{authError}</p>
@@ -662,15 +657,7 @@ export default function DriverView() {
             <div className="flex flex-wrap gap-3 text-xs">
               <span className="flex items-center gap-1">
                 <span className="w-3 h-3 rounded-full" style={{ backgroundColor: DELIVERY_STATUS.READY.color }}></span>
-                Ready to Deliver
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded-full" style={{ backgroundColor: DELIVERY_STATUS.IN_KDS.color }}></span>
-                In Kitchen
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded-full" style={{ backgroundColor: DELIVERY_STATUS.PENDING.color }}></span>
-                Menu Pending
+                Ready
               </span>
               <span className="flex items-center gap-1">
                 <span className="w-3 h-3 rounded-full" style={{ backgroundColor: DELIVERY_STATUS.DELIVERED.color }}></span>
@@ -1115,7 +1102,6 @@ export default function DriverView() {
   // No READY stops for today (but might have ready orders for other dates)
   if (remainingReadyStops.length === 0 && !isComplete && !showAllReady) {
     const scheduledCount = allStops.filter(s => !s.isDelivered).length;
-    const inKdsCount = allStops.filter(s => s.status === 'kds').length;
     const readyOtherDates = countUniqueStops(allReadyOrders);
 
     return (
@@ -1125,21 +1111,12 @@ export default function DriverView() {
           <div className="bg-white rounded-lg shadow-lg p-8 text-center">
             <Package size={48} className="mx-auto mb-4 text-gray-300" />
             <h2 className="text-xl font-bold mb-2" style={{ color: '#3d59ab' }}>
-              No Deliveries Ready Today
+              All Deliveries Complete
             </h2>
             {scheduledCount > 0 ? (
-              <>
-                <p className="text-gray-600 mb-4">
-                  {scheduledCount} delivery{scheduledCount !== 1 ? 'ies' : ''} scheduled for Zone {driver.zone} today,
-                  but {scheduledCount === 1 ? "it's" : "they're"} not ready yet.
-                </p>
-                {inKdsCount > 0 && (
-                  <p className="text-blue-600 text-sm">
-                    <ChefHat size={16} className="inline mr-1" />
-                    {inKdsCount} in kitchen - coming soon!
-                  </p>
-                )}
-              </>
+              <p className="text-gray-600 mb-4">
+                {scheduledCount} delivery{scheduledCount !== 1 ? 'ies' : ''} ready for Zone {driver.zone} today.
+              </p>
             ) : (
               <p className="text-gray-600">
                 No deliveries scheduled for Zone {driver.zone} today.
@@ -1658,8 +1635,6 @@ function StopCard({
 
   const summary = getMealSummary();
   const sortedMeals = getSortedMeals();
-
-  console.log("[StopCard props]", { clientName: stop.clientName, hasOnDeliver: !!onDeliver });
 
   return (
     <div

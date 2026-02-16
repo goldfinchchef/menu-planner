@@ -1327,23 +1327,8 @@ export default function DeliveriesTab({
           })) {
             return { status: 'delivered', label: 'Delivered', color: '#22c55e', bgColor: '#dcfce7' };
           }
-          // Check if ready for delivery
-          if (readyForDelivery.some(o => {
-            const normalizedOrderClient = normalizeName(o.clientName);
-            return (normalizedOrderClient === normalizedClientName || normalizedOrderClient === normalizedDisplayName) && o.date === date;
-          })) {
-            return { status: 'ready', label: 'Ready', color: '#f59e0b', bgColor: '#fef3c7' };
-          }
-          // Check if has approved menu (in KDS) - blue highlight
-          if (clientMenuItems.some(m => m.approved)) {
-            return { status: 'kds', label: 'In KDS', color: '#3b82f6', bgColor: '#dbeafe' };
-          }
-          // Check if has menu pending approval
-          if (clientMenuItems.some(m => !m.approved)) {
-            return { status: 'pending', label: 'Menu Pending', color: '#6b7280', bgColor: '#f3f4f6' };
-          }
-          // No menu yet - excluded from Driver Portal
-          return { status: 'none', label: 'No Menu', color: '#9ca3af', bgColor: '#f9fafb' };
+          // All scheduled stops are READY by default (simplified status)
+          return { status: 'ready', label: 'Ready', color: '#f59e0b', bgColor: '#fef3c7' };
         };
 
         // Get scheduled clients for a specific date
@@ -1374,32 +1359,13 @@ export default function DeliveriesTab({
               ? deliveryLog.some(e => (e.clientId === stop.clientId || normalizeName(e.clientName) === normalizedName) && e.date === date)
               : deliveryLog.some(e => normalizeName(e.clientName) === normalizedName && e.date === date);
 
-            // Check if KDS says ready (separate from routable)
-            const isReady = stop.clientId
-              ? readyForDelivery.some(o => (o.clientId === stop.clientId || normalizeName(o.clientName) === normalizedName) && o.date === date)
-              : readyForDelivery.some(o => normalizeName(o.clientName) === normalizedName && o.date === date);
-
-            const readyOrders = stop.clientId
-              ? readyForDelivery.filter(o => (o.clientId === stop.clientId || normalizeName(o.clientName) === normalizedName) && o.date === date)
-              : readyForDelivery.filter(o => normalizeName(o.clientName) === normalizedName && o.date === date);
-
-            // Check if has approved menu (this determines ROUTABLE, not KDS status)
-            const hasApprovedMenu = isStopRoutable(stop.clientId, stop.clientName, date);
-
-            // Determine display status (KDS completion is separate from routable)
-            // Status hierarchy: Delivered > Ready (KDS complete) > In KDS (has approved menu)
+            // Simplified status: DELIVERED or READY only
             let status, label, color, bgColor;
             if (isDelivered) {
               status = 'delivered'; label = 'Delivered'; color = '#22c55e'; bgColor = '#dcfce7';
-            } else if (isReady) {
-              // KDS says ready - food is prepared
-              status = 'ready'; label = 'Ready'; color = '#f59e0b'; bgColor = '#fef3c7';
-            } else if (hasApprovedMenu) {
-              // Has approved menu - routable, waiting for KDS
-              status = 'kds'; label = 'In KDS'; color = '#3b82f6'; bgColor = '#dbeafe';
             } else {
-              // No approved menu - shouldn't happen for viewStops, but handle gracefully
-              status = 'none'; label = 'No Menu'; color = '#9ca3af'; bgColor = '#f9fafb';
+              // All scheduled stops are READY by default
+              status = 'ready'; label = 'Ready'; color = '#f59e0b'; bgColor = '#fef3c7';
             }
 
             // Get client record for additional info
@@ -1663,42 +1629,16 @@ export default function DeliveriesTab({
                 </div>
               </div>
 
-              {/* Status legend and toggle */}
-              <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
-                <div className="flex flex-wrap gap-3 text-xs">
-                  <span className="flex items-center gap-1">
-                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#22c55e' }}></span>
-                    Delivered
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#f59e0b' }}></span>
-                    Ready
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#3b82f6' }}></span>
-                    In KDS
-                  </span>
-                  {showNoMenuClients && (
-                    <span className="flex items-center gap-1">
-                      <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#9ca3af' }}></span>
-                      No Menu
-                    </span>
-                  )}
-                </div>
-
-                {/* Toggle for showing "No Menu" clients */}
-                <button
-                  onClick={() => setShowNoMenuClients(!showNoMenuClients)}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                    showNoMenuClients
-                      ? 'bg-gray-200 text-gray-700'
-                      : 'bg-gray-100 text-gray-500'
-                  }`}
-                  title={showNoMenuClients ? 'Hide clients without menus' : 'Show clients without menus'}
-                >
-                  {showNoMenuClients ? <Eye size={14} /> : <EyeOff size={14} />}
-                  {showNoMenuClients ? 'Showing No Menu' : 'No Menu Hidden'}
-                </button>
+              {/* Status legend */}
+              <div className="flex flex-wrap gap-3 text-xs mt-4">
+                <span className="flex items-center gap-1">
+                  <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#f59e0b' }}></span>
+                  Ready
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#22c55e' }}></span>
+                  Delivered
+                </span>
               </div>
 
               {/* Loading indicator */}
