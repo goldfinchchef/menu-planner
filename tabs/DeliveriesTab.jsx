@@ -1391,8 +1391,9 @@ export default function DeliveriesTab({
               color,
               bgColor,
               // ROUTABLE = has approved menu (NOT dependent on KDS)
-              hasApprovedMenu,
-              isRoutable: hasApprovedMenu
+              // These stops come from viewStopsByDate which only contains approved menus
+              hasApprovedMenu: true,
+              isRoutable: true
             });
           });
 
