@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import { isSupabaseMode } from '../lib/dataMode';
 import { isConfigured, checkConnection } from '../lib/supabase';
 import { fetchClients, saveClientPortalData as savePortalDataToSupabase } from '../lib/database';
 
@@ -17,8 +16,9 @@ export function useClientPortalData() {
   // Load data from Supabase on mount
   useEffect(() => {
     const loadData = async () => {
-      if (!isSupabaseMode() || !isConfigured()) {
-        console.log('[ClientPortalData] not in Supabase mode');
+      // Always attempt Supabase if configured (mode is now automatic)
+      if (!isConfigured()) {
+        console.log('[ClientPortalData] Supabase not configured');
         setIsLoaded(true);
         return;
       }
@@ -65,8 +65,8 @@ export function useClientPortalData() {
     };
     setClientPortalData(updated);
 
-    // Save to Supabase
-    if (isSupabaseMode()) {
+    // Save to Supabase if configured
+    if (isConfigured()) {
       try {
         await savePortalDataToSupabase(clientId, updated[clientId]);
       } catch (err) {

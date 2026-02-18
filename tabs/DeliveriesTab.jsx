@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MapPin, Clock, ExternalLink, GripVertical, Truck, Activity, FileText, Check, AlertTriangle, User, Phone, ShoppingBag, Bell, Calendar, Plus, Trash2, Edit2, X, Car, Save, Navigation, Eye, EyeOff } from 'lucide-react';
 import { ZONES, DAYS, DELIVERY_PROBLEMS, DEFAULT_NEW_DRIVER } from '../constants';
-import { isSupabaseMode } from '../lib/dataMode';
+import { isConfigured } from '../lib/supabase';
 import {
   saveDriverToSupabase,
   deleteDriverFromSupabase,
@@ -110,7 +110,7 @@ export default function DeliveriesTab({
 
   // ============ FETCH DELIVERY STOPS (depends only on selectedWeekId) ============
   useEffect(() => {
-    if (!selectedWeekId || !isSupabaseMode()) return;
+    if (!selectedWeekId || !isConfigured()) return;
 
     const fetchViewData = async () => {
       setIsLoadingViewStops(true);
@@ -131,7 +131,7 @@ export default function DeliveriesTab({
 
   // ============ FETCH APPROVED MENUS & BUILD STOP KEYS (depends only on selectedWeekId) ============
   useEffect(() => {
-    if (!selectedWeekId || !isSupabaseMode()) return;
+    if (!selectedWeekId || !isConfigured()) return;
 
     const fetchApprovedMenus = async () => {
       setIsLoadingMenus(true);
@@ -198,7 +198,7 @@ export default function DeliveriesTab({
 
   // Fetch saved routes from Supabase on week change
   useEffect(() => {
-    if (!selectedWeekId || !isSupabaseMode()) return;
+    if (!selectedWeekId || !isConfigured()) return;
 
     const loadRoutes = async () => {
       setIsLoadingRoutes(true);
@@ -234,7 +234,7 @@ export default function DeliveriesTab({
 
   // Fetch route order from Supabase on mount
   useEffect(() => {
-    if (!isSupabaseMode()) return;
+    if (!isConfigured()) return;
 
     const loadRouteOrder = async () => {
       try {
@@ -250,7 +250,7 @@ export default function DeliveriesTab({
   // Save route order to Supabase
   const updateRouteOrder = async (newOrder) => {
     setRouteOrder(newOrder);
-    if (isSupabaseMode()) {
+    if (isConfigured()) {
       try {
         await saveRouteOrder(newOrder);
       } catch (err) {
@@ -276,7 +276,7 @@ export default function DeliveriesTab({
 
   // Fetch starting address from Supabase on mount
   useEffect(() => {
-    if (!isSupabaseMode()) return;
+    if (!isConfigured()) return;
 
     const loadStartingAddress = async () => {
       try {
@@ -292,7 +292,7 @@ export default function DeliveriesTab({
   // Save starting address to Supabase
   const updateStartingAddress = async (value) => {
     setStartingAddressState(value);
-    if (isSupabaseMode()) {
+    if (isConfigured()) {
       try {
         await saveStartingAddress(value);
       } catch (err) {
@@ -1384,7 +1384,7 @@ export default function DeliveriesTab({
               address: stop.address || '',
               hasAddress: stop.hasAddress,
               phone: contacts[0]?.phone || clientRecord?.phone || '',
-              orders: readyOrders,
+              orders: [],  // Order details not available from planner view
               stopKey,
               status,
               label,
@@ -1840,7 +1840,7 @@ export default function DeliveriesTab({
             return;
           }
 
-          if (isSupabaseMode() && setDrivers) {
+          if (isConfigured() && setDrivers) {
             const result = await saveDriverToSupabase(localNewDriver);
             if (result.success) {
               setDrivers(result.drivers);
@@ -1861,7 +1861,7 @@ export default function DeliveriesTab({
 
           const driver = drivers[index];
 
-          if (isSupabaseMode() && setDrivers && driver.id && !driver.id.startsWith('temp-')) {
+          if (isConfigured() && setDrivers && driver.id && !driver.id.startsWith('temp-')) {
             const result = await deleteDriverFromSupabase(driver.id);
             if (result.success) {
               setDrivers(result.drivers);
@@ -1884,7 +1884,7 @@ export default function DeliveriesTab({
         };
 
         const saveEditingDriver = async () => {
-          if (isSupabaseMode() && setDrivers) {
+          if (isConfigured() && setDrivers) {
             const result = await saveDriverToSupabase(editingDriver);
             if (result.success) {
               setDrivers(result.drivers);

@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import { isSupabaseMode } from '../lib/dataMode';
 import { isConfigured, checkConnection } from '../lib/supabase';
 import {
   fetchDeliveryStopsFromView,
@@ -24,17 +23,21 @@ export function useDriverData() {
   const [isLoadingDeliveries, setIsLoadingDeliveries] = useState(false);
   const [isLoadingRoutes, setIsLoadingRoutes] = useState(false);
   const [missingClients, setMissingClients] = useState([]); // Clients in menus but not in clients table
+  const [driversFetchError, setDriversFetchError] = useState(null); // Track driver fetch errors
 
   // Load drivers and clients from Supabase on mount
   useEffect(() => {
     const loadData = async () => {
-      if (!isSupabaseMode() || !isConfigured()) {
+      // Always attempt Supabase if configured (mode is now automatic)
+      if (!isConfigured()) {
+        setDriversFetchError('Supabase not configured');
         setIsLoaded(true);
         return;
       }
 
       const online = await checkConnection();
       if (!online) {
+        setDriversFetchError('Supabase connection failed');
         setIsLoaded(true);
         return;
       }
@@ -46,8 +49,10 @@ export function useDriverData() {
         ]);
         setDrivers(fetchedDrivers);
         setClients(fetchedClients);
+        setDriversFetchError(null); // Clear error on success
       } catch (err) {
-        console.error('[useDriverData]', err);
+        console.error('[useDriverData] fetch error:', err);
+        setDriversFetchError(err.message || 'Unknown fetch error');
       }
 
       setIsLoaded(true);
@@ -58,7 +63,7 @@ export function useDriverData() {
 
   // Fetch approved stops from menus view (fallback when no saved route)
   const fetchDeliveriesForWeek = useCallback(async (weekId, zone = null) => {
-    if (!isSupabaseMode() || !isConfigured()) {
+    if (!isConfigured()) {
       setIsLoadingDeliveries(false);
       return { stops: [], missingAddresses: [] };
     }
@@ -86,7 +91,7 @@ export function useDriverData() {
 
   // Fetch clients from Supabase (for driver portal to get addresses)
   const fetchClientsFromSupabase = useCallback(async () => {
-    if (!isSupabaseMode() || !isConfigured()) return;
+    if (!isConfigured()) return;
 
     const online = await checkConnection();
     if (!online) return;
@@ -101,8 +106,8 @@ export function useDriverData() {
 
   // Fetch saved routes from delivery_runs table for the week
   const fetchSavedRoutes = useCallback(async (weekId, zone = null) => {
-    if (!isSupabaseMode() || !isConfigured()) {
-      console.log('[DriverData] skipping route fetch - not in Supabase mode');
+    if (!isConfigured()) {
+      console.log('[DriverData] skipping route fetch - Supabase not configured');
       return [];
     }
 
@@ -150,7 +155,7 @@ export function useDriverData() {
     setDeliveryLog(newLog);
 
     // Find new entries to save to Supabase
-    if (!isSupabaseMode()) return;
+    if (!isConfigured()) return;
 
     // For now, just update local state
     // The actual delivery completion is saved via saveDelivery in DriverView
@@ -189,6 +194,7 @@ export function useDriverData() {
     isLoadingDeliveries,
     isLoadingRoutes,
     missingClients,
+    driversFetchError,
     updateDeliveryLog,
     updateReadyForDelivery,
     updateOrderHistory,

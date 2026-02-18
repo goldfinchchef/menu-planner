@@ -8,6 +8,7 @@ import {
 import { useDriverData } from '../hooks/useDriverData';
 import { DELIVERY_PROBLEMS } from '../constants';
 import { upsertDeliveryStop, insertDeliveryPhoto } from '../lib/database';
+import { getDiagnostics } from '../lib/supabase';
 
 const HANDOFF_TYPES = {
   HAND: 'hand',
@@ -55,6 +56,7 @@ export default function DriverView() {
     isLoadingDeliveries,
     isLoadingRoutes,
     missingClients,
+    driversFetchError,
     updateDeliveryLog,
     updateReadyForDelivery,
     updateOrderHistory,
@@ -68,6 +70,9 @@ export default function DriverView() {
 
   // Check if drivers are loaded
   const driversLoaded = Array.isArray(drivers) && drivers.length > 0;
+
+  // Debug mode (add ?debug=1 to URL)
+  const showDebug = searchParams.get('debug') === '1';
 
   // Auth state
   const [accessCode, setAccessCode] = useState('');
@@ -636,6 +641,24 @@ export default function DriverView() {
               {driversLoaded ? 'Start Deliveries' : 'Loading...'}
             </button>
           </form>
+
+          {/* Debug panel (only when ?debug=1 in URL) */}
+          {showDebug && (() => {
+            const diag = getDiagnostics();
+            return (
+              <div className="mt-6 p-4 bg-gray-100 rounded-lg text-xs font-mono">
+                <p className="font-bold mb-2 text-gray-700">Debug Info:</p>
+                <p>driversLoaded: <span className={driversLoaded ? 'text-green-600' : 'text-red-600'}>{String(driversLoaded)}</span></p>
+                <p>drivers.length: {drivers?.length ?? 'null'}</p>
+                <p>isLoaded: {String(isLoaded)}</p>
+                <p>driversFetchError: <span className={driversFetchError ? 'text-red-600' : 'text-green-600'}>{driversFetchError || 'none'}</span></p>
+                <p>isSupabaseMode: {String(diag.isSupabaseMode)}</p>
+                <p>supabaseHost: {diag.host || 'NOT_SET'}</p>
+                <p>configError: {diag.configError || 'none'}</p>
+                <p>clientCreated: {String(diag.clientCreated)}</p>
+              </div>
+            );
+          })()}
         </div>
       </div>
     );

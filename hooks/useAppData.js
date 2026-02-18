@@ -168,8 +168,8 @@ export function useAppData() {
       return;
     }
 
-    if (!isSupabaseMode() || !isConfigured()) {
-      console.log('Skipping menu fetch: Supabase not ready');
+    if (!isConfigured()) {
+      console.log('Skipping menu fetch: Supabase not configured');
       return;
     }
 
