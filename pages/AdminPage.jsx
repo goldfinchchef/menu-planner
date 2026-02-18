@@ -34,7 +34,9 @@ import {
   fetchGroceryBillsByWeek,
   fetchAllGroceryBills,
   updateClientDeliveryDates,
-  fetchMenusByWeek
+  fetchMenusByWeek,
+  saveAllMenus,
+  ensureWeeksExist
 } from '../lib/database';
 import { supabase } from '../lib/supabase';
 
@@ -175,8 +177,9 @@ function useAdminData() {
     saveData({ customTasks: newTasks });
   }, [saveData]);
 
-  const updateMenuItems = useCallback((newMenuItemsOrFn) => {
+  const updateMenuItems = useCallback(async (newMenuItemsOrFn) => {
     // Handle both direct values and functional updates
+    let menuItemsToSave;
     if (typeof newMenuItemsOrFn === 'function') {
       // Get current value from localStorage to compute update
       const savedData = localStorage.getItem(STORAGE_KEY);
@@ -189,14 +192,34 @@ function useAdminData() {
           console.error('Error parsing saved data:', e);
         }
       }
-      const updated = newMenuItemsOrFn(currentItems);
-      setMenuItems(updated);
-      saveData({ menuItems: updated });
+      menuItemsToSave = newMenuItemsOrFn(currentItems);
+      setMenuItems(menuItemsToSave);
     } else {
+      menuItemsToSave = newMenuItemsOrFn;
       setMenuItems(newMenuItemsOrFn);
-      saveData({ menuItems: newMenuItemsOrFn });
     }
-  }, [saveData]);
+
+    // Save menus directly to Supabase (not via sync which skips menus)
+    if (isSupabaseMode() && menuItemsToSave && menuItemsToSave.length > 0) {
+      try {
+        // Ensure weeks exist first
+        const weekIds = [...new Set(menuItemsToSave.map(item => {
+          if (item.weekId) return item.weekId;
+          return getWeekIdFromDate(item.date);
+        }).filter(Boolean))];
+
+        if (weekIds.length > 0) {
+          await ensureWeeksExist(weekIds);
+        }
+
+        console.log('[MENU SAVE] Saving', menuItemsToSave.length, 'menu items to Supabase');
+        await saveAllMenus(menuItemsToSave);
+        console.log('[MENU SAVE] Success');
+      } catch (error) {
+        console.error('[MENU SAVE] Error:', error);
+      }
+    }
+  }, []);
 
   const updateWeeklyTasks = useCallback((newWeeklyTasks) => {
     setWeeklyTasks(newWeeklyTasks);
