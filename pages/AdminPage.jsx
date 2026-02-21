@@ -121,8 +121,8 @@ function useAdminData() {
 
   // Save data to Supabase (no localStorage)
   const saveData = useCallback(async (updates) => {
-    if (!isSupabaseMode()) {
-      console.log('[AdminPage] not in Supabase mode, skipping save');
+    if (!isConfigured()) {
+      console.log('[AdminPage] Supabase not configured, skipping save');
       return;
     }
 
@@ -3323,7 +3323,7 @@ export default function AdminPage() {
     };
     console.log('[AdminPage.saveRecipe] recipeToSave:', recipeToSave.name, 'category:', newRecipe.category);
 
-    if (isSupabaseMode()) {
+    if (isConfigured()) {
       console.log('[AdminPage.saveRecipe] calling saveRecipeToSupabase...');
       const result = await saveRecipeToSupabase(recipeToSave, newRecipe.category);
       console.log('[AdminPage.saveRecipe] result:', result.success, result.error || '');
@@ -3353,7 +3353,7 @@ export default function AdminPage() {
     const recipe = recipes[category][index];
     console.log('[AdminPage.deleteRecipe] recipe:', recipe?.name);
 
-    if (isSupabaseMode()) {
+    if (isConfigured()) {
       console.log('[AdminPage.deleteRecipe] calling deleteRecipeFromSupabase...');
       const result = await deleteRecipeFromSupabase(recipe.name, category);
       console.log('[AdminPage.deleteRecipe] result:', result.success, result.error || '');
@@ -3477,7 +3477,7 @@ export default function AdminPage() {
     const recipeToSave = { ...recipe, ingredients: validIngredients };
     console.log('[AdminPage.saveEditingRecipe] recipe:', recipeToSave.name, 'category:', category);
 
-    if (isSupabaseMode()) {
+    if (isConfigured()) {
       console.log('[AdminPage.saveEditingRecipe] calling saveRecipeToSupabase...');
       const result = await saveRecipeToSupabase(recipeToSave, category);
       console.log('[AdminPage.saveEditingRecipe] result:', result.success, result.error || '');
@@ -3508,7 +3508,7 @@ export default function AdminPage() {
     if (exact) { alert(`"${newIngredient.name}" already exists as "${exact.name}"`); return; }
     if (similar.length > 0 && !window.confirm(`Similar ingredients found: ${similar.map(s => s.name).join(', ')}\n\nAdd "${newIngredient.name}" anyway?`)) return;
 
-    if (isSupabaseMode()) {
+    if (isConfigured()) {
       console.log('[Ingredients.add] START', { name: newIngredient.name });
       const result = await saveIngredientToSupabase(newIngredient);
       if (result.success) {
@@ -3531,7 +3531,7 @@ export default function AdminPage() {
   const deleteMasterIngredient = async (id) => {
     if (!window.confirm('Delete this ingredient?')) return;
 
-    if (isSupabaseMode()) {
+    if (isConfigured()) {
       console.log('[Ingredients.delete] START', { id });
       const result = await deleteIngredientFromSupabase(id);
       if (result.success) {
@@ -3554,9 +3554,9 @@ export default function AdminPage() {
 
   const saveEditingMasterIngredient = async () => {
     console.log('[Ingredients.save] START', { id: editingIngredientId, name: editingIngredientData?.name });
-    console.log('[Ingredients.save] mode:', isSupabaseMode() ? 'supabase' : 'local');
+    console.log('[Ingredients.save] mode:', isConfigured() ? 'supabase' : 'local');
 
-    if (isSupabaseMode()) {
+    if (isConfigured()) {
       const result = await saveIngredientToSupabase(editingIngredientData);
       if (result.success) {
         console.log('[Ingredients.save] SUCCESS');
