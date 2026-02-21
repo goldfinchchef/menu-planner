@@ -4068,7 +4068,7 @@ export default function AdminPage() {
 
         {/* Recipes Section */}
         {activeSection === 'recipes' && (() => {
-          console.log('[AdminPage -> RecipesTab] Passing masterIngredients:', masterIngredients?.length);
+          console.log('[AdminPage -> RecipesTab] passing masterIngredients len:', masterIngredients?.length);
           return (
           <RecipesTab
             recipes={recipes}
