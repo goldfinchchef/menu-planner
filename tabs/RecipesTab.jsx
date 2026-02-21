@@ -3,34 +3,42 @@ import { Upload, Download, Save, X, Edit2, Check, Trash2, AlertCircle, RefreshCw
 import { STORE_SECTIONS, RECIPE_CATEGORIES } from '../constants';
 import { normalizeName } from '../utils';
 
-export default function RecipesTab({
-  recipes,
-  newRecipe,
-  setNewRecipe,
-  editingRecipe,
-  setEditingRecipe,
-  masterIngredients,
-  recipesFileRef,
-  findExactMatch,
-  findSimilarIngredients,
-  getRecipeCost,
-  getRecipeCounts,
-  saveRecipe,
-  deleteRecipe,
-  startEditingRecipe,
-  saveEditingRecipe,
-  updateEditingIngredient,
-  addEditingIngredient,
-  removeEditingIngredient,
-  exportRecipesCSV,
-  getUniqueVendors,
-  updateMasterIngredientCost,
-  syncRecipeIngredientsFromMaster,
-  units = ['oz', 'lb', 'each', 'bunch', 'cup', 'tbsp', 'tsp'],
-  addUnit,
-  duplicateRecipe
-}) {
-  console.log('[RecipesTab] received masterIngredients len:', masterIngredients?.length);
+export default function RecipesTab(props) {
+  // Log ALL props to see exactly what's being passed
+  console.log('[RecipesTab] ALL PROPS:', {
+    hasMasterIngredients: 'masterIngredients' in props,
+    masterIngredientsLen: props.masterIngredients?.length,
+    propKeys: Object.keys(props)
+  });
+
+  // Destructure after logging
+  const {
+    recipes,
+    newRecipe,
+    setNewRecipe,
+    editingRecipe,
+    setEditingRecipe,
+    masterIngredients,
+    recipesFileRef,
+    findExactMatch,
+    findSimilarIngredients,
+    getRecipeCost,
+    getRecipeCounts,
+    saveRecipe,
+    deleteRecipe,
+    startEditingRecipe,
+    saveEditingRecipe,
+    updateEditingIngredient,
+    addEditingIngredient,
+    removeEditingIngredient,
+    exportRecipesCSV,
+    getUniqueVendors,
+    updateMasterIngredientCost,
+    syncRecipeIngredientsFromMaster,
+    units = ['oz', 'lb', 'each', 'bunch', 'cup', 'tbsp', 'tsp'],
+    addUnit,
+    duplicateRecipe
+  } = props;
 
   const [showNewVendorInput, setShowNewVendorInput] = useState({});
   const [editShowNewVendorInput, setEditShowNewVendorInput] = useState({});
