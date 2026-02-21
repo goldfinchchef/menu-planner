@@ -80,63 +80,68 @@ export function useAppData() {
     const initializeData = async () => {
       setIsSyncing(true);
 
-      // Load pending saves queue
-      loadPendingSaves();
+      try {
+        // Load pending saves queue
+        loadPendingSaves();
 
-      // Try to load from Supabase, fallback to localStorage
-      const result = await loadData();
+        // Try to load from Supabase, fallback to localStorage
+        const result = await loadData();
 
-      console.log("[LOAD DATA RESULT]", {
-        ok: result?.ok,
-        hasData: !!result?.data,
-        keys: Object.keys(result?.data || {}),
-        driversType: typeof result?.data?.drivers,
-        driversIsArray: Array.isArray(result?.data?.drivers),
-        driversLen: Array.isArray(result?.data?.drivers) ? result.data.drivers.length : null,
-        rawDrivers: result?.data?.drivers
-      });
+        console.log("[LOAD DATA RESULT]", {
+          ok: result?.ok,
+          hasData: !!result?.data,
+          keys: Object.keys(result?.data || {}),
+          driversType: typeof result?.data?.drivers,
+          driversIsArray: Array.isArray(result?.data?.drivers),
+          driversLen: Array.isArray(result?.data?.drivers) ? result.data.drivers.length : null,
+          rawDrivers: result?.data?.drivers
+        });
 
-      if (result.data) {
-        // Apply loaded data to state
-        if (result.data.recipes) setRecipes(result.data.recipes);
-        if (result.data.clients) setClients(result.data.clients);
-        if (result.data.menuItems) setMenuItems(result.data.menuItems);
-        if (result.data.masterIngredients) setMasterIngredients(result.data.masterIngredients);
-        if (result.data.orderHistory) setOrderHistory(result.data.orderHistory);
-        if (result.data.weeklyTasks) setWeeklyTasks(result.data.weeklyTasks);
-        console.log("[LOAD DRIVERS FROM SUPABASE]", result?.data?.drivers);
-        setDrivers(Array.isArray(result?.data?.drivers) ? result.data.drivers : []);
-        if (result.data.deliveryLog) setDeliveryLog(result.data.deliveryLog);
-        if (result.data.bagReminders) setBagReminders(result.data.bagReminders);
-        if (result.data.readyForDelivery) setReadyForDelivery(result.data.readyForDelivery);
-        if (result.data.clientPortalData) setClientPortalData(result.data.clientPortalData);
-        if (result.data.blockedDates) setBlockedDates(result.data.blockedDates);
-        if (result.data.adminSettings) setAdminSettings(result.data.adminSettings);
-        if (result.data.customTasks) setCustomTasks(result.data.customTasks);
-        if (result.data.groceryBills) setGroceryBills(result.data.groceryBills);
-        if (result.data.weeks) setWeeks(result.data.weeks);
-        if (result.data.units) setUnits(result.data.units);
+        if (result.data) {
+          // Apply loaded data to state
+          if (result.data.recipes) setRecipes(result.data.recipes);
+          if (result.data.clients) setClients(result.data.clients);
+          if (result.data.menuItems) setMenuItems(result.data.menuItems);
+          if (result.data.masterIngredients) setMasterIngredients(result.data.masterIngredients);
+          if (result.data.orderHistory) setOrderHistory(result.data.orderHistory);
+          if (result.data.weeklyTasks) setWeeklyTasks(result.data.weeklyTasks);
+          console.log("[LOAD DRIVERS FROM SUPABASE]", result?.data?.drivers);
+          setDrivers(Array.isArray(result?.data?.drivers) ? result.data.drivers : []);
+          if (result.data.deliveryLog) setDeliveryLog(result.data.deliveryLog);
+          if (result.data.bagReminders) setBagReminders(result.data.bagReminders);
+          if (result.data.readyForDelivery) setReadyForDelivery(result.data.readyForDelivery);
+          if (result.data.clientPortalData) setClientPortalData(result.data.clientPortalData);
+          if (result.data.blockedDates) setBlockedDates(result.data.blockedDates);
+          if (result.data.adminSettings) setAdminSettings(result.data.adminSettings);
+          if (result.data.customTasks) setCustomTasks(result.data.customTasks);
+          if (result.data.groceryBills) setGroceryBills(result.data.groceryBills);
+          if (result.data.weeks) setWeeks(result.data.weeks);
+          if (result.data.units) setUnits(result.data.units);
 
-        setDataSource(result.source);
-        setIsReadOnly(result.readOnly || false);
-        setIsOnline(!result.readOnly);
+          setDataSource(result.source);
+          setIsReadOnly(result.readOnly || false);
+          setIsOnline(!result.readOnly);
+        }
+
+        // Update sync status from stored state
+        const syncStatus = getSyncStatus();
+        setLastSyncedAt(syncStatus.lastSyncedAt);
+
+        // Check online status
+        const online = await checkOnlineStatus();
+        setIsOnline(online);
+
+        // If online and migration not complete, run migration
+        if (online && !syncStatus.migrationComplete) {
+          await migrateLocalStorageToSupabase();
+        }
+      } catch (error) {
+        console.error('[initializeData] Error:', error);
+        setSyncError(error.message);
+      } finally {
+        setIsSyncing(false);
+        isInitialLoadRef.current = false;
       }
-
-      // Update sync status from stored state
-      const syncStatus = getSyncStatus();
-      setLastSyncedAt(syncStatus.lastSyncedAt);
-
-      // Check online status
-      const online = await checkOnlineStatus();
-      setIsOnline(online);
-
-      // If online and migration not complete, run migration
-      if (online && !syncStatus.migrationComplete) {
-        await migrateLocalStorageToSupabase();
-      }
-
-      setIsSyncing(false);
-      isInitialLoadRef.current = false;
     };
 
     initializeData();
