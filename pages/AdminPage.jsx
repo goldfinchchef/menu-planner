@@ -72,6 +72,14 @@ function useAdminData() {
         const { loadData: loadFromSupabase } = await import('../lib/sync');
         const result = await loadFromSupabase();
 
+        // DEBUG: Log what loadData returned
+        console.log('[AdminPage loadData] result:', {
+          hasData: !!result.data,
+          source: result.source,
+          masterIngredientsCount: result.data?.masterIngredients?.length,
+          masterIngredientsSample: result.data?.masterIngredients?.slice(0, 2)
+        });
+
         if (result.data) {
           if (result.data.clients) setClients(result.data.clients);
           if (result.data.drivers) setDrivers(result.data.drivers);
@@ -84,7 +92,10 @@ function useAdminData() {
           if (result.data.customTasks) setCustomTasks(result.data.customTasks);
           if (result.data.weeklyTasks) setWeeklyTasks(result.data.weeklyTasks);
           if (result.data.recipes) setRecipes(result.data.recipes);
-          if (result.data.masterIngredients) setMasterIngredients(result.data.masterIngredients);
+          if (result.data.masterIngredients) {
+            console.log('[AdminPage] Setting masterIngredients, count:', result.data.masterIngredients.length);
+            setMasterIngredients(result.data.masterIngredients);
+          }
           if (result.data.groceryBills) setGroceryBills(result.data.groceryBills);
           if (result.data.weeks) setWeeks(result.data.weeks);
         }
