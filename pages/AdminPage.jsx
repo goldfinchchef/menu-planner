@@ -4066,7 +4066,9 @@ export default function AdminPage() {
         )}
 
         {/* Recipes Section */}
-        {activeSection === 'recipes' && (
+        {activeSection === 'recipes' && (() => {
+          console.log('[AdminPage -> RecipesTab] Passing masterIngredients:', masterIngredients?.length);
+          return (
           <RecipesTab
             recipes={recipes}
             newRecipe={newRecipe}
@@ -4091,7 +4093,8 @@ export default function AdminPage() {
             updateMasterIngredientCost={updateMasterIngredientCost}
             syncRecipeIngredientsFromMaster={syncRecipeIngredientsFromMaster}
           />
-        )}
+          );
+        })()}
 
         {/* Ingredients Section */}
         {activeSection === 'ingredients' && (
