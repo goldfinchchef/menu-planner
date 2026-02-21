@@ -2644,10 +2644,10 @@ export default function AdminPage() {
 
   // DIAGNOSTIC LOGGING - AdminPage render
   console.log('[AdminPage] render', {
-    selectedWeekId: 'will log after useState',
+    masterIngredientsCount: masterIngredients?.length,
+    recipesCategories: recipes ? Object.keys(recipes).length : 0,
     menuItemsLength: menuItems?.length,
-    isSupabaseMode: isSupabaseMode(),
-    isConfigured: isConfigured()
+    isLoaded: isLoaded
   });
 
   const [searchParams] = useSearchParams();
