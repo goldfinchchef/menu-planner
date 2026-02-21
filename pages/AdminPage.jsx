@@ -280,6 +280,8 @@ function useAdminData() {
     return lockedWeek;
   }, [weeks, menuItems, clients, saveData]);
 
+  console.log('[useAdminData RETURN] masterIngredients len:', masterIngredients?.length);
+
   return {
     clients,
     drivers,
