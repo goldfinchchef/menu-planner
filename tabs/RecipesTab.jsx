@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Upload, Download, Save, X, Edit2, Check, Trash2, AlertCircle, RefreshCw, AlertTriangle, Copy } from 'lucide-react';
 import { STORE_SECTIONS, RECIPE_CATEGORIES } from '../constants';
+import { normalizeName } from '../utils';
 
 export default function RecipesTab({
   recipes,
@@ -29,6 +30,13 @@ export default function RecipesTab({
   addUnit,
   duplicateRecipe
 }) {
+  // Debug: log masterIngredients state on each render
+  console.log('[RecipesTab RENDER]', {
+    masterIngredientsCount: masterIngredients?.length || 0,
+    hasFindExactMatch: typeof findExactMatch === 'function',
+    sampleNames: masterIngredients?.slice(0, 3).map(i => i.name) || []
+  });
+
   const [showNewVendorInput, setShowNewVendorInput] = useState({});
   const [editShowNewVendorInput, setEditShowNewVendorInput] = useState({});
   const [showNewUnitInput, setShowNewUnitInput] = useState({});
@@ -331,6 +339,16 @@ export default function RecipesTab({
           <div>
             <label className="block text-sm font-medium mb-2" style={{ color: '#423d3c' }}>Ingredients</label>
             {newRecipe.ingredients.map((ing, index) => {
+              // Debug: log matching attempt
+              if (ing.name.length > 2) {
+                console.log('[ING MATCH DEBUG - New Recipe]', {
+                  input: ing.name,
+                  normalizedInput: normalizeName(ing.name),
+                  masterSample: masterIngredients.slice(0, 5).map(i => ({ name: i.name, normalized: normalizeName(i.name) })),
+                  masterCount: masterIngredients.length,
+                  match: findExactMatch(ing.name)
+                });
+              }
               const exactMatch = ing.name.length > 2 ? findExactMatch(ing.name) : null;
               const similarIngs = ing.name.length > 2 && !exactMatch ? findSimilarIngredients(ing.name) : [];
               // Check if ingredient has valid master ingredient_id (UUID format)
@@ -483,6 +501,16 @@ export default function RecipesTab({
                         />
                         <p className="text-sm font-medium mb-2">Ingredients:</p>
                         {editingRecipe.recipe.ingredients.map((ing, ingIndex) => {
+                          // Debug: log matching attempt
+                          if (ing.name.length > 2) {
+                            console.log('[ING MATCH DEBUG - Edit Recipe]', {
+                              input: ing.name,
+                              normalizedInput: normalizeName(ing.name),
+                              masterSample: masterIngredients.slice(0, 5).map(i => ({ name: i.name, normalized: normalizeName(i.name) })),
+                              masterCount: masterIngredients.length,
+                              match: findExactMatch(ing.name)
+                            });
+                          }
                           const masterIng = ing.name.length > 2 ? findExactMatch(ing.name) : null;
                           const hasValidIngredientId = ing.ingredient_id && typeof ing.ingredient_id === 'string' && ing.ingredient_id.includes('-');
                           const isInMasterList = hasValidIngredientId || masterIng;
