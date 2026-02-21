@@ -100,6 +100,7 @@ function useAdminData() {
           }
           if (result.data.groceryBills) setGroceryBills(result.data.groceryBills);
           if (result.data.weeks) setWeeks(result.data.weeks);
+          console.log('[AdminPage] All state setters called - React will re-render');
         }
       } catch (e) {
         console.error('[AdminPage] Error loading data from Supabase:', e);

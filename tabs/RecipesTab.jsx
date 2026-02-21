@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Upload, Download, Save, X, Edit2, Check, Trash2, AlertCircle, RefreshCw, AlertTriangle, Copy } from 'lucide-react';
 import { STORE_SECTIONS, RECIPE_CATEGORIES } from '../constants';
 import { normalizeName } from '../utils';
@@ -30,8 +30,12 @@ export default function RecipesTab({
   addUnit,
   duplicateRecipe
 }) {
+  // Debug: render counter
+  const renderCount = useRef(0);
+  renderCount.current += 1;
+
   // Debug: log masterIngredients state on each render
-  console.log('[RecipesTab RENDER]', {
+  console.log('[RecipesTab RENDER #' + renderCount.current + ']', {
     masterIngredientsCount: masterIngredients?.length || 0,
     hasFindExactMatch: typeof findExactMatch === 'function',
     sampleNames: masterIngredients?.slice(0, 3).map(i => i.name) || []
