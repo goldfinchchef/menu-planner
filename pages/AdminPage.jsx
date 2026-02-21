@@ -97,6 +97,7 @@ function useAdminData() {
           if (result.data.masterIngredients) {
             console.log('[AdminPage] Setting masterIngredients, count:', result.data.masterIngredients.length);
             setMasterIngredients(result.data.masterIngredients);
+            console.log('[AdminPage AFTER SET] masterIngredients len:', result.data.masterIngredients?.length);
           }
           if (result.data.groceryBills) setGroceryBills(result.data.groceryBills);
           if (result.data.weeks) setWeeks(result.data.weeks);
@@ -2643,13 +2644,7 @@ export default function AdminPage() {
     lockWeekWithSnapshot
   } = useAdminData();
 
-  // DIAGNOSTIC LOGGING - AdminPage render
-  console.log('[AdminPage] render', {
-    masterIngredientsCount: masterIngredients?.length,
-    recipesCategories: recipes ? Object.keys(recipes).length : 0,
-    menuItemsLength: menuItems?.length,
-    isLoaded: isLoaded
-  });
+  console.log('[AdminPage RENDER] masterIngredients len:', masterIngredients?.length);
 
   const [searchParams] = useSearchParams();
   const [activeSection, setActiveSection] = useState('overview');
