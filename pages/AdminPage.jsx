@@ -54,6 +54,9 @@ function useAdminData() {
   const [weeklyTasks, setWeeklyTasks] = useState({});
   const [recipes, setRecipes] = useState({ protein: [], veg: [], starch: [], sauces: [], breakfast: [], soups: [] });
   const [masterIngredients, setMasterIngredients] = useState([]);
+
+  // Debug: Log whenever this hook re-renders
+  console.log('[useAdminData] hook executing, masterIngredients len:', masterIngredients?.length);
   const [groceryBills, setGroceryBills] = useState([]);
   const [weeks, setWeeks] = useState({});
   const [isLoaded, setIsLoaded] = useState(false);
