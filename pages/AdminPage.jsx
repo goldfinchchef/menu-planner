@@ -61,16 +61,14 @@ function useAdminData() {
   // Load data from Supabase on mount
   useEffect(() => {
     const loadData = async () => {
-      if (!isSupabaseMode()) {
-        console.log('[AdminPage] not in Supabase mode');
-        setIsLoaded(true);
-        return;
-      }
-
+      // NOTE: We always call loadFromSupabase - it handles mode detection internally
+      // and falls back to localStorage if Supabase is unavailable
       try {
         // Import loadData from sync to get full data from Supabase
         const { loadData: loadFromSupabase } = await import('../lib/sync');
+        console.log('[AdminPage] Calling loadFromSupabase...');
         const result = await loadFromSupabase();
+        console.log('[AdminPage] loadFromSupabase returned, source:', result.source);
 
         // DEBUG: Log what loadData returned
         console.log('[AdminPage loadData] result:', {
