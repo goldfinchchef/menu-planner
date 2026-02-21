@@ -3175,7 +3175,7 @@ export default function AdminPage() {
     if (!ingredient.name) return;
     const exactMatch = findExactMatch(ingredient.name);
 
-    if (isSupabaseMode()) {
+    if (isConfigured()) {
       // In Supabase mode, upsert ingredient to master list
       const ingredientToSave = exactMatch
         ? {
