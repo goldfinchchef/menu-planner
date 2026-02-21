@@ -232,6 +232,7 @@ function useAdminData() {
   }, [saveData]);
 
   const updateMasterIngredients = useCallback((newMasterIngredients) => {
+    console.log('[MASTER INGREDIENTS UPDATED]', newMasterIngredients?.length || 0);
     setMasterIngredients(newMasterIngredients);
     saveData({ masterIngredients: newMasterIngredients });
   }, [saveData]);
@@ -3194,6 +3195,7 @@ export default function AdminPage() {
 
       // Fire and forget - don't block recipe save
       saveIngredientToSupabase(ingredientToSave).then(result => {
+        console.log('[addToMasterIngredients] save result:', result.success, 'count:', result.ingredients?.length);
         if (result.success) {
           updateMasterIngredients(result.ingredients);
         }
