@@ -3,13 +3,12 @@ import { Upload, Download, Save, X, Edit2, Check, Trash2, AlertCircle, RefreshCw
 import { STORE_SECTIONS, RECIPE_CATEGORIES } from '../constants';
 import { normalizeName } from '../utils';
 
+let recipesTabRenderCount = 0;
+
 export default function RecipesTab(props) {
+  recipesTabRenderCount++;
   // Log ALL props to see exactly what's being passed
-  console.log('[RecipesTab] ALL PROPS:', {
-    hasMasterIngredients: 'masterIngredients' in props,
-    masterIngredientsLen: props.masterIngredients?.length,
-    propKeys: Object.keys(props)
-  });
+  console.log(`[RecipesTab RENDER #${recipesTabRenderCount}] masterIngredients len:`, props.masterIngredients?.length);
 
   // Destructure after logging
   const {

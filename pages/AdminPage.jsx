@@ -4068,7 +4068,11 @@ export default function AdminPage() {
 
         {/* Recipes Section */}
         {activeSection === 'recipes' && (() => {
-          console.log('[AdminPage -> RecipesTab] passing masterIngredients len:', masterIngredients?.length);
+          console.log('[AdminPage -> RecipesTab] IIFE scope check:', {
+            masterIngredientsLen: masterIngredients?.length,
+            masterIngredientsIsArray: Array.isArray(masterIngredients),
+            masterIngredientsSample: masterIngredients?.slice?.(0, 2)?.map?.(i => i?.name)
+          });
           return (
           <RecipesTab
             recipes={recipes}
