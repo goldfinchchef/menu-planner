@@ -4080,7 +4080,7 @@ export default function AdminPage() {
             setNewRecipe={setNewRecipe}
             editingRecipe={editingRecipe}
             setEditingRecipe={setEditingRecipe}
-            masterIngredients={masterIngredients}
+            masterIngredients={(console.log('[EXACT PROP VALUE at RecipesTab]', masterIngredients?.length), masterIngredients)}
             recipesFileRef={recipesFileRef}
             findExactMatch={findExactMatch}
             findSimilarIngredients={findSimilarIngredients}
