@@ -3135,7 +3135,7 @@ export default function AdminPage() {
   };
 
   // Sync all recipe ingredients from master ingredients data
-  const syncRecipeIngredientsFromMaster = () => {
+  const syncRecipeIngredientsFromMaster = async () => {
     let ingredientsAdded = 0;
     let costsUpdated = 0;
 
@@ -3171,16 +3171,20 @@ export default function AdminPage() {
       });
     });
 
-    // Add any new ingredients to master
+    // Collect new ingredients to add to master list
+    const ingredientsToAdd = [];
     Object.values(updatedRecipes).forEach(categoryRecipes => {
       categoryRecipes.forEach(recipe => {
         recipe.ingredients.forEach(ing => {
           if (ing.name && !findExactMatch(ing.name)) {
-            addToMasterIngredients(ing);
+            ingredientsToAdd.push(ing);
           }
         });
       });
     });
+
+    // Add all new ingredients and await completion
+    await Promise.all(ingredientsToAdd.map(ing => addToMasterIngredients(ing)));
 
     updateRecipes(updatedRecipes);
 
@@ -3208,15 +3212,16 @@ export default function AdminPage() {
             section: ingredient.section || 'Other'
           };
 
-      // Fire and forget - don't block recipe save
-      saveIngredientToSupabase(ingredientToSave).then(result => {
+      // Await the save and update state immediately
+      try {
+        const result = await saveIngredientToSupabase(ingredientToSave);
         console.log('[addToMasterIngredients] save result:', result.success, 'count:', result.ingredients?.length);
         if (result.success) {
           updateMasterIngredients(result.ingredients);
         }
-      }).catch(err => {
+      } catch (err) {
         console.error('[addToMasterIngredients] error', err);
-      });
+      }
     } else {
       // Local mode
       if (exactMatch) {
@@ -3331,7 +3336,8 @@ export default function AdminPage() {
       return;
     }
 
-    validIngredients.forEach(ing => addToMasterIngredients(ing));
+    // Save new ingredients to master list and await completion
+    await Promise.all(validIngredients.map(ing => addToMasterIngredients(ing)));
 
     const recipeToSave = {
       name: newRecipe.name,
@@ -3489,7 +3495,8 @@ export default function AdminPage() {
       return;
     }
 
-    validIngredients.forEach(ing => addToMasterIngredients(ing));
+    // Save new ingredients to master list and await completion
+    await Promise.all(validIngredients.map(ing => addToMasterIngredients(ing)));
 
     const recipeToSave = { ...recipe, ingredients: validIngredients };
     console.log('[AdminPage.saveEditingRecipe] recipe:', recipeToSave.name, 'category:', category);
