@@ -23,7 +23,8 @@ import {
   syncToSupabase,
   getSyncStatus,
   checkOnlineStatus,
-  migrateLocalStorageToSupabase
+  migrateLocalStorageToSupabase,
+  loadPendingSaves
 } from '../lib/sync';
 import { fetchMenusByWeek } from '../lib/database';
 import { isSupabaseMode } from '../lib/dataMode';
