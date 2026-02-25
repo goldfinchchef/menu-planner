@@ -32,7 +32,7 @@ const STANDARD_SOURCES = [
   'Other'
 ];
 
-export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepList, selectedWeekId }) {
+export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepList, selectedWeekId, unapprovedMenuCount = 0, unapprovedByClient = {} }) {
   // Shopping list state (loaded from Supabase, saved on change)
   const [checkedItems, setCheckedItems] = useState({});
   const [manualItems, setManualItems] = useState({ Sunday: [], Tuesday: [], Thursday: [] });
@@ -404,6 +404,17 @@ export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepL
   const totalItems = SHOP_DAYS.reduce((sum, day) => sum + getDayStats(day).total, 0);
   const totalChecked = SHOP_DAYS.reduce((sum, day) => sum + getDayStats(day).checked, 0);
 
+  // Gated export handler - block if unapproved menus exist
+  const handleExport = () => {
+    if (unapprovedMenuCount > 0) {
+      const topClients = Object.entries(unapprovedByClient).slice(0, 3).map(([name, count]) => `${name} (${count})`).join(', ');
+      console.log('[PRINT BLOCKED]', { weekId: selectedWeekId, unapprovedMenuCount, unapprovedByClient });
+      alert(`Cannot export yet: ${unapprovedMenuCount} unapproved menu(s).\n\nClients: ${topClients}\n\nApprove all menus first.`);
+      return;
+    }
+    exportPrepList();
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-lg shadow-lg p-6">
@@ -425,14 +436,25 @@ export default function PrepTab({ prepList, shoppingListsByDay = {}, exportPrepL
                 Reset Checks
               </button>
             )}
-            <button
-              onClick={exportPrepList}
-              className="px-4 py-2 rounded-lg text-white flex items-center gap-2"
-              style={{ backgroundColor: '#3d59ab' }}
-            >
-              <Download size={18} />
-              Export All
-            </button>
+            <div className="relative group">
+              <button
+                onClick={handleExport}
+                disabled={unapprovedMenuCount > 0}
+                className={`px-4 py-2 rounded-lg text-white flex items-center gap-2 ${
+                  unapprovedMenuCount > 0 ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+                style={{ backgroundColor: '#3d59ab' }}
+                title={unapprovedMenuCount > 0 ? 'Approve all menus to enable export' : 'Export shopping lists'}
+              >
+                <Download size={18} />
+                Export All
+              </button>
+              {unapprovedMenuCount > 0 && (
+                <span className="absolute -bottom-5 right-0 text-xs text-amber-600 whitespace-nowrap">
+                  Approve all menus to enable
+                </span>
+              )}
+            </div>
           </div>
         </div>
 

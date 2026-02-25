@@ -280,6 +280,14 @@ export default function KDSTab({
 
   // Print function for collapsed KDS view
   const printKDS = () => {
+    // Block if unapproved menus exist
+    if (unapprovedMenuCount > 0) {
+      const topClients = Object.entries(unapprovedByClient).slice(0, 3).map(([name, count]) => `${name} (${count})`).join(', ');
+      console.log('[PRINT BLOCKED]', { weekId: selectedWeekId, unapprovedMenuCount, unapprovedByClient });
+      alert(`Cannot print yet: ${unapprovedMenuCount} unapproved menu(s).\n\nClients: ${topClients}\n\nApprove all menus first.`);
+      return;
+    }
+
     const printWindow = window.open('', '_blank');
 
     let content = `
@@ -423,14 +431,25 @@ export default function KDSTab({
               </span>
             )}
             {hasAnyItems && (
-              <button
-                onClick={printKDS}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg border-2"
-                style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
-              >
-                <Printer size={18} />
-                Print
-              </button>
+              <div className="relative group">
+                <button
+                  onClick={printKDS}
+                  disabled={unapprovedMenuCount > 0}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 ${
+                    unapprovedMenuCount > 0 ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                  style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
+                  title={unapprovedMenuCount > 0 ? 'Approve all menus to enable printing' : 'Print KDS'}
+                >
+                  <Printer size={18} />
+                  Print
+                </button>
+                {unapprovedMenuCount > 0 && (
+                  <span className="absolute -bottom-5 left-0 text-xs text-amber-600 whitespace-nowrap">
+                    Approve all menus to enable
+                  </span>
+                )}
+              </div>
             )}
             {menuItems.length > 0 && allDishesComplete() && (
               <button

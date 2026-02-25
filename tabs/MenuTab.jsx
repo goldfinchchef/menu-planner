@@ -1007,8 +1007,25 @@ export default function MenuTab({
   const weekOrdersByClient = getWeekOrdersByClient();
   const deliveringThisWeek = getDeliveringThisWeek();
 
+  // Compute unapproved menu count for this week (for print gating)
+  const unapprovedMenuItems = weekMenuItems.filter(item => !item.approved);
+  const unapprovedCount = unapprovedMenuItems.length;
+  const unapprovedByClientLocal = {};
+  unapprovedMenuItems.forEach(item => {
+    const name = item.clientName || 'Unknown';
+    unapprovedByClientLocal[name] = (unapprovedByClientLocal[name] || 0) + 1;
+  });
+
   // Print function for menu planner
   const printMenuPlanner = () => {
+    // Block if unapproved menus exist
+    if (unapprovedCount > 0) {
+      const topClients = Object.entries(unapprovedByClientLocal).slice(0, 3).map(([name, count]) => `${name} (${count})`).join(', ');
+      console.log('[PRINT BLOCKED]', { weekId: selectedWeekId, unapprovedMenuCount: unapprovedCount, unapprovedByClient: unapprovedByClientLocal });
+      alert(`Cannot print yet: ${unapprovedCount} unapproved menu(s).\n\nClients: ${topClients}\n\nApprove all menus first.`);
+      return;
+    }
+
     const printWindow = window.open('', '_blank');
 
     let content = `
@@ -1317,13 +1334,24 @@ export default function MenuTab({
             Current Orders ({weekMenuItems.length > 0 ? Object.keys(weekOrdersByClient).length + ' clients' : 'None'})
           </h2>
             <div className="flex items-center gap-2">
-              <button
-                onClick={printMenuPlanner}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border-2 text-sm"
-                style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
-              >
-                <Printer size={16} /> Print
-              </button>
+              <div className="relative group">
+                <button
+                  onClick={printMenuPlanner}
+                  disabled={unapprovedCount > 0}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border-2 text-sm ${
+                    unapprovedCount > 0 ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                  style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
+                  title={unapprovedCount > 0 ? 'Approve all menus to enable printing' : 'Print menus'}
+                >
+                  <Printer size={16} /> Print
+                </button>
+                {unapprovedCount > 0 && (
+                  <span className="absolute -bottom-5 left-0 text-xs text-amber-600 whitespace-nowrap">
+                    Approve all menus to enable
+                  </span>
+                )}
+              </div>
               {weekMenuItems.length > 0 && (
                 <button
                   onClick={approveAllReady}

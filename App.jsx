@@ -1076,6 +1076,8 @@ export default function App() {
             shoppingListsByDay={getShoppingListsByDay()}
             exportPrepList={exportPrepList}
             selectedWeekId={selectedWeekId}
+            unapprovedMenuCount={unapprovedMenuCount}
+            unapprovedByClient={unapprovedByClient}
           />
         )}
 
