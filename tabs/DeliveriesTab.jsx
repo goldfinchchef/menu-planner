@@ -74,7 +74,10 @@ export default function DeliveriesTab({
   isReadOnly = false,
   menuItems = [],
   clientPortalData = {},
-  saveDriverRoutes
+  saveDriverRoutes,
+  unapprovedMenuCount = 0,
+  unapprovedByClient = {},
+  onApproveAll = null
 }) {
   // ============ DEBUG FLAG (set to true to enable console logging) ============
   const enableDebug = false;
@@ -764,6 +767,38 @@ export default function DeliveriesTab({
           <div>
             <p className="font-medium text-amber-800">Viewing Past Week (Read-only)</p>
             <p className="text-sm text-amber-600">This week is locked and cannot be modified.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Unapproved Menus Warning Banner */}
+      {unapprovedMenuCount > 0 && (
+        <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={24} className="text-red-500 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-red-700 font-bold">
+                ⚠️ {unapprovedMenuCount} menu row{unapprovedMenuCount !== 1 ? 's are' : ' is'} not approved
+              </p>
+              <p className="text-red-600 text-sm mt-1">
+                Delivery planning may be missing orders.
+              </p>
+              {Object.keys(unapprovedByClient).length > 0 && (
+                <p className="text-red-500 text-xs mt-2">
+                  Clients: {Object.entries(unapprovedByClient).map(([name, count]) => `${name} (${count})`).join(', ')}
+                </p>
+              )}
+            </div>
+            {onApproveAll && (
+              <button
+                onClick={onApproveAll}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium flex-shrink-0"
+                style={{ backgroundColor: '#22c55e' }}
+              >
+                <Check size={18} />
+                Approve All Menus
+              </button>
+            )}
           </div>
         </div>
       )}

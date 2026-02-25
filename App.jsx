@@ -24,7 +24,7 @@ import {
   downloadCSV
 } from './utils';
 import { DEFAULT_NEW_CLIENT, DEFAULT_NEW_RECIPE, DEFAULT_NEW_MENU_ITEM, DEFAULT_NEW_INGREDIENT } from './constants';
-import { fetchKdsDishStatuses, setKdsDishDone, saveRecipeToSupabase, deleteRecipeFromSupabase } from './lib/database';
+import { fetchKdsDishStatuses, setKdsDishDone, saveRecipeToSupabase, deleteRecipeFromSupabase, getUnapprovedMenuCountForWeek, approveAllMenusForWeek, fetchMenusByWeek } from './lib/database';
 import { isSupabaseMode, getDataMode } from './lib/dataMode';
 import { checkConnection, isConfigured } from './lib/supabase';
 
@@ -102,6 +102,10 @@ export default function App() {
   const [kdsLastRefresh, setKdsLastRefresh] = useState(null); // Timestamp of last successful fetch
   const [lastMenusApprovedAt, setLastMenusApprovedAt] = useState(null);
 
+  // Unapproved menu warning state
+  const [unapprovedMenuCount, setUnapprovedMenuCount] = useState(0);
+  const [unapprovedByClient, setUnapprovedByClient] = useState({});
+
   // Listen for menu approval events (from MenuTab on /admin page)
   useEffect(() => {
     const handleMenusApproved = (e) => {
@@ -165,6 +169,54 @@ export default function App() {
 
     loadKdsStatuses();
   }, [selectedWeekId, setCompletedDishes]);
+
+  // Fetch unapproved menu count for warning display
+  useEffect(() => {
+    const loadUnapprovedCount = async () => {
+      if (!selectedWeekId || !isSupabaseMode() || !isConfigured()) {
+        setUnapprovedMenuCount(0);
+        setUnapprovedByClient({});
+        return;
+      }
+
+      try {
+        const result = await getUnapprovedMenuCountForWeek(selectedWeekId);
+        setUnapprovedMenuCount(result.count);
+        setUnapprovedByClient(result.byClient || {});
+        if (result.count > 0) {
+          console.log('[APPROVAL WARNING] weekId=', selectedWeekId, 'unapprovedCount=', result.count, 'byClient=', result.byClient);
+        }
+      } catch (err) {
+        console.error('[APPROVAL WARNING] Failed to fetch unapproved count:', err);
+      }
+    };
+
+    loadUnapprovedCount();
+  }, [selectedWeekId, menuItems]); // Re-check when menuItems change (after approval)
+
+  // Handle approve all menus from warning banner
+  const handleApproveAllFromWarning = async () => {
+    if (!selectedWeekId) return;
+
+    try {
+      await approveAllMenusForWeek(selectedWeekId);
+      console.log('[APPROVAL WARNING] cleared');
+
+      // Refetch menus to update UI
+      const freshMenus = await fetchMenusByWeek(selectedWeekId, false);
+      setMenuItems(freshMenus);
+
+      // Clear the warning
+      setUnapprovedMenuCount(0);
+      setUnapprovedByClient({});
+
+      // Dispatch event for other components
+      window.dispatchEvent(new CustomEvent('menusApproved', { detail: { timestamp: Date.now() } }));
+    } catch (err) {
+      console.error('[APPROVAL WARNING] Failed to approve all:', err);
+      alert('Failed to approve menus: ' + err.message);
+    }
+  };
 
   // CSV Import handlers
   const importClientsCSV = (e) => {
@@ -1012,6 +1064,9 @@ export default function App() {
             kdsLastRefresh={kdsLastRefresh}
             lastMenusApprovedAt={lastMenusApprovedAt}
             isSyncing={isSyncing}
+            unapprovedMenuCount={unapprovedMenuCount}
+            unapprovedByClient={unapprovedByClient}
+            onApproveAll={handleApproveAllFromWarning}
           />
         )}
 
@@ -1047,6 +1102,9 @@ export default function App() {
             menuItems={getWeekMenuItems()}
             clientPortalData={clientPortalData}
             saveDriverRoutes={saveDriverRoutes}
+            unapprovedMenuCount={unapprovedMenuCount}
+            unapprovedByClient={unapprovedByClient}
+            onApproveAll={handleApproveAllFromWarning}
           />
         )}
 

@@ -236,7 +236,10 @@ export default function KDSTab({
   kdsLoading = false,
   kdsLastRefresh = null,
   lastMenusApprovedAt = null,
-  isSyncing = false
+  isSyncing = false,
+  unapprovedMenuCount = 0,
+  unapprovedByClient = {},
+  onApproveAll = null
 }) {
   const [expandedTiles, setExpandedTiles] = useState({});
   const kdsView = getKDSView();
@@ -367,6 +370,38 @@ export default function KDSTab({
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4 flex items-center gap-3">
           <RefreshCw size={20} className="text-amber-500 animate-spin" />
           <span className="text-amber-700 font-medium">Syncing menus in progress...</span>
+        </div>
+      )}
+
+      {/* Unapproved Menus Warning Banner */}
+      {unapprovedMenuCount > 0 && (
+        <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4 mb-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle size={24} className="text-red-500 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-red-700 font-bold">
+                ⚠️ {unapprovedMenuCount} menu row{unapprovedMenuCount !== 1 ? 's are' : ' is'} not approved
+              </p>
+              <p className="text-red-600 text-sm mt-1">
+                KDS totals & shopping list may be missing items.
+              </p>
+              {Object.keys(unapprovedByClient).length > 0 && (
+                <p className="text-red-500 text-xs mt-2">
+                  Clients: {Object.entries(unapprovedByClient).map(([name, count]) => `${name} (${count})`).join(', ')}
+                </p>
+              )}
+            </div>
+            {onApproveAll && (
+              <button
+                onClick={onApproveAll}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium flex-shrink-0"
+                style={{ backgroundColor: '#22c55e' }}
+              >
+                <Check size={18} />
+                Approve All Menus
+              </button>
+            )}
+          </div>
         </div>
       )}
 
