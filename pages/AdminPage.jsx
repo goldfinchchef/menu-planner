@@ -3278,10 +3278,25 @@ export default function AdminPage() {
     }
     const newItems = selectedClients.map(clientName => {
       const client = clients.find(c => c.name === clientName);
-      const clientPortions = client ? (client.portions || client.persons || 1) : 1;
-      return { ...newMenuItem, clientName, date: menuDate, portions: clientPortions, id: Date.now() + Math.random(), approved: false };
-    });
-    updateMenuItems([...menuItems, ...newItems]);
+      if (!client?.id) {
+        console.error('[addMenuItem] Client missing id:', { clientName, client });
+        alert(`Cannot add menu for ${clientName}: client data is missing`);
+        return null;
+      }
+      const clientPortions = client.portions || client.persons || 1;
+      return {
+        ...newMenuItem,
+        clientId: client.id,      // REQUIRED: client UUID for database
+        clientName: client.name,  // Use canonical name from client object
+        date: menuDate,
+        portions: clientPortions,
+        id: Date.now() + Math.random(),
+        approved: false
+      };
+    }).filter(Boolean); // Remove any null entries from failed lookups
+    if (newItems.length > 0) {
+      updateMenuItems([...menuItems, ...newItems]);
+    }
     setNewMenuItem(DEFAULT_NEW_MENU_ITEM);
   };
 
