@@ -201,7 +201,7 @@ function useAdminData() {
     let menuItemsToSave;
     if (typeof newMenuItemsOrFn === 'function') {
       // Get current value from localStorage to compute update
-      const savedData = localStorage.getItem(STORAGE_KEY);
+      const savedData = localStorage.getItem('goldfinchChefData');
       let currentItems = [];
       if (savedData) {
         try {
