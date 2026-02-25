@@ -651,8 +651,11 @@ export default function MenuTab({
         // Signal to KDS that menus were just approved (for syncing indicator)
         window.dispatchEvent(new CustomEvent('menusApproved', { detail: { timestamp: Date.now() } }));
       } catch (error) {
-        console.error('[MenuTab] ❌ SAVE FAILED:', error);
-        console.error('[MenuTab] Error details:', JSON.stringify(error, null, 2));
+        console.error('[MENU SAVE ERROR FULL]', error);
+        console.error('[MENU SAVE ERROR MESSAGE]', error?.message);
+        console.error('[MENU SAVE ERROR DETAILS]', error?.details);
+        console.error('[MENU SAVE ERROR HINT]', error?.hint);
+        console.error('[MENU SAVE ERROR CODE]', error?.code);
         showToast(`Failed to approve: ${error.message || 'Database error'}. Menu NOT saved.`, 'error');
         // Don't update local state - approval failed
       }
@@ -696,7 +699,11 @@ export default function MenuTab({
           showToast('All menus already approved', 'info');
         }
       } catch (err) {
-        console.error('[APPROVE ALL] Error:', err);
+        console.error('[MENU SAVE ERROR FULL]', err);
+        console.error('[MENU SAVE ERROR MESSAGE]', err?.message);
+        console.error('[MENU SAVE ERROR DETAILS]', err?.details);
+        console.error('[MENU SAVE ERROR HINT]', err?.hint);
+        console.error('[MENU SAVE ERROR CODE]', err?.code);
         showToast('Failed to approve menus: ' + err.message, 'error');
       }
     } else {
@@ -801,7 +808,11 @@ export default function MenuTab({
 
       showToast(`Created ${requiredMeals} blank meal slot(s)`, 'success');
     } catch (err) {
-      console.error('[handleStartOver] Error:', err);
+      console.error('[MENU SAVE ERROR FULL]', err);
+      console.error('[MENU SAVE ERROR MESSAGE]', err?.message);
+      console.error('[MENU SAVE ERROR DETAILS]', err?.details);
+      console.error('[MENU SAVE ERROR HINT]', err?.hint);
+      console.error('[MENU SAVE ERROR CODE]', err?.code);
       showToast('Failed to reset menu: ' + err.message, 'error');
     } finally {
       setEditModalLoading(false);
@@ -837,7 +848,11 @@ export default function MenuTab({
 
       showToast('Meal saved', 'success');
     } catch (err) {
-      console.error('[handleSaveMealRow] Error:', err);
+      console.error('[MENU SAVE ERROR FULL]', err);
+      console.error('[MENU SAVE ERROR MESSAGE]', err?.message);
+      console.error('[MENU SAVE ERROR DETAILS]', err?.details);
+      console.error('[MENU SAVE ERROR HINT]', err?.hint);
+      console.error('[MENU SAVE ERROR CODE]', err?.code);
       showToast('Failed to save meal: ' + err.message, 'error');
     } finally {
       setEditModalLoading(false);
@@ -879,7 +894,11 @@ export default function MenuTab({
 
       showToast('Bonus meal added', 'success');
     } catch (err) {
-      console.error('[handleAddBonusMeal] Error:', err);
+      console.error('[MENU SAVE ERROR FULL]', err);
+      console.error('[MENU SAVE ERROR MESSAGE]', err?.message);
+      console.error('[MENU SAVE ERROR DETAILS]', err?.details);
+      console.error('[MENU SAVE ERROR HINT]', err?.hint);
+      console.error('[MENU SAVE ERROR CODE]', err?.code);
       showToast('Failed to add bonus meal: ' + err.message, 'error');
     } finally {
       setEditModalLoading(false);
@@ -923,7 +942,11 @@ export default function MenuTab({
 
       showToast('Bonus meal deleted', 'success');
     } catch (err) {
-      console.error('[handleDeleteMealRow] Error:', err);
+      console.error('[MENU SAVE ERROR FULL]', err);
+      console.error('[MENU SAVE ERROR MESSAGE]', err?.message);
+      console.error('[MENU SAVE ERROR DETAILS]', err?.details);
+      console.error('[MENU SAVE ERROR HINT]', err?.hint);
+      console.error('[MENU SAVE ERROR CODE]', err?.code);
       showToast('Failed to delete meal: ' + err.message, 'error');
     } finally {
       setEditModalLoading(false);
@@ -969,7 +992,11 @@ export default function MenuTab({
       showToast(`Menu approved for ${client.displayName || client.name}`, 'success');
       setEditModal(null);
     } catch (err) {
-      console.error('[handleApproveFromModal] Error:', err);
+      console.error('[MENU SAVE ERROR FULL]', err);
+      console.error('[MENU SAVE ERROR MESSAGE]', err?.message);
+      console.error('[MENU SAVE ERROR DETAILS]', err?.details);
+      console.error('[MENU SAVE ERROR HINT]', err?.hint);
+      console.error('[MENU SAVE ERROR CODE]', err?.code);
       showToast('Failed to approve menu: ' + err.message, 'error');
     } finally {
       setEditModalLoading(false);
