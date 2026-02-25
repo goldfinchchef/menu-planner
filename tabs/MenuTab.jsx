@@ -3,7 +3,7 @@ import { Plus, Trash2, Check, AlertTriangle, Circle, Eye, X, ChevronDown, Chevro
 import WeekSelector from '../components/WeekSelector';
 import { getWeekIdFromDate, getWeekStartDate, getWeekEndDate } from '../utils/weekUtils';
 import { isSupabaseMode, isLocalMode } from '../lib/dataMode';
-import { saveAllMenus, fetchMenus, ensureWeeksExist, syncDeliveryStopsForWeek, approveAllMenusForWeek, fetchMenusByWeek } from '../lib/database';
+import { saveAllMenus, fetchMenus, ensureWeeksExist, syncDeliveryStopsForWeek, approveAllMenusForWeek, fetchMenusByWeek, deleteMenusForClientDate, createBlankMenusForClientDate, saveMenu, deleteMenuRow, fetchMenusForClientDate } from '../lib/database';
 import { checkConnection } from '../lib/supabase';
 
 // Styled Menu Card Component - matches client portal
@@ -233,6 +233,10 @@ export default function MenuTab({
   const [previewClient, setPreviewClient] = useState(null);
   const [editingClientName, setEditingClientName] = useState(null);
   const [showMenuBuilder, setShowMenuBuilder] = useState(true);
+
+  // New: State for the detailed edit modal
+  const [editModal, setEditModal] = useState(null); // { client, date, menus, requiredMeals }
+  const [editModalLoading, setEditModalLoading] = useState(false);
 
   // === AUTO-SAVE LOGIC ===
   const [isDirty, setIsDirty] = useState(false);
@@ -473,11 +477,17 @@ export default function MenuTab({
   const tasks = weeklyTasks[weekStart] || {};
 
   // Get client status (approved, warning, no menu) - filtered to selected week
+  // Now includes required meals checking
   const getClientStatus = (client) => {
     const clientName = client.displayName || client.name;
     const clientMenuItems = weekMenuItems.filter(item => item.clientName === clientName);
     const hasMenu = clientMenuItems.length > 0;
     const allApproved = hasMenu && clientMenuItems.every(item => item.approved);
+
+    // Check required meals
+    const requiredMeals = client.mealsPerWeek || 1;
+    const filledMeals = clientMenuItems.filter(m => m.protein || m.veg || m.starch).length;
+    const requiredMealsFilled = filledMeals >= requiredMeals;
 
     // Check for payment issues
     let warning = null;
@@ -494,19 +504,24 @@ export default function MenuTab({
       warning = warning || 'Delivery dates not set';
     }
 
+    // Add warning if required meals not filled
+    if (hasMenu && !requiredMealsFilled && !allApproved) {
+      warning = warning || `Only ${filledMeals}/${requiredMeals} required meals filled`;
+    }
+
     if (!hasMenu) {
-      return { status: 'none', icon: Circle, color: 'text-gray-400', bg: 'bg-gray-50', warning };
+      return { status: 'none', icon: Circle, color: 'text-gray-400', bg: 'bg-gray-50', warning, requiredMeals, filledMeals };
     }
 
     if (allApproved) {
-      return { status: 'approved', icon: Check, color: 'text-green-600', bg: 'bg-green-50', warning };
+      return { status: 'approved', icon: Check, color: 'text-green-600', bg: 'bg-green-50', warning, requiredMeals, filledMeals };
     }
 
     if (warning) {
-      return { status: 'warning', icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-50', warning };
+      return { status: 'warning', icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-50', warning, requiredMeals, filledMeals };
     }
 
-    return { status: 'pending', icon: Circle, color: 'text-blue-600', bg: 'bg-blue-50', warning };
+    return { status: 'pending', icon: Circle, color: 'text-blue-600', bg: 'bg-blue-50', warning, requiredMeals, filledMeals };
   };
 
   // Get clients delivering this week - filtered to selected week
@@ -708,8 +723,8 @@ export default function MenuTab({
     }
   };
 
-  // Start editing a client's menu
-  const startEditingMenu = (clientName, orders) => {
+  // Start editing a client's menu - opens the detailed edit modal
+  const startEditingMenu = async (clientName, orders) => {
     const isApproved = orders.every(o => o.approved);
 
     // Check if approved and week is locked
@@ -718,30 +733,252 @@ export default function MenuTab({
       return;
     }
 
-    // Find the client to get their actual name (not display name)
+    // Find the client
     const client = activeClients.find(c => (c.displayName || c.name) === clientName) ||
                    activeClients.find(c => c.name === clientName);
-    const actualClientName = client?.name || clientName;
 
-    // Pre-fill the menu builder with current selections
-    // Combine dishes from all orders for this client
-    const firstOrder = orders[0];
-    const allExtras = orders.flatMap(o => o.extras || []);
-    const uniqueExtras = [...new Set(allExtras)];
+    if (!client) {
+      showToast('Client not found', 'error');
+      return;
+    }
 
-    setNewMenuItem({
-      protein: firstOrder?.protein || '',
-      veg: firstOrder?.veg || '',
-      starch: firstOrder?.starch || '',
-      extras: uniqueExtras
+    const date = orders[0]?.date || menuDate;
+    const requiredMeals = client.mealsPerWeek || 1;
+
+    // Open the edit modal with current menus
+    setEditModal({
+      client,
+      date,
+      menus: orders.map(o => ({
+        ...o,
+        clientId: client.id,
+        clientName: client.name
+      })),
+      requiredMeals
     });
-    setMenuDate(firstOrder?.date || menuDate);
-    setSelectedClients([actualClientName]);
-    setEditingClientName(clientName);
-    setShowMenuBuilder(true);
+  };
 
-    // Remove old menu items for this client (they'll be re-added when saved)
-    setMenuItems(prev => prev.filter(item => item.clientName !== clientName));
+  // Handle Start Over - delete all menus for this client/date, create blank slots
+  const handleStartOver = async () => {
+    if (!editModal) return;
+
+    const { client, date, requiredMeals } = editModal;
+
+    if (!window.confirm(`This will delete ALL meals for ${client.displayName || client.name} on ${date} and create ${requiredMeals} blank slot(s). Continue?`)) {
+      return;
+    }
+
+    setEditModalLoading(true);
+    try {
+      // Delete all existing menus
+      await deleteMenusForClientDate({
+        weekId: selectedWeekId,
+        date,
+        clientId: client.id
+      });
+
+      // Create blank slots
+      await createBlankMenusForClientDate({
+        weekId: selectedWeekId,
+        date,
+        clientId: client.id,
+        clientName: client.name,
+        requiredMeals,
+        portions: client.portions || 1
+      });
+
+      // Refetch menus for this client/date
+      const freshMenus = await fetchMenusForClientDate({
+        clientId: client.id,
+        date
+      });
+
+      setEditModal(prev => ({ ...prev, menus: freshMenus }));
+
+      // Also refresh the main menu items list
+      const allMenus = await fetchMenusByWeek(selectedWeekId, false);
+      setMenuItems(allMenus);
+
+      showToast(`Created ${requiredMeals} blank meal slot(s)`, 'success');
+    } catch (err) {
+      console.error('[handleStartOver] Error:', err);
+      showToast('Failed to reset menu: ' + err.message, 'error');
+    } finally {
+      setEditModalLoading(false);
+    }
+  };
+
+  // Save a single meal row in the edit modal
+  const handleSaveMealRow = async (menuRow) => {
+    if (!editModal) return;
+
+    const { client, date } = editModal;
+
+    setEditModalLoading(true);
+    try {
+      await saveMenu({
+        ...menuRow,
+        clientId: client.id,
+        clientName: client.name,
+        date,
+        weekId: selectedWeekId
+      }, menuRow.mealIndex, selectedWeekId);
+
+      // Refetch menus
+      const freshMenus = await fetchMenusForClientDate({
+        clientId: client.id,
+        date
+      });
+      setEditModal(prev => ({ ...prev, menus: freshMenus }));
+
+      // Also refresh the main menu items list
+      const allMenus = await fetchMenusByWeek(selectedWeekId, false);
+      setMenuItems(allMenus);
+
+      showToast('Meal saved', 'success');
+    } catch (err) {
+      console.error('[handleSaveMealRow] Error:', err);
+      showToast('Failed to save meal: ' + err.message, 'error');
+    } finally {
+      setEditModalLoading(false);
+    }
+  };
+
+  // Add a bonus meal row
+  const handleAddBonusMeal = async () => {
+    if (!editModal) return;
+
+    const { client, date, menus } = editModal;
+    const nextIndex = menus.length > 0 ? Math.max(...menus.map(m => m.mealIndex)) + 1 : 1;
+
+    setEditModalLoading(true);
+    try {
+      await saveMenu({
+        clientId: client.id,
+        clientName: client.name,
+        date,
+        weekId: selectedWeekId,
+        protein: '',
+        veg: '',
+        starch: '',
+        extras: [],
+        portions: client.portions || 1,
+        approved: false
+      }, nextIndex, selectedWeekId);
+
+      // Refetch menus
+      const freshMenus = await fetchMenusForClientDate({
+        clientId: client.id,
+        date
+      });
+      setEditModal(prev => ({ ...prev, menus: freshMenus }));
+
+      // Also refresh the main menu items list
+      const allMenus = await fetchMenusByWeek(selectedWeekId, false);
+      setMenuItems(allMenus);
+
+      showToast('Bonus meal added', 'success');
+    } catch (err) {
+      console.error('[handleAddBonusMeal] Error:', err);
+      showToast('Failed to add bonus meal: ' + err.message, 'error');
+    } finally {
+      setEditModalLoading(false);
+    }
+  };
+
+  // Delete a specific meal row (bonus meals only)
+  const handleDeleteMealRow = async (menuRow) => {
+    if (!editModal) return;
+
+    const { client, date, requiredMeals } = editModal;
+
+    // Only allow deleting bonus meals (mealIndex > requiredMeals)
+    if (menuRow.mealIndex <= requiredMeals) {
+      showToast('Cannot delete required meal slots. Use Start Over to reset.', 'error');
+      return;
+    }
+
+    if (!window.confirm(`Delete bonus meal #${menuRow.mealIndex}?`)) {
+      return;
+    }
+
+    setEditModalLoading(true);
+    try {
+      await deleteMenuRow({
+        clientId: client.id,
+        date,
+        mealIndex: menuRow.mealIndex
+      });
+
+      // Refetch menus
+      const freshMenus = await fetchMenusForClientDate({
+        clientId: client.id,
+        date
+      });
+      setEditModal(prev => ({ ...prev, menus: freshMenus }));
+
+      // Also refresh the main menu items list
+      const allMenus = await fetchMenusByWeek(selectedWeekId, false);
+      setMenuItems(allMenus);
+
+      showToast('Bonus meal deleted', 'success');
+    } catch (err) {
+      console.error('[handleDeleteMealRow] Error:', err);
+      showToast('Failed to delete meal: ' + err.message, 'error');
+    } finally {
+      setEditModalLoading(false);
+    }
+  };
+
+  // Approve from edit modal - check required meals first
+  const handleApproveFromModal = async () => {
+    if (!editModal) return;
+
+    const { client, date, menus, requiredMeals } = editModal;
+
+    // Check if all required meal slots have at least one dish
+    const filledRequired = menus.filter(m => {
+      const hasDish = m.protein || m.veg || m.starch;
+      return hasDish && m.mealIndex <= requiredMeals;
+    }).length;
+
+    if (filledRequired < requiredMeals) {
+      showToast(`Cannot approve: only ${filledRequired}/${requiredMeals} required meals are filled`, 'error');
+      return;
+    }
+
+    setEditModalLoading(true);
+    try {
+      // Save all menus as approved
+      for (const menu of menus) {
+        await saveMenu({
+          ...menu,
+          clientId: client.id,
+          clientName: client.name,
+          approved: true
+        }, menu.mealIndex, selectedWeekId);
+      }
+
+      // Sync delivery stops
+      await syncDeliveryStopsForWeek(selectedWeekId);
+
+      // Refetch menus
+      const allMenus = await fetchMenusByWeek(selectedWeekId, false);
+      setMenuItems(allMenus);
+
+      showToast(`Menu approved for ${client.displayName || client.name}`, 'success');
+      setEditModal(null);
+    } catch (err) {
+      console.error('[handleApproveFromModal] Error:', err);
+      showToast('Failed to approve menu: ' + err.message, 'error');
+    } finally {
+      setEditModalLoading(false);
+    }
+  };
+
+  // Close edit modal
+  const closeEditModal = () => {
+    setEditModal(null);
   };
 
   // Cancel editing
@@ -1124,13 +1361,36 @@ export default function MenuTab({
                           <Check size={16} /> Approved
                         </span>
                       ) : (
-                        <span className="text-sm text-blue-600">Pending approval</span>
+                        <>
+                          <span className="text-sm text-blue-600">Pending approval</span>
+                          {(() => {
+                            const requiredMeals = client.mealsPerWeek || 1;
+                            const filledMeals = orders.filter(m => m.protein || m.veg || m.starch).length;
+                            if (filledMeals < requiredMeals) {
+                              return (
+                                <span className="text-xs text-amber-600">
+                                  ({filledMeals}/{requiredMeals} meals)
+                                </span>
+                              );
+                            }
+                            return null;
+                          })()}
+                        </>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
                       {!allApproved && (
                         <button
-                          onClick={() => approveClientMenu(clientName)}
+                          onClick={() => {
+                            // Check required meals before approving
+                            const requiredMeals = client.mealsPerWeek || 1;
+                            const filledMeals = orders.filter(m => m.protein || m.veg || m.starch).length;
+                            if (filledMeals < requiredMeals) {
+                              showToast(`Cannot approve: only ${filledMeals}/${requiredMeals} required meals filled. Click Edit to fill remaining meals.`, 'error');
+                              return;
+                            }
+                            approveClientMenu(clientName);
+                          }}
                           className="flex items-center gap-1 px-3 py-1.5 rounded text-sm text-white"
                           style={{ backgroundColor: '#22c55e' }}
                         >
@@ -1516,6 +1776,313 @@ export default function MenuTab({
           </div>
         </div>
       )}
+
+      {/* Edit Menu Modal - Detailed meal-by-meal editing */}
+      {editModal && (
+        <EditMenuModal
+          editModal={editModal}
+          setEditModal={setEditModal}
+          editModalLoading={editModalLoading}
+          recipes={recipes}
+          onStartOver={handleStartOver}
+          onSaveMealRow={handleSaveMealRow}
+          onAddBonusMeal={handleAddBonusMeal}
+          onDeleteMealRow={handleDeleteMealRow}
+          onApprove={handleApproveFromModal}
+          onClose={closeEditModal}
+        />
+      )}
+    </div>
+  );
+}
+
+// Edit Menu Modal Component - detailed meal-by-meal editing
+function EditMenuModal({
+  editModal,
+  setEditModal,
+  editModalLoading,
+  recipes,
+  onStartOver,
+  onSaveMealRow,
+  onAddBonusMeal,
+  onDeleteMealRow,
+  onApprove,
+  onClose
+}) {
+  const { client, date, menus, requiredMeals } = editModal;
+  const displayName = client.displayName || client.name;
+
+  // Local state for editing each meal row
+  const [editingRows, setEditingRows] = useState({});
+
+  // Initialize editing state when menus change
+  useEffect(() => {
+    const rows = {};
+    menus.forEach(m => {
+      rows[m.mealIndex] = {
+        protein: m.protein || '',
+        veg: m.veg || '',
+        starch: m.starch || '',
+        extras: m.extras || [],
+        dirty: false
+      };
+    });
+    setEditingRows(rows);
+  }, [menus]);
+
+  const updateRow = (mealIndex, field, value) => {
+    setEditingRows(prev => ({
+      ...prev,
+      [mealIndex]: {
+        ...prev[mealIndex],
+        [field]: value,
+        dirty: true
+      }
+    }));
+  };
+
+  const saveRow = (menu) => {
+    const editedRow = editingRows[menu.mealIndex];
+    if (!editedRow) return;
+
+    onSaveMealRow({
+      ...menu,
+      protein: editedRow.protein,
+      veg: editedRow.veg,
+      starch: editedRow.starch,
+      extras: editedRow.extras
+    });
+  };
+
+  // Check approval eligibility
+  const filledRequired = menus.filter(m => {
+    const row = editingRows[m.mealIndex];
+    const hasDish = (row?.protein || m.protein) || (row?.veg || m.veg) || (row?.starch || m.starch);
+    return hasDish && m.mealIndex <= requiredMeals;
+  }).length;
+
+  const canApprove = filledRequired >= requiredMeals;
+  const isApproved = menus.length > 0 && menus.every(m => m.approved);
+
+  const formattedDate = new Date(date + 'T12:00:00').toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric'
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-auto">
+        {/* Header */}
+        <div className="p-4 border-b flex items-center justify-between sticky top-0 bg-white z-10">
+          <div>
+            <h3 className="text-lg font-bold" style={{ color: '#3d59ab' }}>
+              Edit Menu: {displayName}
+            </h3>
+            <p className="text-sm text-gray-500">{formattedDate}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {isApproved && (
+              <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 flex items-center gap-1">
+                <Check size={12} /> Approved
+              </span>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1 rounded hover:bg-gray-100"
+              disabled={editModalLoading}
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        {/* Loading overlay */}
+        {editModalLoading && (
+          <div className="absolute inset-0 bg-white/70 flex items-center justify-center z-20">
+            <div className="text-gray-600">Saving...</div>
+          </div>
+        )}
+
+        {/* Meal slots info */}
+        <div className="p-4 bg-blue-50 border-b">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-sm font-medium text-blue-800">
+                Required meals: {requiredMeals}
+              </span>
+              <span className="text-sm text-blue-600 ml-2">
+                ({filledRequired}/{requiredMeals} filled)
+              </span>
+            </div>
+            <button
+              onClick={onStartOver}
+              disabled={editModalLoading}
+              className="text-sm px-3 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50"
+            >
+              Start Over
+            </button>
+          </div>
+        </div>
+
+        {/* Meal rows */}
+        <div className="p-4 space-y-4">
+          {menus.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <p>No meals yet.</p>
+              <button
+                onClick={onStartOver}
+                disabled={editModalLoading}
+                className="mt-2 text-sm px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                Create {requiredMeals} Blank Slot(s)
+              </button>
+            </div>
+          ) : (
+            menus.map((menu) => {
+              const isBonus = menu.mealIndex > requiredMeals;
+              const row = editingRows[menu.mealIndex] || {};
+              const hasDish = row.protein || row.veg || row.starch;
+
+              return (
+                <div
+                  key={menu.mealIndex}
+                  className={`p-3 rounded-lg border-2 ${
+                    isBonus ? 'border-purple-300 bg-purple-50' : 'border-gray-200 bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-sm font-medium ${isBonus ? 'text-purple-700' : 'text-gray-700'}`}>
+                        Meal #{menu.mealIndex}
+                      </span>
+                      {isBonus && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-purple-200 text-purple-700">
+                          Bonus
+                        </span>
+                      )}
+                      {!hasDish && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                          Empty
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {row.dirty && (
+                        <button
+                          onClick={() => saveRow(menu)}
+                          disabled={editModalLoading}
+                          className="text-xs px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          Save
+                        </button>
+                      )}
+                      {isBonus && (
+                        <button
+                          onClick={() => onDeleteMealRow(menu)}
+                          disabled={editModalLoading}
+                          className="text-xs p-1 rounded hover:bg-red-100 text-red-600 disabled:opacity-50"
+                          title="Delete bonus meal"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Protein</label>
+                      <select
+                        value={row.protein || ''}
+                        onChange={(e) => updateRow(menu.mealIndex, 'protein', e.target.value)}
+                        className="w-full p-1.5 text-sm border rounded"
+                        disabled={editModalLoading}
+                      >
+                        <option value="">Select...</option>
+                        {(recipes.protein || []).map((r, i) => (
+                          <option key={i} value={r.name}>{r.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Vegetable</label>
+                      <select
+                        value={row.veg || ''}
+                        onChange={(e) => updateRow(menu.mealIndex, 'veg', e.target.value)}
+                        className="w-full p-1.5 text-sm border rounded"
+                        disabled={editModalLoading}
+                      >
+                        <option value="">Select...</option>
+                        {(recipes.veg || []).map((r, i) => (
+                          <option key={i} value={r.name}>{r.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Starch</label>
+                      <select
+                        value={row.starch || ''}
+                        onChange={(e) => updateRow(menu.mealIndex, 'starch', e.target.value)}
+                        className="w-full p-1.5 text-sm border rounded"
+                        disabled={editModalLoading}
+                      >
+                        <option value="">Select...</option>
+                        {(recipes.starch || []).map((r, i) => (
+                          <option key={i} value={r.name}>{r.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+
+          {/* Add bonus meal button */}
+          {menus.length > 0 && (
+            <button
+              onClick={onAddBonusMeal}
+              disabled={editModalLoading}
+              className="w-full py-2 text-sm text-purple-700 border-2 border-dashed border-purple-300 rounded-lg hover:bg-purple-50 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              <Plus size={16} />
+              Add Bonus Meal
+            </button>
+          )}
+        </div>
+
+        {/* Footer actions */}
+        <div className="p-4 border-t flex justify-between items-center sticky bottom-0 bg-white">
+          <div className="text-sm text-gray-500">
+            {canApprove ? (
+              <span className="text-green-600">Ready to approve</span>
+            ) : (
+              <span className="text-amber-600">Fill all {requiredMeals} required meal(s) to approve</span>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={onClose}
+              disabled={editModalLoading}
+              className="px-4 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 disabled:opacity-50"
+            >
+              Close
+            </button>
+            {!isApproved && (
+              <button
+                onClick={onApprove}
+                disabled={editModalLoading || !canApprove}
+                className={`px-4 py-2 rounded-lg text-white flex items-center gap-2 ${
+                  canApprove ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-400 cursor-not-allowed'
+                } disabled:opacity-50`}
+              >
+                <Check size={16} /> Approve Menu
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
