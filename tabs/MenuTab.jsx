@@ -3,7 +3,7 @@ import { Plus, Trash2, Check, AlertTriangle, Circle, Eye, X, ChevronDown, Chevro
 import WeekSelector from '../components/WeekSelector';
 import { getWeekIdFromDate, getWeekStartDate, getWeekEndDate } from '../utils/weekUtils';
 import { isSupabaseMode, isLocalMode } from '../lib/dataMode';
-import { saveAllMenus, fetchMenus, ensureWeeksExist, syncDeliveryStopsForWeek } from '../lib/database';
+import { saveAllMenus, fetchMenus, ensureWeeksExist, syncDeliveryStopsForWeek, approveAllMenusForWeek, fetchMenusByWeek } from '../lib/database';
 import { checkConnection } from '../lib/supabase';
 
 // Styled Menu Card Component - matches client portal
@@ -654,35 +654,50 @@ export default function MenuTab({
     }
   };
 
-  // Approve all ready menus
+  // Approve ALL menus for the week - database-driven, no UI filtering
   const approveAllReady = async () => {
-    const readyClients = activeClients.filter(c => {
-      const clientName = c.displayName || c.name;
-      const status = getClientStatus(c);
-      return status.status === 'pending' && !status.warning;
-    });
+    console.log('[APPROVE ALL CLICKED] weekId:', selectedWeekId);
 
-    if (readyClients.length === 0) {
-      showToast('No menus ready to approve', 'info');
-      return;
-    }
-
-    // Check Supabase connectivity once before bulk approve
+    // Check Supabase connectivity
     if (isSupabaseMode()) {
       const isOnline = await checkConnection();
       if (!isOnline) {
         showToast('Cannot approve: database offline', 'error');
         return;
       }
-    }
 
-    // Approve all sequentially
-    for (const c of readyClients) {
-      const clientName = c.displayName || c.name;
-      await approveClientMenu(clientName);
-    }
+      try {
+        // Approve all unapproved menus for this week directly in database
+        const result = await approveAllMenusForWeek(selectedWeekId);
+        console.log('[APPROVE ALL] Database updated:', result.updated, 'rows');
 
-    showToast(`Approved ${readyClients.length} menu(s)`, 'success');
+        // Refetch menus from database to sync UI state
+        const freshMenus = await fetchMenusByWeek(selectedWeekId, false);
+        setMenuItems(freshMenus);
+
+        if (result.updated > 0) {
+          showToast(`Approved ${result.updated} menu(s)`, 'success');
+        } else {
+          showToast('All menus already approved', 'info');
+        }
+      } catch (err) {
+        console.error('[APPROVE ALL] Error:', err);
+        showToast('Failed to approve menus: ' + err.message, 'error');
+      }
+    } else {
+      // Local mode fallback - approve all unapproved items
+      const unapprovedCount = weekMenuItems.filter(item => !item.approved).length;
+      if (unapprovedCount === 0) {
+        showToast('All menus already approved', 'info');
+        return;
+      }
+      setMenuItems(prev => prev.map(item =>
+        getWeekIdFromDate(item.date) === selectedWeekId
+          ? { ...item, approved: true }
+          : item
+      ));
+      showToast(`Approved ${unapprovedCount} menu(s)`, 'success');
+    }
   };
 
   // Deny (remove) menu for a client
@@ -984,13 +999,13 @@ export default function MenuTab({
               {scheduledClients.length} clients scheduled • Based on delivery settings in Billing & Dates
             </p>
           </div>
-          {weekMenuItems.filter(item => !item.approved).length > 0 && (
+          {weekMenuItems.length > 0 && (
             <button
               onClick={approveAllReady}
               className="px-4 py-2 rounded-lg text-white font-medium text-sm"
               style={{ backgroundColor: '#10b981' }}
             >
-              Approve All Ready
+              Approve All
             </button>
           )}
         </div>
@@ -1072,7 +1087,7 @@ export default function MenuTab({
               >
                 <Printer size={16} /> Print
               </button>
-              {weekMenuItems.some(item => !item.approved) && (
+              {weekMenuItems.length > 0 && (
                 <button
                   onClick={approveAllReady}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm"
