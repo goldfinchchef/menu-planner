@@ -848,14 +848,89 @@ export default function App() {
     };
   };
 
+  // Week-view shopping list - aggregates ALL ingredients into one list (no day split)
+  // Used for export and week-level shopping view
+  const getShoppingListForWeek = () => {
+    const shoppingList = {};
+    const approvedItems = getWeekApprovedMenuItems();
+
+    // Helper to normalize ingredient names for consolidation
+    const normalizeIngredientName = (name) => {
+      return (name || '').toLowerCase().trim().replace(/\s+/g, ' ');
+    };
+
+    approvedItems.forEach(item => {
+      // Get all dishes from this menu item
+      const dishes = [item.protein, item.veg, item.starch, ...(item.extras || [])].filter(Boolean);
+
+      dishes.forEach(dishName => {
+        // Find the recipe
+        const category = ['protein', 'veg', 'starch', 'sauces', 'breakfast', 'soups'].find(
+          cat => recipes[cat]?.find(r => r.name === dishName)
+        );
+        const recipe = category ? recipes[category].find(r => r.name === dishName) : null;
+
+        if (recipe?.ingredients) {
+          recipe.ingredients.forEach(ing => {
+            const masterIng = findExactMatch(ing.name);
+            // Normalize unit for proper consolidation
+            const unit = (ing.unit || 'oz').toLowerCase().trim();
+            // Group by ingredient_id if present, otherwise by normalized name + unit
+            const ingredientKey = ing.ingredient_id
+              ? String(ing.ingredient_id)
+              : normalizeIngredientName(ing.name);
+            const key = `${ingredientKey}|${unit}`;
+
+            const portionMultiplier = item.portions || 1;
+            const ingQuantity = parseFloat(ing.quantity || 0) * portionMultiplier;
+            const unitCost = parseFloat(masterIng?.cost || ing.cost || 0);
+            const ingCost = ingQuantity * unitCost;
+
+            if (!shoppingList[key]) {
+              shoppingList[key] = {
+                name: ing.name.trim(),
+                ingredient_id: ing.ingredient_id || null,
+                quantity: 0,
+                unit: unit,
+                section: ing.section || masterIng?.section || categorizeIngredient(ing.name),
+                cost: 0,
+                unitCost: unitCost,
+                source: masterIng?.source || ing.source || '',
+                recipes: []
+              };
+            }
+            // Sum quantities and costs
+            shoppingList[key].quantity += ingQuantity;
+            shoppingList[key].cost += ingCost;
+            // Track which recipes use this ingredient
+            if (!shoppingList[key].recipes.includes(dishName)) {
+              shoppingList[key].recipes.push(dishName);
+            }
+          });
+        }
+      });
+    });
+
+    // Sort by source → section → name
+    return Object.values(shoppingList).sort((a, b) => {
+      const sourceCompare = (a.source || 'ZZZ').localeCompare(b.source || 'ZZZ');
+      if (sourceCompare !== 0) return sourceCompare;
+      const sectionCompare = (a.section || 'ZZZ').localeCompare(b.section || 'ZZZ');
+      if (sectionCompare !== 0) return sectionCompare;
+      return a.name.localeCompare(b.name);
+    });
+  };
+
   // Legacy prep list (all items combined) - kept for backwards compatibility
   const getPrepList = () => {
     const lists = getShoppingListsByDay();
     return [...lists.Sunday, ...lists.Tuesday, ...lists.Thursday];
   };
 
+  // Export uses WEEK aggregation (no duplicates across days)
   const exportPrepList = () => {
-    const prepList = getPrepList();
+    const prepList = getShoppingListForWeek();
+    console.log('[SHOPPING EXPORT] week list rows:', prepList.length);
     downloadCSV(Papa.unparse(prepList.map(item => ({
       Source: item.source,
       Section: item.section,
