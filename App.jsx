@@ -793,11 +793,12 @@ export default function App() {
             const masterIng = findExactMatch(ing.name);
             // Normalize unit for proper consolidation
             const unit = (ing.unit || 'oz').toLowerCase().trim();
-            // Group by ingredient_id if present, otherwise by normalized name + unit
-            // Ignore source/section for grouping - just aggregate by ingredient identity + unit
+
+            // FIXED: Use master ingredient ID as fallback when recipe ingredient_id is missing
+            // Priority: ing.ingredient_id > masterIng.id > normalized name
             const ingredientKey = ing.ingredient_id
               ? String(ing.ingredient_id)
-              : normalizeIngredientName(ing.name);
+              : (masterIng?.id ? String(masterIng.id) : normalizeIngredientName(ing.name));
             const key = `${ingredientKey}|${unit}`;
 
             const portionMultiplier = item.portions || 1;
@@ -805,10 +806,13 @@ export default function App() {
             const unitCost = parseFloat(masterIng?.cost || ing.cost || 0);
             const ingCost = ingQuantity * unitCost;
 
+            // Resolve the best ingredient_id to store
+            const resolvedIngredientId = ing.ingredient_id || masterIng?.id || null;
+
             if (!shoppingLists[shopDay][key]) {
               shoppingLists[shopDay][key] = {
                 name: ing.name.trim(), // Keep original display name (first occurrence)
-                ingredient_id: ing.ingredient_id || null,
+                ingredient_id: resolvedIngredientId,
                 quantity: 0,
                 unit: unit,
                 section: ing.section || masterIng?.section || categorizeIngredient(ing.name),
@@ -851,6 +855,7 @@ export default function App() {
   // Week-view shopping list - aggregates ALL ingredients into one list (no day split)
   // Used for export and week-level shopping view
   const getShoppingListForWeek = () => {
+    console.log('[WEEKLY SHOPPING] Building aggregated list...');
     const shoppingList = {};
     const approvedItems = getWeekApprovedMenuItems();
 
@@ -875,10 +880,12 @@ export default function App() {
             const masterIng = findExactMatch(ing.name);
             // Normalize unit for proper consolidation
             const unit = (ing.unit || 'oz').toLowerCase().trim();
-            // Group by ingredient_id if present, otherwise by normalized name + unit
+
+            // FIXED: Use master ingredient ID as fallback when recipe ingredient_id is missing
+            // Priority: ing.ingredient_id > masterIng.id > normalized name
             const ingredientKey = ing.ingredient_id
               ? String(ing.ingredient_id)
-              : normalizeIngredientName(ing.name);
+              : (masterIng?.id ? String(masterIng.id) : normalizeIngredientName(ing.name));
             const key = `${ingredientKey}|${unit}`;
 
             const portionMultiplier = item.portions || 1;
@@ -886,10 +893,13 @@ export default function App() {
             const unitCost = parseFloat(masterIng?.cost || ing.cost || 0);
             const ingCost = ingQuantity * unitCost;
 
+            // Resolve the best ingredient_id to store
+            const resolvedIngredientId = ing.ingredient_id || masterIng?.id || null;
+
             if (!shoppingList[key]) {
               shoppingList[key] = {
                 name: ing.name.trim(),
-                ingredient_id: ing.ingredient_id || null,
+                ingredient_id: resolvedIngredientId,
                 quantity: 0,
                 unit: unit,
                 section: ing.section || masterIng?.section || categorizeIngredient(ing.name),
@@ -911,14 +921,16 @@ export default function App() {
       });
     });
 
-    // Sort by source → section → name
-    return Object.values(shoppingList).sort((a, b) => {
+    const result = Object.values(shoppingList).sort((a, b) => {
       const sourceCompare = (a.source || 'ZZZ').localeCompare(b.source || 'ZZZ');
       if (sourceCompare !== 0) return sourceCompare;
       const sectionCompare = (a.section || 'ZZZ').localeCompare(b.section || 'ZZZ');
       if (sectionCompare !== 0) return sectionCompare;
       return a.name.localeCompare(b.name);
     });
+
+    console.log('[WEEKLY SHOPPING] Aggregated', result.length, 'unique ingredient rows from', approvedItems.length, 'approved menu items');
+    return result;
   };
 
   // Legacy prep list (all items combined) - kept for backwards compatibility
@@ -929,8 +941,9 @@ export default function App() {
 
   // Export uses WEEK aggregation (no duplicates across days)
   const exportPrepList = () => {
+    console.log('[EXPORT] Starting weekly shopping list export...');
     const prepList = getShoppingListForWeek();
-    console.log('[SHOPPING EXPORT] week list rows:', prepList.length);
+    console.log('[EXPORT] weekly shopping list rows:', prepList.length);
     downloadCSV(Papa.unparse(prepList.map(item => ({
       Source: item.source,
       Section: item.section,
@@ -938,6 +951,7 @@ export default function App() {
       Quantity: item.quantity.toFixed(2),
       Unit: item.unit
     })), { columns: ['Source', 'Section', 'Ingredient', 'Quantity', 'Unit'] }), 'shopping-list.csv');
+    console.log('[EXPORT] CSV download triggered');
   };
 
   // History
