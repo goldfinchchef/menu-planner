@@ -3729,7 +3729,9 @@ export default function AdminPage() {
     if (isSupabaseMode()) {
       const result = await saveClientToSupabase(clientToSave);
       if (result.success) {
-        setClients(result.clients);
+        console.log('[CLIENT SAVE] success', result);
+        console.log('[CLIENT SAVE] refreshing clients...');
+        updateClients(result.clients);
         setNewClient({
           name: '', displayName: '', persons: 1,
           contacts: [{ name: '', email: '', phone: '', address: '' }],
@@ -3740,6 +3742,7 @@ export default function AdminPage() {
         });
         alert('Client added!');
       } else {
+        console.error('[CLIENT SAVE] failed', result.error);
         alert(`Save failed: ${result.error}`);
       }
     } else {
@@ -3765,8 +3768,11 @@ export default function AdminPage() {
       const clientName = client.name || client.displayName;
       const result = await deleteClientFromSupabase(clientName);
       if (result.success) {
-        setClients(result.clients);
+        console.log('[CLIENT DELETE] success', result);
+        console.log('[CLIENT DELETE] refreshing clients...');
+        updateClients(result.clients);
       } else {
+        console.error('[CLIENT DELETE] failed', result.error);
         alert(`Delete failed: ${result.error}`);
       }
     } else {
