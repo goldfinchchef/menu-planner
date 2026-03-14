@@ -2,9 +2,9 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import App from './App.jsx'
-import DriverView from './pages/DriverView.jsx'
-import ClientPortal from './pages/ClientPortal.jsx'
-import AdminPage from './pages/AdminPage.jsx'
+import DriverView from '../pages/DriverView.jsx'
+import ClientPortal from '../pages/ClientPortal.jsx'
+import AdminPage from '../pages/AdminPage.jsx'
 import './index.css'
 
 // Error boundary to catch React crashes
