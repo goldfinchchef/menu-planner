@@ -1240,6 +1240,14 @@ export default function DriverView() {
       <div className="max-w-lg mx-auto">
         <Header driver={driver} onLogout={handleLogout} onViewAll={() => setShowAllStops(true)} onViewReady={() => setShowAllReady(true)} readyCount={countUniqueStops(allReadyOrders)} />
 
+        {/* Delivery Summary Strip */}
+        <DeliverySummaryStrip
+          upcomingDates={upcomingDates}
+          getDriverStops={getDriverStops}
+          deliveryLog={deliveryLog}
+          driver={driver}
+        />
+
         {/* Progress indicator */}
         <div className="bg-white rounded-lg shadow p-3 mb-4">
           <div className="flex items-center justify-between text-sm">
@@ -1561,6 +1569,53 @@ export default function DriverView() {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Delivery Summary Strip component
+function DeliverySummaryStrip({ upcomingDates, getDriverStops, deliveryLog, driver }) {
+  // Get summary data for each upcoming delivery day
+  const getDaySummary = (date) => {
+    const stops = getDriverStops(date);
+    const dayDeliveries = deliveryLog.filter(
+      entry => entry.date === date && entry.driverName === driver?.name
+    );
+
+    return {
+      date,
+      dayName: new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' }),
+      totalStops: stops.length,
+      zone: driver?.zone || '—',
+      totalBags: null, // Placeholder - no bag count data yet
+      issues: dayDeliveries.filter(e => e.problem).length
+    };
+  };
+
+  // Get up to 3 upcoming days
+  const daySummaries = upcomingDates.slice(0, 3).map(getDaySummary);
+
+  if (daySummaries.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-lg shadow p-3 mb-4">
+      <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${daySummaries.length}, 1fr)` }}>
+        {daySummaries.map(day => (
+          <div
+            key={day.date}
+            className="text-center p-2 rounded-lg"
+            style={{ backgroundColor: '#f9f9ed' }}
+          >
+            <p className="font-bold text-sm" style={{ color: '#3d59ab' }}>{day.dayName}</p>
+            <p className="text-xs text-gray-600 mt-1">{day.totalStops} stop{day.totalStops !== 1 ? 's' : ''}</p>
+            <p className="text-xs text-gray-500">Zone {day.zone}</p>
+            <p className="text-xs text-gray-400">{day.totalBags ?? '—'} bags</p>
+            <p className={`text-xs mt-0.5 ${day.issues > 0 ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
+              {day.issues} issue{day.issues !== 1 ? 's' : ''}
+            </p>
+          </div>
+        ))}
       </div>
     </div>
   );
