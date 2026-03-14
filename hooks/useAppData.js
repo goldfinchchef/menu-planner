@@ -454,15 +454,16 @@ export function useAppData() {
     if (found.length === 0) alert('No duplicate ingredients found!');
   };
 
-  const getRecipeCost = (recipe) => {
+  // Memoize getRecipeCost to prevent infinite loops when used in useCallback dependencies
+  const getRecipeCost = useCallback((recipe) => {
     if (!recipe?.ingredients) return 0;
     return recipe.ingredients.reduce((total, ing) => {
-      const masterIng = findExactMatch(ing.name);
+      const masterIng = masterIngredients.find(mi => normalizeName(mi.name) === normalizeName(ing.name));
       const costPerUnit = parseFloat(masterIng?.cost || ing.cost || 0);
       const quantity = parseFloat(ing.quantity || 0);
       return total + (costPerUnit * quantity);
     }, 0);
-  };
+  }, [masterIngredients]);
 
   const getRecipeCounts = () => {
     const counts = {};

@@ -287,10 +287,12 @@ export default function ExperimentalLayout() {
     }
   };
 
-  // Load billing cycles on mount and when recipes change
+  // Load billing cycles on mount only (not on every loadBillingCycles recreation)
+  // Manual refresh available via loadBillingCycles in context
   useEffect(() => {
     loadBillingCycles();
-  }, [loadBillingCycles]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ============ SCHEDULE MENUS ============
 
