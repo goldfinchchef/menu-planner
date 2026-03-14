@@ -1,45 +1,33 @@
 /**
- * ExperimentalApp.jsx
+ * ExperimentalLayout.jsx
  *
- * Experimental navigation layout using production data.
- * Accessible at /test route.
- *
- * - Uses production useAppData hook for real data
- * - Uses experimental 2-layer navigation shell (TopNav, SubNav, global week bar)
- * - Uses production content tabs where possible
+ * Layout shell for experimental route-based navigation.
+ * Single owner of useAppData state, provides context to child pages via Outlet.
  */
 
 import React, { useState, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Outlet, Link } from 'react-router-dom';
 import { ChefHat, ChevronLeft, ChevronRight, Settings } from 'lucide-react';
 
 // Production data hook
-import { useAppData } from './hooks/useAppData';
+import { useAppData } from '../hooks/useAppData';
 
-// Experimental layout/navigation components
-import TopNav from './experimental/TopNav';
-import SubNav, { DEFAULT_SUBVIEWS } from './experimental/SubNav';
-import TimelineView from './experimental/TimelineView';
-
-// Production content tabs
-import RecipesTab from './tabs/RecipesTab';
-import KDSTab from './tabs/KDSTab';
-import PrepTab from './tabs/PrepTab';
-import MenuTab from './tabs/MenuTab';
-import ClientsTab from './tabs/ClientsTab';
-import IngredientsTab from './tabs/IngredientsTab';
-import HistoryTab from './tabs/HistoryTab';
+// Experimental navigation components
+import TopNav from './TopNav';
+import SubNav from './SubNav';
+import ExperimentalContext from './ExperimentalContext';
 
 // Production utilities
-import { getWeekId, getWeekIdFromDate, formatWeekRange, getAdjacentWeekId } from './utils/weekUtils';
-import { DEFAULT_NEW_RECIPE, DEFAULT_NEW_INGREDIENT, DEFAULT_NEW_CLIENT, DEFAULT_NEW_MENU_ITEM } from './constants';
-import { exportRecipesCSV, categorizeIngredient } from './utils';
-import { isSupabaseMode } from './lib/dataMode';
-import { saveRecipeToSupabase, deleteRecipeFromSupabase, fetchKdsDishStatuses, setKdsDishDone, getUnapprovedMenuCountForWeek, approveAllMenusForWeek, fetchMenusByWeek } from './lib/database';
-import { isConfigured, checkConnection } from './lib/supabase';
+import { getWeekId, getWeekIdFromDate, formatWeekRange, getAdjacentWeekId } from '../utils/weekUtils';
+import { DEFAULT_NEW_RECIPE, DEFAULT_NEW_INGREDIENT } from '../constants';
+import { exportRecipesCSV, categorizeIngredient } from '../utils';
+import { isSupabaseMode } from '../lib/dataMode';
+import { saveRecipeToSupabase, deleteRecipeFromSupabase, setKdsDishDone } from '../lib/database';
+import { isConfigured, checkConnection } from '../lib/supabase';
 
-export default function ExperimentalApp() {
-  // Production data hook - full data access
+export default function ExperimentalLayout() {
+  // Production data hook - single source of truth
+  const appData = useAppData();
   const {
     recipes, setRecipes,
     menuItems, setMenuItems,
@@ -54,10 +42,9 @@ export default function ExperimentalApp() {
     editingRecipe, setEditingRecipe,
     editingIngredientId, setEditingIngredientId,
     editingIngredientData, setEditingIngredientData,
-    duplicateWarnings, setDuplicateWarnings,
     completedDishes, setCompletedDishes,
-    orderHistory, setOrderHistory,
-    weeks, setWeeks,
+    orderHistory,
+    weeks,
     selectedWeekId, setSelectedWeekId,
     findSimilarIngredients,
     findExactMatch,
@@ -67,15 +54,8 @@ export default function ExperimentalApp() {
     getUniqueVendors,
     getRecipeCost,
     getRecipeCounts,
-    units, addUnit,
-    isOnline,
-    isSyncing,
-    forceSync
-  } = useAppData();
-
-  // Two-level navigation state (experimental)
-  const [activeSection, setActiveSection] = useState('schedule');
-  const [activeSubview, setActiveSubview] = useState('weekly-schedule');
+    units, addUnit
+  } = appData;
 
   // Local state for experimental TimelineView (delivery schedule)
   const [deliverySchedule, setDeliverySchedule] = useState({});
@@ -278,7 +258,7 @@ export default function ExperimentalApp() {
     alert('Export prep list - production behavior preserved');
   };
 
-  // Recipe functions (production)
+  // Recipe functions
   const saveRecipe = async () => {
     if (!newRecipe.name) { alert('Please enter a recipe name'); return; }
     const validIngredients = newRecipe.ingredients.filter(ing => ing.name && ing.quantity);
@@ -406,272 +386,145 @@ export default function ExperimentalApp() {
     }
   };
 
-  // Render content based on section and subview
-  const renderContent = () => {
-    // Schedule section - experimental TimelineView
-    if (activeSection === 'schedule') {
-      return (
-        <TimelineView
-          clients={clients}
-          deliverySchedule={deliverySchedule}
-          setDeliverySchedule={setDeliverySchedule}
-        />
-      );
-    }
+  // Context value with all shared state and functions
+  const contextValue = {
+    // Data
+    recipes, setRecipes,
+    menuItems, setMenuItems,
+    selectedClients, setSelectedClients,
+    menuDate, setMenuDate,
+    clients, setClients,
+    newClient, setNewClient,
+    newRecipe, setNewRecipe,
+    newMenuItem, setNewMenuItem,
+    masterIngredients, setMasterIngredients,
+    newIngredient, setNewIngredient,
+    editingRecipe, setEditingRecipe,
+    editingIngredientId, setEditingIngredientId,
+    editingIngredientData, setEditingIngredientData,
+    completedDishes, setCompletedDishes,
+    orderHistory,
+    weeks,
+    selectedWeekId, setSelectedWeekId,
+    currentWeek,
 
-    // Menu section - production MenuTab
-    if (activeSection === 'menu') {
-      return (
-        <MenuTab
-          clients={clients}
-          setClients={setClients}
-          selectedClients={selectedClients}
-          setSelectedClients={setSelectedClients}
-          menuDate={menuDate}
-          setMenuDate={setMenuDate}
-          newMenuItem={newMenuItem}
-          setNewMenuItem={setNewMenuItem}
-          recipes={recipes}
-          menuItems={menuItems}
-          setMenuItems={setMenuItems}
-          selectedWeekId={selectedWeekId}
-          weeks={weeks}
-          masterIngredients={masterIngredients}
-          findExactMatch={findExactMatch}
-          getRecipeCost={getRecipeCost}
-        />
-      );
-    }
+    // Experimental state
+    deliverySchedule, setDeliverySchedule,
 
-    // Kitchen section - production tabs
-    if (activeSection === 'kitchen') {
-      switch (activeSubview) {
-        case 'dish-totals':
-          return (
-            <KDSTab
-              menuItems={menuItems.filter(item => item.approved)}
-              recipes={recipes}
-              completedDishes={completedDishes}
-              toggleDishComplete={toggleDishComplete}
-              allDishesComplete={allDishesComplete}
-              completeAllOrders={completeAllOrders}
-              getKDSView={getKDSView}
-              selectedWeekId={selectedWeekId}
-              currentWeek={currentWeek}
-              kdsLoading={kdsLoading}
-              kdsLastRefresh={kdsLastRefresh}
-              lastMenusApprovedAt={lastMenusApprovedAt}
-              unapprovedMenuCount={unapprovedMenuCount}
-              unapprovedByClient={unapprovedByClient}
-            />
-          );
-        case 'shopping-list':
-          return (
-            <PrepTab
-              prepList={getPrepList()}
-              shoppingListsByDay={getShoppingListsByDay()}
-              exportPrepList={exportPrepList}
-              selectedWeekId={selectedWeekId}
-              unapprovedMenuCount={unapprovedMenuCount}
-              unapprovedByClient={unapprovedByClient}
-            />
-          );
-        case 'recipes':
-          return (
-            <RecipesTab
-              recipes={recipes}
-              newRecipe={newRecipe}
-              setNewRecipe={setNewRecipe}
-              editingRecipe={editingRecipe}
-              setEditingRecipe={setEditingRecipe}
-              masterIngredients={masterIngredients}
-              recipesFileRef={recipesFileRef}
-              findExactMatch={findExactMatch}
-              findSimilarIngredients={findSimilarIngredients}
-              getRecipeCost={getRecipeCost}
-              getRecipeCounts={getRecipeCounts}
-              saveRecipe={saveRecipe}
-              deleteRecipe={deleteRecipe}
-              startEditingRecipe={startEditingRecipe}
-              saveEditingRecipe={saveEditingRecipe}
-              updateEditingIngredient={updateEditingIngredient}
-              addEditingIngredient={addEditingIngredient}
-              removeEditingIngredient={removeEditingIngredient}
-              exportRecipesCSV={() => exportRecipesCSV(recipes)}
-              getUniqueVendors={getUniqueVendors}
-              updateMasterIngredientCost={updateMasterIngredientCost}
-              syncRecipeIngredientsFromMaster={syncRecipeIngredientsFromMaster}
-              units={units}
-              addUnit={addUnit}
-              duplicateRecipe={duplicateRecipe}
-            />
-          );
-        case 'ingredients':
-          return (
-            <IngredientsTab
-              masterIngredients={masterIngredients}
-              setMasterIngredients={setMasterIngredients}
-              newIngredient={newIngredient}
-              setNewIngredient={setNewIngredient}
-              editingIngredientId={editingIngredientId}
-              setEditingIngredientId={setEditingIngredientId}
-              editingIngredientData={editingIngredientData}
-              setEditingIngredientData={setEditingIngredientData}
-              ingredientsFileRef={ingredientsFileRef}
-              findSimilarIngredients={findSimilarIngredients}
-              findExactMatch={findExactMatch}
-              recipes={recipes}
-              setRecipes={setRecipes}
-              units={units}
-              addUnit={addUnit}
-            />
-          );
-        default:
-          return (
-            <KDSTab
-              menuItems={menuItems.filter(item => item.approved)}
-              recipes={recipes}
-              completedDishes={completedDishes}
-              toggleDishComplete={toggleDishComplete}
-              allDishesComplete={allDishesComplete}
-              completeAllOrders={completeAllOrders}
-              getKDSView={getKDSView}
-              selectedWeekId={selectedWeekId}
-              currentWeek={currentWeek}
-              kdsLoading={kdsLoading}
-              kdsLastRefresh={kdsLastRefresh}
-              lastMenusApprovedAt={lastMenusApprovedAt}
-              unapprovedMenuCount={unapprovedMenuCount}
-              unapprovedByClient={unapprovedByClient}
-            />
-          );
-      }
-    }
+    // KDS state
+    kdsLoading, kdsLastRefresh, lastMenusApprovedAt,
+    unapprovedMenuCount, unapprovedByClient,
 
-    // Clients section - production tabs
-    if (activeSection === 'clients') {
-      switch (activeSubview) {
-        case 'directory':
-          return (
-            <ClientsTab
-              clients={clients}
-              setClients={setClients}
-              newClient={newClient}
-              setNewClient={setNewClient}
-              clientsFileRef={clientsFileRef}
-            />
-          );
-        case 'history':
-          return (
-            <HistoryTab
-              orderHistory={orderHistory}
-              clients={clients}
-            />
-          );
-        default:
-          return (
-            <ClientsTab
-              clients={clients}
-              setClients={setClients}
-              newClient={newClient}
-              setNewClient={setNewClient}
-              clientsFileRef={clientsFileRef}
-            />
-          );
-      }
-    }
+    // File refs
+    clientsFileRef, recipesFileRef, ingredientsFileRef,
 
-    // Fallback to Schedule
-    return (
-      <TimelineView
-        clients={clients}
-        deliverySchedule={deliverySchedule}
-        setDeliverySchedule={setDeliverySchedule}
-      />
-    );
+    // Utility functions
+    findSimilarIngredients,
+    findExactMatch,
+    addToMasterIngredients,
+    updateMasterIngredientCost,
+    syncRecipeIngredientsFromMaster,
+    getUniqueVendors,
+    getRecipeCost,
+    getRecipeCounts,
+    units, addUnit,
+
+    // Computed functions
+    getWeekMenuItems,
+    getWeekApprovedMenuItems,
+    getKDSView,
+    getShoppingListsByDay,
+    getPrepList,
+
+    // Actions
+    toggleDishComplete,
+    allDishesComplete,
+    completeAllOrders,
+    exportPrepList,
+    saveRecipe,
+    deleteRecipe,
+    duplicateRecipe,
+    startEditingRecipe,
+    updateEditingIngredient,
+    addEditingIngredient,
+    removeEditingIngredient,
+    saveEditingRecipe
   };
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: '#f9f9ed' }}>
-      {/* Hidden file inputs */}
-      <input type="file" ref={clientsFileRef} accept=".csv" className="hidden" />
-      <input type="file" ref={recipesFileRef} accept=".csv" className="hidden" />
-      <input type="file" ref={ingredientsFileRef} accept=".csv" className="hidden" />
+    <ExperimentalContext.Provider value={contextValue}>
+      <div className="min-h-screen" style={{ backgroundColor: '#f9f9ed' }}>
+        {/* Hidden file inputs */}
+        <input type="file" ref={clientsFileRef} accept=".csv" className="hidden" />
+        <input type="file" ref={recipesFileRef} accept=".csv" className="hidden" />
+        <input type="file" ref={ingredientsFileRef} accept=".csv" className="hidden" />
 
-      {/* Layer 1: Global Week Bar */}
-      <div className="text-white px-4 py-1.5" style={{ backgroundColor: '#3d59ab' }}>
-        <div className="flex items-center justify-between max-w-6xl mx-auto">
-          {/* Left: Logo */}
-          <div className="flex items-center gap-2">
-            <ChefHat size={18} style={{ color: '#ffd700' }} />
-            <span className="font-bold text-sm">Goldfinch Chef</span>
-            <span className="text-xs bg-yellow-500 text-black px-2 py-0.5 rounded ml-2">EXPERIMENTAL</span>
-          </div>
+        {/* Layer 1: Global Week Bar */}
+        <div className="text-white px-4 py-1.5" style={{ backgroundColor: '#3d59ab' }}>
+          <div className="flex items-center justify-between max-w-6xl mx-auto">
+            {/* Left: Logo */}
+            <div className="flex items-center gap-2">
+              <ChefHat size={18} style={{ color: '#ffd700' }} />
+              <span className="font-bold text-sm">Goldfinch Chef</span>
+              <span className="text-xs bg-yellow-500 text-black px-2 py-0.5 rounded ml-2">EXPERIMENTAL</span>
+            </div>
 
-          {/* Center: Week navigation */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setSelectedWeekId(getAdjacentWeekId(selectedWeekId, -1))}
-              className="p-1 rounded hover:bg-white/20 transition-colors"
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <span className="font-medium text-sm min-w-[140px] text-center">
-              {formatWeekRange(selectedWeekId)}
-            </span>
-            <button
-              onClick={() => setSelectedWeekId(getAdjacentWeekId(selectedWeekId, 1))}
-              className="p-1 rounded hover:bg-white/20 transition-colors"
-            >
-              <ChevronRight size={18} />
-            </button>
-            <span className="text-xs opacity-75 ml-1">
-              {selectedWeekId.split('-')[1]}
-            </span>
-          </div>
+            {/* Center: Week navigation */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSelectedWeekId(getAdjacentWeekId(selectedWeekId, -1))}
+                className="p-1 rounded hover:bg-white/20 transition-colors"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <span className="font-medium text-sm min-w-[140px] text-center">
+                {formatWeekRange(selectedWeekId)}
+              </span>
+              <button
+                onClick={() => setSelectedWeekId(getAdjacentWeekId(selectedWeekId, 1))}
+                className="p-1 rounded hover:bg-white/20 transition-colors"
+              >
+                <ChevronRight size={18} />
+              </button>
+              <span className="text-xs opacity-75 ml-1">
+                {selectedWeekId.split('-')[1]}
+              </span>
+            </div>
 
-          {/* Right: Links */}
-          <div className="flex items-center gap-2">
-            <Link
-              to="/"
-              className="text-xs px-2 py-1 rounded bg-white/20 hover:bg-white/30"
-            >
-              Back to Production
-            </Link>
-            <Link
-              to="/admin"
-              className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-white/20 hover:bg-white/30"
-            >
-              <Settings size={14} />
-              Admin
-            </Link>
+            {/* Right: Links */}
+            <div className="flex items-center gap-2">
+              <Link
+                to="/"
+                className="text-xs px-2 py-1 rounded bg-white/20 hover:bg-white/30"
+              >
+                Back to Production
+              </Link>
+              <Link
+                to="/admin"
+                className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-white/20 hover:bg-white/30"
+              >
+                <Settings size={14} />
+                Admin
+              </Link>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Layer 2: Primary Navigation */}
-      <nav className="bg-white shadow-sm sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto">
-          <TopNav
-            activeSection={activeSection}
-            setActiveSection={setActiveSection}
-            setActiveSubview={setActiveSubview}
-            defaultSubviews={DEFAULT_SUBVIEWS}
-          />
+        {/* Layer 2: Primary Navigation */}
+        <nav className="bg-white shadow-sm sticky top-0 z-10">
+          <div className="max-w-6xl mx-auto">
+            <TopNav />
+          </div>
+        </nav>
+
+        {/* Secondary Navigation (subviews) */}
+        <SubNav />
+
+        {/* Content Area - renders matched route */}
+        <div className="max-w-6xl mx-auto p-4 space-y-6">
+          <Outlet />
         </div>
-      </nav>
-
-      {/* Secondary Navigation (subviews) */}
-      <SubNav
-        activeSection={activeSection}
-        activeSubview={activeSubview}
-        setActiveSubview={setActiveSubview}
-      />
-
-      {/* Content Area */}
-      <div className="max-w-6xl mx-auto p-4 space-y-6">
-        {renderContent()}
       </div>
-    </div>
+    </ExperimentalContext.Provider>
   );
 }
