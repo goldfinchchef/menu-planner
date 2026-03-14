@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { X, Loader2, Receipt } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { X, Loader2, ChevronDown } from 'lucide-react';
 
 // Retro palette colors
 const COLORS = {
@@ -105,8 +105,26 @@ function ScheduleModal({
   cellState,
   clientWeekMeals,
   onSchedule,
-  onUnschedule
+  onUnschedule,
+  onStatusChange
 }) {
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+  const [statusUpdating, setStatusUpdating] = useState(false);
+  const dropdownRef = useRef(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setStatusDropdownOpen(false);
+      }
+    };
+    if (statusDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [statusDropdownOpen]);
+
   if (!isOpen || !client || !week) return null;
 
   // Status from menus.status (not derived from approved)
@@ -114,6 +132,7 @@ function ScheduleModal({
   const statusStyle = STATUS_COLORS[status] || STATUS_COLORS.skipped;
   const isScheduled = status === 'scheduled' || status === 'confirmed';
   const mealsPerWeek = client.meals_per_week || client.mealsPerWeek || 4;
+  const portions = client.portions || 1;
 
   const handleSchedule = async () => {
     await onSchedule(client, week.weekId, week.dateKey);
@@ -128,6 +147,20 @@ function ScheduleModal({
     }
     await onUnschedule(client.id, week.weekId);
     onClose();
+  };
+
+  const handleStatusChange = async (newStatus) => {
+    if (newStatus === status) {
+      setStatusDropdownOpen(false);
+      return;
+    }
+    setStatusUpdating(true);
+    try {
+      await onStatusChange(client.id, week.weekId, newStatus);
+    } finally {
+      setStatusUpdating(false);
+      setStatusDropdownOpen(false);
+    }
   };
 
   return (
@@ -148,12 +181,51 @@ function ScheduleModal({
             <span className="text-gray-500 shrink-0">{week.label}</span>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <span
-              className="px-1.5 py-0.5 rounded text-xs font-medium"
-              style={{ backgroundColor: statusStyle.bg, color: statusStyle.text }}
-            >
-              {statusStyle.label}
-            </span>
+            {/* Clickable status dropdown */}
+            {isScheduled ? (
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  onClick={() => setStatusDropdownOpen(!statusDropdownOpen)}
+                  disabled={statusUpdating}
+                  className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium cursor-pointer hover:opacity-90 disabled:opacity-50"
+                  style={{ backgroundColor: statusStyle.bg, color: statusStyle.text }}
+                >
+                  {statusUpdating ? (
+                    <Loader2 size={10} className="animate-spin" />
+                  ) : (
+                    <>
+                      {statusStyle.label}
+                      <ChevronDown size={10} />
+                    </>
+                  )}
+                </button>
+                {statusDropdownOpen && (
+                  <div className="absolute right-0 mt-1 bg-white border rounded shadow-lg z-10" style={{ minWidth: '100px' }}>
+                    <button
+                      onClick={() => handleStatusChange('scheduled')}
+                      className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 ${status === 'scheduled' ? 'font-medium' : ''}`}
+                      style={{ color: STATUS_COLORS.scheduled.text === '#ffffff' ? COLORS.darkBrown : STATUS_COLORS.scheduled.text }}
+                    >
+                      Scheduled
+                    </button>
+                    <button
+                      onClick={() => handleStatusChange('confirmed')}
+                      className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 ${status === 'confirmed' ? 'font-medium' : ''}`}
+                      style={{ color: COLORS.deepBlue }}
+                    >
+                      Confirmed
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <span
+                className="px-1.5 py-0.5 rounded text-xs font-medium"
+                style={{ backgroundColor: statusStyle.bg, color: statusStyle.text }}
+              >
+                {statusStyle.label}
+              </span>
+            )}
             <button
               onClick={onClose}
               className="p-0.5 hover:bg-gray-200 rounded"
@@ -177,7 +249,7 @@ function ScheduleModal({
             {[
               client.zone && `Zone ${client.zone}`,
               (client.delivery_day || client.deliveryDay),
-              `${client.persons}p/${client.portions || mealsPerWeek}port`,
+              `${mealsPerWeek} x ${portions}`,
               client.frequency || 'Weekly'
             ].filter(Boolean).join(' • ')}
           </div>
@@ -203,7 +275,7 @@ function ScheduleModal({
                   return (
                     <tr key={idx} className="text-gray-300">
                       <td className="py-0.5">M{idx + 1}</td>
-                      <td colSpan={3} className="py-0.5 italic">Not scheduled</td>
+                      <td colSpan={3} className="py-0.5 italic">Not planned</td>
                     </tr>
                   );
                 }
@@ -226,14 +298,14 @@ function ScheduleModal({
           className="px-3 py-2 flex items-center justify-between gap-2"
           style={{ backgroundColor: '#fafafa', borderTop: '1px solid #e5e7eb' }}
         >
-          <button
-            className="flex items-center gap-1 px-2 py-1 text-xs rounded border hover:bg-white"
-            style={{ borderColor: '#d1d5db', color: '#374151' }}
-            title="Open billing"
+          {/* Billing button - disabled until wired */}
+          <span
+            className="flex items-center gap-1 px-2 py-1 text-xs rounded border opacity-40 cursor-not-allowed"
+            style={{ borderColor: '#e5e7eb', color: '#9ca3af' }}
+            title="Billing not yet connected"
           >
-            <Receipt size={10} />
             Billing
-          </button>
+          </span>
 
           <div className="flex gap-2">
             {!isScheduled ? (
@@ -252,13 +324,6 @@ function ScheduleModal({
                 Unschedule
               </button>
             )}
-            <button
-              onClick={onClose}
-              className="px-3 py-1 rounded text-xs border"
-              style={{ borderColor: '#d1d5db', color: COLORS.darkBrown }}
-            >
-              Close
-            </button>
           </div>
         </div>
       </div>
@@ -275,6 +340,7 @@ export default function TimelineView({
   loadScheduleMenus,
   scheduleClientWeek,
   unscheduleClientWeek,
+  updateMenuStatus,
   getScheduleCellState
 }) {
   const [modalOpen, setModalOpen] = useState(false);
@@ -327,6 +393,12 @@ export default function TimelineView({
       await unscheduleClientWeek(clientId, weekId);
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  const handleStatusChange = async (clientId, weekId, newStatus) => {
+    if (updateMenuStatus) {
+      await updateMenuStatus(clientId, weekId, newStatus);
     }
   };
 
@@ -458,6 +530,7 @@ export default function TimelineView({
         clientWeekMeals={selectedCell?.clientWeekMeals || []}
         onSchedule={handleSchedule}
         onUnschedule={handleUnschedule}
+        onStatusChange={handleStatusChange}
       />
     </div>
   );

@@ -361,6 +361,31 @@ export default function ExperimentalLayout() {
     }
   }, []);
 
+  // Update menus.status for a client + week
+  const updateMenuStatus = useCallback(async (clientId, weekId, newStatus) => {
+    if (!isSupabaseMode() || !isConfigured()) {
+      return { success: false };
+    }
+
+    try {
+      const { updateMenusStatus } = await import('../lib/database');
+      const result = await updateMenusStatus({ clientId, weekId, status: newStatus });
+
+      // Update local state
+      setScheduleMenus(prev => prev.map(m => {
+        if (m.client_id === clientId && m.week_id === weekId) {
+          return { ...m, status: newStatus };
+        }
+        return m;
+      }));
+
+      return { success: true, count: result.count };
+    } catch (err) {
+      console.error('[ScheduleMenus] Error updating status:', err);
+      return { success: false, error: err.message };
+    }
+  }, []);
+
   // Build lookup map for schedule grid: clientId::weekId -> menu
   const scheduleMenuLookup = useMemo(() => {
     const lookup = {};
@@ -960,6 +985,7 @@ export default function ExperimentalLayout() {
     loadScheduleMenus,
     scheduleClientWeek,
     unscheduleClientWeek,
+    updateMenuStatus,
     getScheduleCellState
   };
 

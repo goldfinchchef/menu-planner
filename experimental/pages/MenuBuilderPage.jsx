@@ -203,7 +203,7 @@ export default function MenuBuilderPage() {
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="text-gray-500">
-                    {client.persons}p/{client.portions || mealsPerWeek}port
+                    {mealsPerWeek} x {client.portions || 1}
                   </span>
                   <span
                     className="px-1.5 py-0.5 rounded text-xs font-medium"
@@ -249,7 +249,7 @@ export default function MenuBuilderPage() {
                         return (
                           <tr key={idx} className="text-gray-300">
                             <td className="py-0.5">M{idx + 1}</td>
-                            <td colSpan={4} className="py-0.5 italic">Not scheduled</td>
+                            <td colSpan={4} className="py-0.5 italic">Not planned</td>
                           </tr>
                         );
                       }
