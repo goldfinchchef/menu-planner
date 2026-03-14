@@ -57,27 +57,49 @@ function getDateString(date) {
   return date.toISOString().split('T')[0];
 }
 
-// Generate array of week objects with offset from current week
-// Returns newest → oldest (for left-to-right rendering)
-// offset defines the oldest week in the range (e.g., -2 = 2 weeks ago)
-function getWeeksWithOffset(count, offset) {
-  const weeks = [];
-  const today = new Date();
-  const currentWeekStart = getWeekStart(today);
+// Get week start date from weekId (e.g., "2026-W12" -> Date)
+function getWeekStartFromWeekId(weekId) {
+  const [yearStr, weekPart] = weekId.split('-W');
+  const year = parseInt(yearStr, 10);
+  const weekNum = parseInt(weekPart, 10);
 
-  // Generate from newest to oldest: start at (offset + count - 1) and go down
+  // January 4th is always in ISO week 1
+  const jan4 = new Date(year, 0, 4);
+  const jan4WeekStart = getWeekStart(jan4);
+
+  // Add (weekNum - 1) weeks to get target week
+  const result = new Date(jan4WeekStart);
+  result.setDate(result.getDate() + (weekNum - 1) * 7);
+  return result;
+}
+
+// Generate array of weeks centered around selectedWeekId
+// Returns newest → oldest (for left-to-right rendering)
+// Selected week appears at position 3 (center-left of 8)
+function getWeeksAroundWeekId(selectedWeekId, count) {
+  const weeks = [];
+  const selectedWeekStart = getWeekStartFromWeekId(selectedWeekId);
+
+  // Also track current week (today) for secondary highlight
+  const today = new Date();
+  const currentWeekId = getWeekId(today);
+
+  // Position selected week at index 3: show 3 future + selected + 4 past
+  const futureWeeks = Math.floor(count / 2) - 1; // = 3 for count=8
+
   for (let i = 0; i < count; i++) {
-    const weekStart = new Date(currentWeekStart);
-    const weekIndex = offset + count - 1 - i; // newest first
+    const weekStart = new Date(selectedWeekStart);
+    const weekIndex = futureWeeks - i; // +3, +2, +1, 0, -1, -2, -3, -4
     weekStart.setDate(weekStart.getDate() + (weekIndex * 7));
     const weekId = getWeekId(weekStart);
-    const isCurrentWeek = weekId === getWeekId(currentWeekStart);
+
     weeks.push({
       weekId,
       dateKey: getDateString(weekStart),
       label: formatWeekLabel(weekStart),
       start: new Date(weekStart),
-      isCurrentWeek
+      isSelectedWeek: weekId === selectedWeekId,
+      isCurrentWeek: weekId === currentWeekId
     });
   }
 
@@ -383,14 +405,15 @@ export default function TimelineView({
   scheduleClientWeek,
   unscheduleClientWeek,
   updateMenuStatus,
-  getScheduleCellState
+  getScheduleCellState,
+  selectedWeekId
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedCell, setSelectedCell] = useState(null);
-  const [weekOffset, setWeekOffset] = useState(-2);
   const [actionLoading, setActionLoading] = useState(null);
 
-  const weeks = useMemo(() => getWeeksWithOffset(VISIBLE_WEEKS, weekOffset), [weekOffset]);
+  // Generate 8-week window centered around selectedWeekId
+  const weeks = useMemo(() => getWeeksAroundWeekId(selectedWeekId, VISIBLE_WEEKS), [selectedWeekId]);
   const weekIds = useMemo(() => weeks.map(w => w.weekId), [weeks]);
 
   // All active clients - always show as rows
@@ -470,28 +493,44 @@ export default function TimelineView({
                 <Loader2 size={12} className="animate-spin" style={{ color: COLORS.deepBlue }} />
               )}
             </div>
-            {weeks.map((week) => (
-              <div
-                key={week.weekId}
-                className="flex-1 p-2 text-center relative min-w-[100px]"
-                style={{
-                  backgroundColor: week.isCurrentWeek ? '#fefce8' : '#f9fafb',
-                  borderLeft: week.isCurrentWeek ? `3px solid ${COLORS.goldenYellow}` : 'none'
-                }}
-              >
-                {week.isCurrentWeek && (
-                  <div
-                    className="text-xs uppercase tracking-wide font-medium mb-0.5"
-                    style={{ color: COLORS.darkBrown }}
-                  >
-                    This Week
+            {weeks.map((week) => {
+              // Selected week = primary highlight (blue)
+              // Current week = secondary highlight (gold) - only shows label if not selected
+              const bgColor = week.isSelectedWeek ? '#dbeafe' : week.isCurrentWeek ? '#fefce8' : '#f9fafb';
+              const borderLeft = week.isSelectedWeek
+                ? `3px solid ${COLORS.deepBlue}`
+                : week.isCurrentWeek
+                  ? `3px solid ${COLORS.goldenYellow}`
+                  : 'none';
+
+              return (
+                <div
+                  key={week.weekId}
+                  className="flex-1 p-2 text-center relative min-w-[100px]"
+                  style={{ backgroundColor: bgColor, borderLeft }}
+                >
+                  {/* Label: Selected takes priority over Current */}
+                  {week.isSelectedWeek ? (
+                    <div
+                      className="text-xs uppercase tracking-wide font-medium mb-0.5"
+                      style={{ color: COLORS.deepBlue }}
+                    >
+                      Selected
+                    </div>
+                  ) : week.isCurrentWeek ? (
+                    <div
+                      className="text-xs uppercase tracking-wide font-medium mb-0.5"
+                      style={{ color: COLORS.darkBrown }}
+                    >
+                      Today
+                    </div>
+                  ) : null}
+                  <div className="text-sm font-semibold" style={{ color: COLORS.darkBrown }}>
+                    {week.label}
                   </div>
-                )}
-                <div className="text-sm font-semibold" style={{ color: COLORS.darkBrown }}>
-                  {week.label}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Client Rows */}
@@ -532,14 +571,19 @@ export default function TimelineView({
                   const clientWeekMeals = getClientWeekMeals(client.id, week.weekId);
                   const issues = getIssuesForClientWeek(clientWeekMeals, mealsPerWeek, status);
 
+                  // Match header styling: selected = blue, current = gold
+                  const cellBgColor = week.isSelectedWeek ? '#dbeafe' : week.isCurrentWeek ? '#fefce8' : 'transparent';
+                  const cellBorderLeft = week.isSelectedWeek
+                    ? `3px solid ${COLORS.deepBlue}`
+                    : week.isCurrentWeek
+                      ? `3px solid ${COLORS.goldenYellow}`
+                      : 'none';
+
                   return (
                     <div
                       key={week.weekId}
                       className="flex-1 p-1 min-w-[100px] relative"
-                      style={{
-                        backgroundColor: week.isCurrentWeek ? '#fefce8' : 'transparent',
-                        borderLeft: week.isCurrentWeek ? `3px solid ${COLORS.goldenYellow}` : 'none'
-                      }}
+                      style={{ backgroundColor: cellBgColor, borderLeft: cellBorderLeft }}
                     >
                       <button
                         onClick={() => openModal(client, week)}

@@ -17,7 +17,8 @@ export default function SchedulePage() {
     scheduleClientWeek,
     unscheduleClientWeek,
     updateMenuStatus,
-    getScheduleCellState
+    getScheduleCellState,
+    selectedWeekId
   } = useExperimentalContext();
 
   return (
@@ -30,6 +31,7 @@ export default function SchedulePage() {
       unscheduleClientWeek={unscheduleClientWeek}
       updateMenuStatus={updateMenuStatus}
       getScheduleCellState={getScheduleCellState}
+      selectedWeekId={selectedWeekId}
     />
   );
 }
