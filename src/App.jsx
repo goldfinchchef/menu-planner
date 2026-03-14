@@ -113,26 +113,63 @@ export default function App() {
   };
 
   // KDS functions (now Dish Totals)
+  // Returns structure: { monTue: { protein: {}, veg: {}, starch: {}, extras: {} }, thursday: {...} }
   const getKDSView = () => {
-    const kds = {};
-    menuItems.forEach(item => {
-      ['protein', 'veg', 'starch'].forEach(type => {
-        if (item[type]) {
-          if (!kds[item[type]]) kds[item[type]] = { totalPortions: 0, category: type, clients: [] };
-          kds[item[type]].totalPortions += item.portions;
-          kds[item[type]].clients.push({ name: item.clientName, portions: item.portions });
+    // Initialize production day structure
+    const kds = {
+      monTue: { protein: {}, veg: {}, starch: {}, extras: {} },
+      thursday: { protein: {}, veg: {}, starch: {}, extras: {} }
+    };
+
+    // Helper to determine production day from item date
+    const getProductionDay = (dateStr) => {
+      if (!dateStr) return 'monTue';
+      const date = new Date(dateStr + 'T12:00:00');
+      const dayOfWeek = date.getDay(); // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
+      // Thursday deliveries → thursday production
+      // Mon/Tue deliveries → monTue production
+      return dayOfWeek === 4 ? 'thursday' : 'monTue';
+    };
+
+    // Helper to add dish to KDS structure
+    const addDish = (prodDay, category, dishName, item) => {
+      const target = kds[prodDay][category];
+      if (!target[dishName]) {
+        target[dishName] = { totalPortions: 0, category, clients: [] };
+      }
+      target[dishName].totalPortions += item.portions || 1;
+      target[dishName].clients.push({ name: item.clientName, portions: item.portions || 1 });
+    };
+
+    // Filter and process menu items
+    menuItems
+      .filter(item => {
+        // Week filter: item's date must match selectedWeekId
+        if (!item.date) return false;
+        const itemWeekId = getWeekIdFromDate(item.date);
+        if (itemWeekId !== selectedWeekId) return false;
+        // Approval filter: show if approved !== false (undefined treated as approved)
+        if (item.approved === false) return false;
+        return true;
+      })
+      .forEach(item => {
+        const prodDay = getProductionDay(item.date);
+
+        // Process protein, veg, starch
+        ['protein', 'veg', 'starch'].forEach(type => {
+          if (item[type]) {
+            addDish(prodDay, type, item[type], item);
+          }
+        });
+
+        // Process extras (sauces, breakfast, soups → all go to 'extras' category)
+        if (item.extras && item.extras.length > 0) {
+          item.extras.forEach(extra => {
+            addDish(prodDay, 'extras', extra, item);
+          });
         }
       });
-      if (item.extras) {
-        item.extras.forEach(extra => {
-          const category = recipes.sauces.find(r => r.name === extra) ? 'sauces'
-            : recipes.breakfast.find(r => r.name === extra) ? 'breakfast' : 'soups';
-          if (!kds[extra]) kds[extra] = { totalPortions: 0, category, clients: [] };
-          kds[extra].totalPortions += item.portions;
-          kds[extra].clients.push({ name: item.clientName, portions: item.portions });
-        });
-      }
-    });
+
     return kds;
   };
 
@@ -143,9 +180,17 @@ export default function App() {
   // Check if all dishes in KDS view are complete
   const allDishesComplete = () => {
     const kds = getKDSView();
-    const dishNames = Object.keys(kds);
-    if (dishNames.length === 0) return false;
-    return dishNames.every(name => completedDishes[name]);
+    // Collect all dish names from both production days and all categories
+    const allDishNames = [];
+    ['monTue', 'thursday'].forEach(prodDay => {
+      ['protein', 'veg', 'starch', 'extras'].forEach(category => {
+        Object.keys(kds[prodDay]?.[category] || {}).forEach(name => {
+          allDishNames.push(name);
+        });
+      });
+    });
+    if (allDishNames.length === 0) return false;
+    return allDishNames.every(name => completedDishes[name]);
   };
 
   // Current week is the selected week
