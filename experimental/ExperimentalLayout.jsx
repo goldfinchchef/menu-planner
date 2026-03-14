@@ -370,22 +370,18 @@ export default function ExperimentalLayout() {
   }, [scheduleMenus]);
 
   // Get menu state for a client + week cell
+  // Uses menus.status as source of truth (not derived from approved)
   const getScheduleCellState = useCallback((clientId, weekId) => {
     const menu = scheduleMenuLookup[`${clientId}::${weekId}`];
     if (!menu) {
-      return { status: 'inactive', menu: null };
+      return { status: 'skipped', menu: null };
     }
 
     const isEmpty = !menu.protein && !menu.veg && !menu.starch;
-    const isApproved = menu.approved === true;
+    // Use menus.status directly, fallback to 'scheduled' for older rows
+    const menuStatus = menu.status || 'scheduled';
 
-    if (isApproved) {
-      return { status: 'approved', menu, isEmpty };
-    }
-    if (isEmpty) {
-      return { status: 'scheduled', menu, isEmpty: true };
-    }
-    return { status: 'scheduled', menu, isEmpty: false };
+    return { status: menuStatus, menu, isEmpty };
   }, [scheduleMenuLookup]);
 
   // Build per-client grocery cost breakdown grouped by week

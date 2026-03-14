@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Calendar, Check, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { X, Calendar, Check, ChevronLeft, ChevronRight, Loader2, Receipt } from 'lucide-react';
 
 // Retro palette colors
 const COLORS = {
@@ -11,11 +11,11 @@ const COLORS = {
   green: '#22c55e'
 };
 
-// Status-only cell colors (no week-based alternating)
+// Status colors - uses menus.status as source of truth
 const STATUS_COLORS = {
-  skipped: { bg: '#6b7280', text: '#ffffff' },     // dark gray - no menu row
-  scheduled: { bg: '#bbf7d0', text: '#166534' },   // light green - menu exists
-  confirmed: { bg: '#3d59ab', text: '#ffffff' }    // dark blue - approved
+  skipped: { bg: '#6b7280', text: '#ffffff', label: 'Skipped' },
+  scheduled: { bg: '#bbf7d0', text: '#166534', label: 'Scheduled' },
+  confirmed: { bg: '#3d59ab', text: '#ffffff', label: 'Confirmed' }
 };
 
 // Get Monday of the week containing the given date
@@ -80,13 +80,40 @@ function getWeeksWithOffset(count, offset) {
   return weeks;
 }
 
-// Scheduling modal for a client + week cell
-function ScheduleModal({ isOpen, onClose, client, week, cellState, onSchedule, onUnschedule }) {
+// Truncate text helper
+function truncate(str, len) {
+  if (!str) return '—';
+  return str.length > len ? str.slice(0, len) + '…' : str;
+}
+
+// Format phone helper
+function formatPhone(phone) {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 10) {
+    return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
+  }
+  return phone;
+}
+
+// Compact Schedule Modal - matches MenuBuilderPage card style
+function ScheduleModal({
+  isOpen,
+  onClose,
+  client,
+  week,
+  cellState,
+  clientWeekMeals,
+  onSchedule,
+  onUnschedule
+}) {
   if (!isOpen || !client || !week) return null;
 
-  const isScheduled = cellState?.status === 'scheduled' || cellState?.status === 'approved';
-  const isApproved = cellState?.status === 'approved';
-  const menu = cellState?.menu;
+  // Status from menus.status (not derived from approved)
+  const status = cellState?.status || 'skipped';
+  const statusStyle = STATUS_COLORS[status] || STATUS_COLORS.skipped;
+  const isScheduled = status === 'scheduled' || status === 'confirmed';
+  const mealsPerWeek = client.meals_per_week || client.mealsPerWeek || 4;
 
   const handleSchedule = async () => {
     await onSchedule(client, week.weekId, week.dateKey);
@@ -94,8 +121,8 @@ function ScheduleModal({ isOpen, onClose, client, week, cellState, onSchedule, o
   };
 
   const handleUnschedule = async () => {
-    if (isApproved) {
-      if (!window.confirm('This menu is already approved. Are you sure you want to unschedule it?')) {
+    if (status === 'confirmed') {
+      if (!window.confirm('This menu is confirmed. Are you sure you want to unschedule it?')) {
         return;
       }
     }
@@ -105,98 +132,134 @@ function ScheduleModal({ isOpen, onClose, client, week, cellState, onSchedule, o
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+      <div
+        className="bg-white rounded-lg shadow-xl w-full max-w-sm mx-4 overflow-hidden"
+        style={{ fontSize: '12px' }}
+      >
+        {/* Header - compact */}
         <div
-          className="flex items-center justify-between p-4 rounded-t-lg"
-          style={{ backgroundColor: COLORS.deepBlue, color: 'white' }}
+          className="px-3 py-2 flex items-center justify-between"
+          style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}
         >
-          <div>
-            <h3 className="text-lg font-bold">{client.name}</h3>
-            <p className="text-sm opacity-90">{week.label}</p>
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <span className="font-semibold truncate" style={{ color: COLORS.darkBrown }}>
+              {client.name}
+            </span>
+            <span className="text-gray-500 shrink-0">{week.label}</span>
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-white hover:bg-opacity-20 rounded">
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="p-4 space-y-4">
-          {/* Current status */}
-          <div>
-            <div className="text-sm font-medium mb-2" style={{ color: COLORS.darkBrown }}>
-              Status
-            </div>
-            <div className="flex items-center gap-2">
-              {!isScheduled && (
-                <span
-                  className="px-3 py-1.5 rounded-full text-sm"
-                  style={{ backgroundColor: STATUS_COLORS.skipped.bg, color: STATUS_COLORS.skipped.text }}
-                >
-                  Skipped
-                </span>
-              )}
-              {isScheduled && !isApproved && (
-                <span
-                  className="px-3 py-1.5 rounded-full text-sm"
-                  style={{ backgroundColor: STATUS_COLORS.scheduled.bg, color: STATUS_COLORS.scheduled.text }}
-                >
-                  Scheduled {menu?.isEmpty ? '(Empty)' : '(Has Menu)'}
-                </span>
-              )}
-              {isApproved && (
-                <span
-                  className="px-3 py-1.5 rounded-full text-sm"
-                  style={{ backgroundColor: STATUS_COLORS.confirmed.bg, color: STATUS_COLORS.confirmed.text }}
-                >
-                  Confirmed
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Menu details if scheduled */}
-          {menu && (
-            <div className="bg-gray-50 rounded-lg p-3">
-              <div className="text-xs text-gray-500 uppercase mb-2">Menu</div>
-              <div className="space-y-1 text-sm">
-                <div><span className="text-gray-500">Protein:</span> {menu.protein || '—'}</div>
-                <div><span className="text-gray-500">Veg:</span> {menu.veg || '—'}</div>
-                <div><span className="text-gray-500">Starch:</span> {menu.starch || '—'}</div>
-                <div><span className="text-gray-500">Portions:</span> {menu.portions || '—'}</div>
-              </div>
-            </div>
-          )}
-
-          {/* Client info */}
-          <div className="text-sm text-gray-500">
-            <div>{client.persons}p • {client.mealsPerWeek || client.meals_per_week} meals/week</div>
-            {client.deliveryDay && <div>Delivery: {client.deliveryDay}</div>}
+          <div className="flex items-center gap-2 shrink-0">
+            <span
+              className="px-1.5 py-0.5 rounded text-xs font-medium"
+              style={{ backgroundColor: statusStyle.bg, color: statusStyle.text }}
+            >
+              {statusStyle.label}
+            </span>
+            <button
+              onClick={onClose}
+              className="p-0.5 hover:bg-gray-200 rounded"
+              style={{ color: COLORS.darkBrown }}
+            >
+              <X size={14} />
+            </button>
           </div>
         </div>
 
-        <div className="flex gap-2 p-4 border-t">
+        {/* Logistics rows */}
+        <div style={{ fontSize: '11px', backgroundColor: '#fafafa', borderBottom: '1px solid #f3f4f6' }}>
+          <div className="px-3 py-0.5 text-gray-500 truncate">
+            {[
+              truncate(client.address, 35),
+              formatPhone(client.phone),
+              client.email
+            ].filter(Boolean).join(' • ') || 'No contact info'}
+          </div>
+          <div className="px-3 py-0.5 text-gray-500 truncate">
+            {[
+              client.zone && `Zone ${client.zone}`,
+              (client.delivery_day || client.deliveryDay),
+              `${client.persons}p/${client.portions || mealsPerWeek}port`,
+              client.frequency || 'Weekly'
+            ].filter(Boolean).join(' • ')}
+          </div>
+        </div>
+
+        {/* Weekly Menu table */}
+        <div className="px-3 py-2">
+          <table className="w-full" style={{ fontSize: '11px' }}>
+            <thead>
+              <tr className="text-gray-400 text-left">
+                <th className="w-8 font-normal py-0.5">#</th>
+                <th className="font-normal py-0.5">Protein</th>
+                <th className="font-normal py-0.5">Veg</th>
+                <th className="font-normal py-0.5">Starch</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: mealsPerWeek }).map((_, idx) => {
+                const meal = clientWeekMeals[idx];
+                const isEmpty = meal && !meal.protein && !meal.veg && !meal.starch;
+
+                if (!meal) {
+                  return (
+                    <tr key={idx} className="text-gray-300">
+                      <td className="py-0.5">M{idx + 1}</td>
+                      <td colSpan={3} className="py-0.5 italic">Not scheduled</td>
+                    </tr>
+                  );
+                }
+
+                return (
+                  <tr key={meal.id || idx} className={isEmpty ? 'text-gray-400' : 'text-gray-700'}>
+                    <td className="py-0.5">M{idx + 1}</td>
+                    <td className="py-0.5 truncate max-w-[80px]">{truncate(meal.protein, 12)}</td>
+                    <td className="py-0.5 truncate max-w-[80px]">{truncate(meal.veg, 12)}</td>
+                    <td className="py-0.5 truncate max-w-[80px]">{truncate(meal.starch, 12)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Footer - actions */}
+        <div
+          className="px-3 py-2 flex items-center justify-between gap-2"
+          style={{ backgroundColor: '#fafafa', borderTop: '1px solid #e5e7eb' }}
+        >
           <button
-            onClick={onClose}
-            className="flex-1 py-2 px-4 rounded-lg border-2"
-            style={{ borderColor: COLORS.warmTan, color: COLORS.darkBrown }}
+            className="flex items-center gap-1 px-2 py-1 text-xs rounded border hover:bg-white"
+            style={{ borderColor: '#d1d5db', color: '#374151' }}
+            title="Open billing"
           >
-            Close
+            <Receipt size={10} />
+            Billing
           </button>
-          {!isScheduled ? (
+
+          <div className="flex gap-2">
+            {!isScheduled ? (
+              <button
+                onClick={handleSchedule}
+                className="px-3 py-1 rounded text-xs font-medium text-white"
+                style={{ backgroundColor: COLORS.deepBlue }}
+              >
+                Schedule
+              </button>
+            ) : (
+              <button
+                onClick={handleUnschedule}
+                className="px-3 py-1 rounded text-xs font-medium text-white bg-red-500 hover:bg-red-600"
+              >
+                Unschedule
+              </button>
+            )}
             <button
-              onClick={handleSchedule}
-              className="flex-1 py-2 px-4 rounded-lg font-medium text-white"
-              style={{ backgroundColor: COLORS.deepBlue }}
+              onClick={onClose}
+              className="px-3 py-1 rounded text-xs border"
+              style={{ borderColor: '#d1d5db', color: COLORS.darkBrown }}
             >
-              Schedule
+              Close
             </button>
-          ) : (
-            <button
-              onClick={handleUnschedule}
-              className="flex-1 py-2 px-4 rounded-lg font-medium text-white bg-red-500 hover:bg-red-600"
-            >
-              Unschedule
-            </button>
-          )}
+          </div>
         </div>
       </div>
     </div>
@@ -216,8 +279,8 @@ export default function TimelineView({
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedCell, setSelectedCell] = useState(null);
-  const [weekOffset, setWeekOffset] = useState(-2); // Start 2 weeks in the past
-  const [actionLoading, setActionLoading] = useState(null); // Track which cell is loading
+  const [weekOffset, setWeekOffset] = useState(-2);
+  const [actionLoading, setActionLoading] = useState(null);
 
   const weeks = useMemo(() => getWeeksWithOffset(VISIBLE_WEEKS, weekOffset), [weekOffset]);
   const weekIds = useMemo(() => weeks.map(w => w.weekId), [weeks]);
@@ -235,13 +298,21 @@ export default function TimelineView({
     }
   }, [weekIds, loadScheduleMenus]);
 
+  // Get all meals for a client + week (for modal)
+  const getClientWeekMeals = (clientId, weekId) => {
+    return scheduleMenus
+      .filter(m => m.client_id === clientId && m.week_id === weekId)
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  };
+
   const shiftWeeks = (direction) => {
     setWeekOffset(prev => prev + direction);
   };
 
   const openModal = (client, week) => {
     const cellState = getScheduleCellState(client.id, week.weekId);
-    setSelectedCell({ client, week, cellState });
+    const clientWeekMeals = getClientWeekMeals(client.id, week.weekId);
+    setSelectedCell({ client, week, cellState, clientWeekMeals });
     setModalOpen(true);
   };
 
@@ -263,16 +334,11 @@ export default function TimelineView({
     }
   };
 
-  // Status-only cell styling (no week colors)
+  // Status-only cell styling - uses menus.status
   const getCellStyle = (cellState) => {
-    if (!cellState || cellState.status === 'inactive') {
-      return { backgroundColor: STATUS_COLORS.skipped.bg, color: STATUS_COLORS.skipped.text };
-    }
-    if (cellState.status === 'approved') {
-      return { backgroundColor: STATUS_COLORS.confirmed.bg, color: STATUS_COLORS.confirmed.text };
-    }
-    // Scheduled (not approved)
-    return { backgroundColor: STATUS_COLORS.scheduled.bg, color: STATUS_COLORS.scheduled.text };
+    const status = cellState?.status || 'skipped';
+    const colors = STATUS_COLORS[status] || STATUS_COLORS.skipped;
+    return { backgroundColor: colors.bg, color: colors.text };
   };
 
   return (
@@ -332,7 +398,7 @@ export default function TimelineView({
       {/* Schedule Grid */}
       <div className="bg-white rounded-lg shadow-md overflow-hidden">
         <div className="overflow-x-auto">
-          {/* Week Headers - neutral, consistent */}
+          {/* Week Headers */}
           <div className="flex border-b-2" style={{ borderColor: COLORS.warmTan }}>
             <div
               className="flex-shrink-0 p-3 font-medium"
@@ -395,13 +461,13 @@ export default function TimelineView({
                   </div>
                 </div>
 
-                {/* Week Cells - neutral background, status-only colors */}
+                {/* Week Cells */}
                 {weeks.map((week) => {
                   const cellState = getScheduleCellState(client.id, week.weekId);
                   const cellStyle = getCellStyle(cellState);
                   const isLoading = actionLoading === `${client.id}::${week.weekId}`;
-                  const isScheduled = cellState?.status === 'scheduled' || cellState?.status === 'approved';
-                  const isApproved = cellState?.status === 'approved';
+                  const status = cellState?.status || 'skipped';
+                  const isScheduled = status === 'scheduled' || status === 'confirmed';
                   const isEmpty = cellState?.isEmpty;
 
                   return (
@@ -422,9 +488,9 @@ export default function TimelineView({
                       >
                         {isLoading ? (
                           <Loader2 size={14} className="animate-spin" />
-                        ) : !isScheduled ? (
+                        ) : status === 'skipped' ? (
                           <span className="text-sm">—</span>
-                        ) : isApproved ? (
+                        ) : status === 'confirmed' ? (
                           <>
                             <Check size={12} />
                             <span className="text-xs font-medium">Done</span>
@@ -461,6 +527,7 @@ export default function TimelineView({
         client={selectedCell?.client}
         week={selectedCell?.week}
         cellState={selectedCell?.cellState}
+        clientWeekMeals={selectedCell?.clientWeekMeals || []}
         onSchedule={handleSchedule}
         onUnschedule={handleUnschedule}
       />
