@@ -5,7 +5,7 @@
  * Single owner of useAppData state, provides context to child pages via Outlet.
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Outlet, Link } from 'react-router-dom';
 import { ChefHat, ChevronLeft, ChevronRight, Settings } from 'lucide-react';
 
@@ -22,11 +22,18 @@ import { getWeekId, getWeekIdFromDate, getWeekStartDate, getWeekEndDate, formatW
 import { DEFAULT_NEW_RECIPE, DEFAULT_NEW_INGREDIENT } from '../constants';
 import { exportRecipesCSV, exportIngredientsCSV, categorizeIngredient } from '../utils';
 import { isSupabaseMode } from '../lib/dataMode';
-import { saveRecipeToSupabase, deleteRecipeFromSupabase, setKdsDishDone } from '../lib/database';
+import {
+  saveRecipeToSupabase,
+  deleteRecipeFromSupabase,
+  setKdsDishDone,
+  fetchBillingCycles,
+  fetchApprovedMenusForBilling,
+  updateBillingCycleInvoice
+} from '../lib/database';
 import { isConfigured, checkConnection } from '../lib/supabase';
 
 // Grocery invoice configuration
-const GROCERY_MARKUP_PERCENT = 30;
+const GROCERY_MARKUP_PERCENT = 15;
 
 export default function ExperimentalLayout() {
   // Production data hook - single source of truth
@@ -76,6 +83,11 @@ export default function ExperimentalLayout() {
   // Grocery invoice state
   const [groceryInvoices, setGroceryInvoices] = useState([]);
 
+  // Billing cycle state
+  const [billingCycles, setBillingCycles] = useState([]);
+  const [billingCyclesLoading, setBillingCyclesLoading] = useState(false);
+  const [billingCyclesError, setBillingCyclesError] = useState(null);
+
   // File refs for CSV imports
   const clientsFileRef = useRef();
   const recipesFileRef = useRef();
@@ -114,6 +126,165 @@ export default function ExperimentalLayout() {
     setEditingIngredientId(null);
     setEditingIngredientData(null);
   };
+
+  // ============ BILLING CYCLES ============
+
+  // Fetch billing cycles and group with approved menus
+  const loadBillingCycles = useCallback(async () => {
+    if (!isSupabaseMode() || !isConfigured()) {
+      console.log('[BillingCycles] Supabase not configured, skipping fetch');
+      return;
+    }
+
+    setBillingCyclesLoading(true);
+    setBillingCyclesError(null);
+
+    try {
+      // Fetch billing cycles and approved menus in parallel
+      const [cycles, approvedMenus] = await Promise.all([
+        fetchBillingCycles(),
+        fetchApprovedMenusForBilling()
+      ]);
+
+      // Group menus into billing cycles by date range
+      const cyclesWithMenus = cycles.map(cycle => {
+        const cycleMenus = approvedMenus.filter(menu =>
+          menu.client_id === cycle.client_id &&
+          menu.date >= cycle.start_date &&
+          menu.date <= cycle.end_date
+        );
+
+        // Calculate costs for this cycle
+        const markupMultiplier = 1 + (GROCERY_MARKUP_PERCENT / 100);
+        let rawGroceryCost = 0;
+        const lineItems = [];
+
+        cycleMenus.forEach(menu => {
+          let menuCostPerPortion = 0;
+          const dishes = [];
+
+          // Calculate cost for each dish type
+          ['protein', 'veg', 'starch'].forEach(type => {
+            if (menu[type]) {
+              const recipe = recipes[type]?.find(r => r.name === menu[type]);
+              const cost = recipe ? getRecipeCost(recipe) : 0;
+              menuCostPerPortion += cost;
+              dishes.push({ name: menu[type], type, cost });
+            }
+          });
+
+          // Add extras
+          const extras = menu.extras || [];
+          extras.forEach(extra => {
+            const category = ['sauces', 'breakfast', 'soups'].find(cat =>
+              recipes[cat]?.find(r => r.name === extra)
+            );
+            const recipe = category ? recipes[category].find(r => r.name === extra) : null;
+            const cost = recipe ? getRecipeCost(recipe) : 0;
+            menuCostPerPortion += cost;
+            dishes.push({ name: extra, type: 'extra', cost });
+          });
+
+          const portions = menu.portions || 1;
+          const menuTotal = menuCostPerPortion * portions;
+          rawGroceryCost += menuTotal;
+
+          // Build line item
+          const mainDishes = dishes.filter(d => d.type !== 'extra').map(d => d.name).join(' + ');
+          const extraNames = dishes.filter(d => d.type === 'extra').map(d => d.name);
+          const description = extraNames.length > 0
+            ? `${mainDishes} (+ ${extraNames.join(', ')})`
+            : mainDishes;
+
+          lineItems.push({
+            date: menu.date,
+            description,
+            portions,
+            rateWithMarkup: menuCostPerPortion * markupMultiplier,
+            lineTotal: menuTotal * markupMultiplier
+          });
+        });
+
+        return {
+          ...cycle,
+          menus: cycleMenus,
+          calculated: {
+            rawGroceryCost,
+            billableTotal: rawGroceryCost * markupMultiplier,
+            menuCount: cycleMenus.length,
+            totalPortions: cycleMenus.reduce((sum, m) => sum + (m.portions || 1), 0)
+          },
+          lineItems
+        };
+      });
+
+      // Sort by start_date descending (newest first)
+      cyclesWithMenus.sort((a, b) => b.start_date.localeCompare(a.start_date));
+
+      setBillingCycles(cyclesWithMenus);
+    } catch (err) {
+      console.error('[BillingCycles] Error loading:', err);
+      setBillingCyclesError(err.message);
+    } finally {
+      setBillingCyclesLoading(false);
+    }
+  }, [recipes, getRecipeCost]);
+
+  // Generate invoice for a billing cycle
+  const generateBillingCycleInvoice = async (cycleId) => {
+    const cycle = billingCycles.find(c => c.id === cycleId);
+    if (!cycle) {
+      console.error('[BillingCycles] Cycle not found:', cycleId);
+      return null;
+    }
+
+    try {
+      // Update the billing cycle in Supabase
+      const updatedCycle = await updateBillingCycleInvoice(cycleId, {
+        groceryCost: cycle.calculated.rawGroceryCost,
+        totalDue: cycle.calculated.billableTotal
+      });
+
+      // Update local state
+      setBillingCycles(prev => prev.map(c =>
+        c.id === cycleId
+          ? { ...c, ...updatedCycle, status: 'invoiced' }
+          : c
+      ));
+
+      // Return invoice object for preview
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + 7);
+
+      return {
+        id: `INV-${Date.now()}`,
+        createdAt: new Date().toISOString(),
+        status: 'invoiced',
+        cycleId: cycle.id,
+        clientName: cycle.client_name,
+        clientId: cycle.client_id,
+        cycleNumber: cycle.cycle_number,
+        startDate: cycle.start_date,
+        endDate: cycle.end_date,
+        dueDate: cycle.due_date || dueDate.toISOString().split('T')[0],
+        rawGroceryCost: cycle.calculated.rawGroceryCost,
+        markupPercent: GROCERY_MARKUP_PERCENT,
+        billableTotal: cycle.calculated.billableTotal,
+        lineItems: cycle.lineItems,
+        invoiceDueDate: cycle.due_date || dueDate.toISOString().split('T')[0],
+        honeybookUrl: ''
+      };
+    } catch (err) {
+      console.error('[BillingCycles] Error generating invoice:', err);
+      alert(`Failed to generate invoice: ${err.message}`);
+      return null;
+    }
+  };
+
+  // Load billing cycles on mount and when recipes change
+  useEffect(() => {
+    loadBillingCycles();
+  }, [loadBillingCycles]);
 
   // Build per-client grocery cost breakdown grouped by week
   const buildClientBreakdown = () => {
@@ -185,8 +356,9 @@ export default function ExperimentalLayout() {
   const generateGroceryInvoice = (clientName, weekId, weekData) => {
     const weekInfo = weekData[weekId];
     const clientData = weekInfo.clients[clientName];
+    const markupMultiplier = 1 + (GROCERY_MARKUP_PERCENT / 100);
 
-    // Build line items from meals
+    // Build line items from meals with marked-up rates
     const lineItems = clientData.meals.map(meal => {
       const mainDishes = meal.dishes.filter(d => d.type !== 'extra').map(d => d.name).join(' + ');
       const extras = meal.dishes.filter(d => d.type === 'extra').map(d => d.name);
@@ -194,21 +366,33 @@ export default function ExperimentalLayout() {
         ? `${mainDishes} (+ ${extras.join(', ')})`
         : mainDishes;
 
+      // Raw costs (internal)
+      const rawCostPerPortion = meal.costPerPortion;
+      const rawSubtotal = meal.total;
+
+      // Marked-up costs (client-facing)
+      const rateWithMarkup = rawCostPerPortion * markupMultiplier;
+      const lineTotal = rawSubtotal * markupMultiplier;
+
       return {
         description,
         portions: meal.portions,
-        costPerPortion: meal.costPerPortion,
-        subtotal: meal.total,
-        date: meal.date
+        date: meal.date,
+        // Internal (raw costs)
+        costPerPortion: rawCostPerPortion,
+        subtotal: rawSubtotal,
+        // Client-facing (marked up)
+        rateWithMarkup,
+        lineTotal
       };
     });
 
-    // Build itemized description text
+    // Build itemized description text (uses marked-up totals)
     const itemizedDescription = lineItems.map(item =>
-      `${item.date}: ${item.description} × ${item.portions} portions = $${item.subtotal.toFixed(2)}`
+      `${item.date}: ${item.description} × ${item.portions} portions = $${item.lineTotal.toFixed(2)}`
     ).join('\n');
 
-    // Calculate financials
+    // Calculate financials (internal)
     const rawGroceryTotal = clientData.total;
     const markupAmount = rawGroceryTotal * (GROCERY_MARKUP_PERCENT / 100);
     const billableTotal = rawGroceryTotal + markupAmount;
@@ -655,12 +839,19 @@ export default function ExperimentalLayout() {
     removeEditingIngredient,
     saveEditingRecipe,
 
-    // Grocery billing
+    // Grocery billing (legacy week-based)
     groceryInvoices,
     buildClientBreakdown,
     generateGroceryInvoice,
     exportInvoiceJSON,
-    GROCERY_MARKUP_PERCENT
+    GROCERY_MARKUP_PERCENT,
+
+    // Billing cycles (database-backed)
+    billingCycles,
+    billingCyclesLoading,
+    billingCyclesError,
+    loadBillingCycles,
+    generateBillingCycleInvoice
   };
 
   return (
