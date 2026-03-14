@@ -28,7 +28,7 @@ export default function TopNav({ activeSection, setActiveSection, setActiveSubvi
           <button
             key={section.id}
             onClick={() => handleSectionClick(section.id)}
-            className={`flex items-center gap-2 px-5 py-3 font-medium transition-colors ${
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors ${
               isActive ? 'border-b-2' : 'border-b-2 border-transparent hover:bg-blue-50'
             }`}
             style={isActive
@@ -36,7 +36,7 @@ export default function TopNav({ activeSection, setActiveSection, setActiveSubvi
               : { color: '#423d3c' }
             }
           >
-            <Icon size={18} />
+            <Icon size={16} />
             {section.label}
           </button>
         );

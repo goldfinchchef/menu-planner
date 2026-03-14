@@ -1,10 +1,10 @@
 import React, { useState, useRef } from 'react';
-import { ChefHat } from 'lucide-react';
+import { ChefHat, ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { useAppData } from './hooks/useAppData';
 import { findExactMatch, normalizeName, categorizeIngredient, getRecipeCost } from './utils/ingredients';
 import { importClientsCSV, importRecipesCSV, importIngredientsCSV } from './utils/csv';
-import { getWeekId, getWeekIdFromDate } from '../utils/weekUtils';
+import { getWeekId, getWeekIdFromDate, formatWeekRange, getAdjacentWeekId } from '../utils/weekUtils';
 
 // Navigation components
 import TopNav from './components/TopNav';
@@ -446,18 +446,44 @@ export default function App() {
       <input type="file" ref={recipesFileRef} onChange={handleImportRecipes} accept=".csv" className="hidden" />
       <input type="file" ref={ingredientsFileRef} onChange={handleImportIngredients} accept=".csv" className="hidden" />
 
-      {/* Header */}
-      <header className="text-white p-4" style={{ backgroundColor: '#3d59ab' }}>
+      {/* Layer 1: Global Week Bar */}
+      <div className="text-white px-4 py-1.5" style={{ backgroundColor: '#3d59ab' }}>
         <div className="flex items-center justify-between max-w-6xl mx-auto">
-          <div className="flex items-center gap-3">
-            <ChefHat size={32} style={{ color: '#ffd700' }} />
-            <h1 className="text-2xl font-bold">Goldfinch Chef</h1>
+          {/* Left: Logo */}
+          <div className="flex items-center gap-2">
+            <ChefHat size={18} style={{ color: '#ffd700' }} />
+            <span className="font-bold text-sm">Goldfinch Chef</span>
           </div>
-        </div>
-      </header>
 
-      {/* Primary Navigation */}
-      <nav className="bg-white shadow-md sticky top-0 z-10">
+          {/* Center: Week navigation */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSelectedWeekId(getAdjacentWeekId(selectedWeekId, -1))}
+              className="p-1 rounded hover:bg-white/20 transition-colors"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <span className="font-medium text-sm min-w-[140px] text-center">
+              {formatWeekRange(selectedWeekId)}
+            </span>
+            <button
+              onClick={() => setSelectedWeekId(getAdjacentWeekId(selectedWeekId, 1))}
+              className="p-1 rounded hover:bg-white/20 transition-colors"
+            >
+              <ChevronRight size={18} />
+            </button>
+            <span className="text-xs opacity-75 ml-1">
+              {selectedWeekId.split('-')[1]}
+            </span>
+          </div>
+
+          {/* Right: Spacer for balance (metrics will go here when available) */}
+          <div className="w-24" />
+        </div>
+      </div>
+
+      {/* Layer 2: Primary Navigation */}
+      <nav className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-6xl mx-auto">
           <TopNav
             activeSection={activeSection}
