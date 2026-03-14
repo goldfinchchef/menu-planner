@@ -1,21 +1,17 @@
 /**
  * MenuBuilderPage - /test/menu/builder
- * Experimental menu builder that shows cards for all scheduled clients
- * including empty menu cards ready to be filled in
+ * Compact operations dashboard for weekly menu planning
+ * Cards grouped by client_id + week_id showing full weekly menu
  */
 
 import React, { useMemo, useState } from 'react';
 import { useExperimentalContext } from '../ExperimentalContext';
-import { ChefHat, Check, AlertCircle, Edit2, Save, X } from 'lucide-react';
+import { Receipt, Check, Edit2, X } from 'lucide-react';
 
-// Colors
-const COLORS = {
-  deepBlue: '#3d59ab',
-  goldenYellow: '#ffd700',
-  warmTan: '#ebb582',
-  cream: '#f9f9ed',
-  darkBrown: '#423d3c',
-  green: '#22c55e'
+// Status colors (matches schedule grid)
+const STATUS_COLORS = {
+  scheduled: { bg: '#bbf7d0', text: '#166534', label: 'Scheduled' },
+  confirmed: { bg: '#3d59ab', text: '#ffffff', label: 'Confirmed' }
 };
 
 export default function MenuBuilderPage() {
@@ -23,329 +19,362 @@ export default function MenuBuilderPage() {
     clients,
     recipes,
     selectedWeekId,
-    menuItems,
-    setMenuItems,
     scheduleMenus,
-    scheduleMenuLookup,
+    setMenuItems,
     getRecipeCost
   } = useExperimentalContext();
 
-  const [editingMenuId, setEditingMenuId] = useState(null);
+  const [editingClient, setEditingClient] = useState(null);
+  const [editingMealIdx, setEditingMealIdx] = useState(null);
   const [editForm, setEditForm] = useState({});
 
-  // Get all menus for selected week (from scheduleMenus which are loaded in context)
+  // Get all menus for selected week
   const weekMenus = useMemo(() => {
     return scheduleMenus.filter(m => m.week_id === selectedWeekId);
   }, [scheduleMenus, selectedWeekId]);
 
-  // Build client cards - one per scheduled menu row
+  // Group menus by client_id - one card per client with all their meals
   const clientCards = useMemo(() => {
-    const cards = [];
+    const groups = {};
 
     weekMenus.forEach(menu => {
-      const client = clients.find(c => c.id === menu.client_id);
-      const isEmpty = !menu.protein && !menu.veg && !menu.starch;
-      const isComplete = menu.protein && menu.veg && menu.starch;
-      const isApproved = menu.approved === true;
-
-      cards.push({
-        menu,
-        client: client || { name: menu.client_name, id: menu.client_id },
-        isEmpty,
-        isComplete,
-        isApproved,
-        state: isApproved ? 'approved' : isComplete ? 'complete' : isEmpty ? 'empty' : 'partial'
-      });
+      const clientId = menu.client_id;
+      if (!groups[clientId]) {
+        const client = clients.find(c => c.id === clientId);
+        groups[clientId] = {
+          clientId,
+          client: client || { name: menu.client_name, id: clientId },
+          meals: []
+        };
+      }
+      groups[clientId].meals.push(menu);
     });
 
-    // Sort: empty first, then partial, then complete, then approved
-    const stateOrder = { empty: 0, partial: 1, complete: 2, approved: 3 };
-    cards.sort((a, b) => stateOrder[a.state] - stateOrder[b.state]);
+    // Sort meals by date within each client
+    Object.values(groups).forEach(g => {
+      g.meals.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    });
 
-    return cards;
+    // Sort clients alphabetically
+    return Object.values(groups).sort((a, b) =>
+      (a.client.name || '').localeCompare(b.client.name || '')
+    );
   }, [weekMenus, clients]);
 
-  // Start editing a menu
-  const startEditing = (menu) => {
-    setEditingMenuId(menu.id);
+  // Get status from menus (all confirmed = confirmed, else scheduled)
+  const getClientStatus = (meals) => {
+    if (meals.length === 0) return 'scheduled';
+    const allApproved = meals.every(m => m.approved === true);
+    return allApproved ? 'confirmed' : 'scheduled';
+  };
+
+  // Check if any meal is empty
+  const hasEmptyMeals = (meals) => {
+    return meals.some(m => !m.protein && !m.veg && !m.starch);
+  };
+
+  // Calculate total weekly cost
+  const getWeeklyCost = (meals) => {
+    let total = 0;
+    meals.forEach(menu => {
+      ['protein', 'veg', 'starch'].forEach(type => {
+        if (menu[type]) {
+          const recipe = recipes[type]?.find(r => r.name === menu[type]);
+          if (recipe && getRecipeCost) {
+            total += getRecipeCost(recipe) * (menu.portions || 1);
+          }
+        }
+      });
+    });
+    return total;
+  };
+
+  // Start editing a meal
+  const startEditing = (clientId, mealIdx, meal) => {
+    setEditingClient(clientId);
+    setEditingMealIdx(mealIdx);
     setEditForm({
-      protein: menu.protein || '',
-      veg: menu.veg || '',
-      starch: menu.starch || '',
-      portions: menu.portions || 4
+      protein: meal.protein || '',
+      veg: meal.veg || '',
+      starch: meal.starch || ''
     });
   };
 
   // Cancel editing
   const cancelEditing = () => {
-    setEditingMenuId(null);
+    setEditingClient(null);
+    setEditingMealIdx(null);
     setEditForm({});
   };
 
-  // Save menu changes (update local menuItems for now)
-  const saveMenu = async (menuId) => {
-    // Update the menuItems array with new values
+  // Save meal (update local state)
+  const saveMeal = (menuId) => {
     setMenuItems(prev => prev.map(item => {
       if (item.id === menuId) {
         return {
           ...item,
           protein: editForm.protein || null,
           veg: editForm.veg || null,
-          starch: editForm.starch || null,
-          portions: editForm.portions
+          starch: editForm.starch || null
         };
       }
       return item;
     }));
-
-    setEditingMenuId(null);
-    setEditForm({});
+    cancelEditing();
   };
 
-  // Get recipe options for dropdown
-  const getRecipeOptions = (category) => {
-    return recipes[category] || [];
+  // Get recipe options
+  const getRecipeOptions = (category) => recipes[category] || [];
+
+  // Format phone for display
+  const formatPhone = (phone) => {
+    if (!phone) return null;
+    return phone.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3');
   };
 
-  // Calculate menu cost
-  const getMenuCost = (menu) => {
-    let cost = 0;
-    ['protein', 'veg', 'starch'].forEach(type => {
-      if (menu[type]) {
-        const recipe = recipes[type]?.find(r => r.name === menu[type]);
-        if (recipe && getRecipeCost) {
-          cost += getRecipeCost(recipe);
-        }
-      }
-    });
-    return cost * (menu.portions || 1);
-  };
-
-  // State badge component
-  const StateBadge = ({ state }) => {
-    const styles = {
-      empty: { bg: 'bg-gray-100', text: 'text-gray-600', label: 'Empty' },
-      partial: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'Partial' },
-      complete: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Complete' },
-      approved: { bg: 'bg-green-100', text: 'text-green-700', label: 'Approved' }
-    };
-    const style = styles[state] || styles.empty;
-    return (
-      <span className={`text-xs px-2 py-0.5 rounded-full ${style.bg} ${style.text}`}>
-        {style.label}
-      </span>
-    );
+  // Truncate text
+  const truncate = (str, len) => {
+    if (!str) return '—';
+    return str.length > len ? str.slice(0, len) + '…' : str;
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3" style={{ fontSize: '12px' }}>
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-lg font-bold" style={{ color: COLORS.deepBlue }}>
+          <h2 className="text-base font-bold" style={{ color: '#3d59ab' }}>
             Weekly Menu Builder
           </h2>
-          <p className="text-sm text-gray-500">
-            {clientCards.length} client{clientCards.length !== 1 ? 's' : ''} scheduled for this week
-          </p>
+          <span className="text-gray-500">
+            {clientCards.length} client{clientCards.length !== 1 ? 's' : ''} • {weekMenus.length} meals
+          </span>
         </div>
-        <div className="flex gap-2 text-sm">
-          <span className="px-2 py-1 bg-gray-100 rounded">
-            Empty: {clientCards.filter(c => c.state === 'empty').length}
+        <div className="flex gap-2">
+          <span className="px-2 py-0.5 rounded text-xs" style={{ backgroundColor: STATUS_COLORS.scheduled.bg, color: STATUS_COLORS.scheduled.text }}>
+            Scheduled: {clientCards.filter(c => getClientStatus(c.meals) === 'scheduled').length}
           </span>
-          <span className="px-2 py-1 bg-yellow-100 rounded">
-            Partial: {clientCards.filter(c => c.state === 'partial').length}
-          </span>
-          <span className="px-2 py-1 bg-blue-100 rounded">
-            Complete: {clientCards.filter(c => c.state === 'complete').length}
-          </span>
-          <span className="px-2 py-1 bg-green-100 rounded">
-            Approved: {clientCards.filter(c => c.state === 'approved').length}
+          <span className="px-2 py-0.5 rounded text-xs" style={{ backgroundColor: STATUS_COLORS.confirmed.bg, color: STATUS_COLORS.confirmed.text }}>
+            Confirmed: {clientCards.filter(c => getClientStatus(c.meals) === 'confirmed').length}
           </span>
         </div>
       </div>
 
-      {/* No scheduled clients message */}
+      {/* No clients message */}
       {clientCards.length === 0 && (
-        <div className="bg-white rounded-lg shadow-sm p-8 text-center">
-          <ChefHat size={48} className="mx-auto mb-4 opacity-30" />
-          <p className="text-gray-500">No clients scheduled for this week.</p>
-          <p className="text-sm text-gray-400 mt-1">
-            Go to Schedule to add clients to this week.
-          </p>
+        <div className="bg-white rounded border p-6 text-center text-gray-500">
+          No clients scheduled for this week. Go to Schedule to add clients.
         </div>
       )}
 
-      {/* Client cards grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {clientCards.map(({ menu, client, isEmpty, isComplete, isApproved, state }) => {
-          const isEditing = editingMenuId === menu.id;
-          const cost = getMenuCost(menu);
+      {/* Client cards - 2 column grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+        {clientCards.map(({ clientId, client, meals }) => {
+          const status = getClientStatus(meals);
+          const statusStyle = STATUS_COLORS[status];
+          const weeklyCost = getWeeklyCost(meals);
+          const mealsPerWeek = client.meals_per_week || client.mealsPerWeek || 4;
 
           return (
             <div
-              key={menu.id}
-              className={`bg-white rounded-lg shadow-sm border-2 overflow-hidden ${
-                isEmpty ? 'border-dashed border-gray-300' :
-                isApproved ? 'border-green-400' :
-                isComplete ? 'border-blue-400' : 'border-yellow-400'
-              }`}
+              key={clientId}
+              className="bg-white rounded border overflow-hidden"
+              style={{ borderColor: status === 'confirmed' ? '#3d59ab' : '#d1d5db' }}
             >
-              {/* Card header */}
+              {/* Section 1: Client Header (logistics) */}
               <div
-                className="px-4 py-3 flex justify-between items-center"
-                style={{
-                  backgroundColor: isEmpty ? '#f9fafb' :
-                    isApproved ? '#dcfce7' :
-                    isComplete ? '#dbeafe' : '#fef3c7'
-                }}
+                className="px-2 py-1 flex items-center justify-between border-b"
+                style={{ backgroundColor: '#f9fafb', borderColor: '#e5e7eb' }}
               >
-                <div>
-                  <h3 className="font-semibold" style={{ color: COLORS.darkBrown }}>
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <span className="font-semibold truncate" style={{ color: '#1f2937' }}>
                     {client.name}
-                  </h3>
-                  <div className="text-xs text-gray-500">
-                    {client.persons || menu.portions}p • {menu.portions} portions
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <StateBadge state={state} />
-                  {!isApproved && !isEditing && (
-                    <button
-                      onClick={() => startEditing(menu)}
-                      className="p-1.5 rounded hover:bg-white/50"
-                      title="Edit menu"
-                    >
-                      <Edit2 size={14} style={{ color: COLORS.deepBlue }} />
-                    </button>
+                  </span>
+                  {client.zone && (
+                    <span className="px-1.5 py-0.5 bg-gray-200 rounded text-gray-600 text-xs shrink-0">
+                      {client.zone}
+                    </span>
                   )}
+                  {client.delivery_day || client.deliveryDay ? (
+                    <span className="text-gray-500 shrink-0">
+                      {(client.delivery_day || client.deliveryDay).slice(0, 3)}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-gray-500">
+                    {client.persons}p/{client.portions || mealsPerWeek}port
+                  </span>
+                  <span
+                    className="px-1.5 py-0.5 rounded text-xs font-medium"
+                    style={{ backgroundColor: statusStyle.bg, color: statusStyle.text }}
+                  >
+                    {statusStyle.label}
+                  </span>
                 </div>
               </div>
 
-              {/* Card body */}
-              <div className="p-4">
-                {isEditing ? (
-                  /* Edit form */
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-xs text-gray-500 uppercase">Protein</label>
-                      <select
-                        value={editForm.protein}
-                        onChange={(e) => setEditForm(prev => ({ ...prev, protein: e.target.value }))}
-                        className="w-full mt-1 p-2 border rounded text-sm"
-                      >
-                        <option value="">Select protein...</option>
-                        {getRecipeOptions('protein').map(r => (
-                          <option key={r.name} value={r.name}>{r.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500 uppercase">Vegetable</label>
-                      <select
-                        value={editForm.veg}
-                        onChange={(e) => setEditForm(prev => ({ ...prev, veg: e.target.value }))}
-                        className="w-full mt-1 p-2 border rounded text-sm"
-                      >
-                        <option value="">Select vegetable...</option>
-                        {getRecipeOptions('veg').map(r => (
-                          <option key={r.name} value={r.name}>{r.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500 uppercase">Starch</label>
-                      <select
-                        value={editForm.starch}
-                        onChange={(e) => setEditForm(prev => ({ ...prev, starch: e.target.value }))}
-                        className="w-full mt-1 p-2 border rounded text-sm"
-                      >
-                        <option value="">Select starch...</option>
-                        {getRecipeOptions('starch').map(r => (
-                          <option key={r.name} value={r.name}>{r.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500 uppercase">Portions</label>
-                      <input
-                        type="number"
-                        value={editForm.portions}
-                        onChange={(e) => setEditForm(prev => ({ ...prev, portions: parseInt(e.target.value) || 1 }))}
-                        className="w-full mt-1 p-2 border rounded text-sm"
-                        min="1"
-                        max="20"
-                      />
-                    </div>
-                    <div className="flex gap-2 pt-2">
-                      <button
-                        onClick={cancelEditing}
-                        className="flex-1 py-2 px-3 border rounded text-sm flex items-center justify-center gap-1"
-                      >
-                        <X size={14} />
-                        Cancel
-                      </button>
-                      <button
-                        onClick={() => saveMenu(menu.id)}
-                        className="flex-1 py-2 px-3 rounded text-sm text-white flex items-center justify-center gap-1"
-                        style={{ backgroundColor: COLORS.deepBlue }}
-                      >
-                        <Save size={14} />
-                        Save
-                      </button>
-                    </div>
-                  </div>
-                ) : isEmpty ? (
-                  /* Empty state */
-                  <div className="text-center py-4">
-                    <AlertCircle size={24} className="mx-auto mb-2 text-gray-300" />
-                    <p className="text-sm text-gray-400">No menu assigned yet</p>
-                    <button
-                      onClick={() => startEditing(menu)}
-                      className="mt-2 text-sm px-4 py-1.5 rounded border hover:bg-gray-50"
-                      style={{ borderColor: COLORS.deepBlue, color: COLORS.deepBlue }}
-                    >
-                      Add Menu
-                    </button>
-                  </div>
-                ) : (
-                  /* Menu display */
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center py-1 border-b">
-                      <span className="text-xs text-gray-500 uppercase">Protein</span>
-                      <span className="text-sm font-medium">{menu.protein || '—'}</span>
-                    </div>
-                    <div className="flex justify-between items-center py-1 border-b">
-                      <span className="text-xs text-gray-500 uppercase">Veg</span>
-                      <span className="text-sm font-medium">{menu.veg || '—'}</span>
-                    </div>
-                    <div className="flex justify-between items-center py-1 border-b">
-                      <span className="text-xs text-gray-500 uppercase">Starch</span>
-                      <span className="text-sm font-medium">{menu.starch || '—'}</span>
-                    </div>
-                    {menu.extras && menu.extras.length > 0 && (
-                      <div className="flex justify-between items-center py-1 border-b">
-                        <span className="text-xs text-gray-500 uppercase">Extras</span>
-                        <span className="text-sm">{menu.extras.join(', ')}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between items-center pt-2">
-                      <span className="text-xs text-gray-500">Est. Cost</span>
-                      <span className="text-sm font-bold" style={{ color: COLORS.green }}>
-                        ${cost.toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-                )}
+              {/* Contact info row */}
+              <div
+                className="px-2 py-0.5 text-gray-500 truncate border-b"
+                style={{ backgroundColor: '#fafafa', borderColor: '#f3f4f6', fontSize: '11px' }}
+              >
+                {[
+                  truncate(client.address, 30),
+                  formatPhone(client.phone),
+                  client.email
+                ].filter(Boolean).join(' • ') || 'No contact info'}
               </div>
 
-              {/* Card footer - approval status */}
-              {isApproved && (
-                <div className="px-4 py-2 bg-green-50 border-t border-green-200 flex items-center gap-2 text-green-700 text-sm">
-                  <Check size={14} />
-                  Approved
+              {/* Section 2: Weekly Menu (meals table) */}
+              <div className="px-2 py-1">
+                <table className="w-full" style={{ fontSize: '11px' }}>
+                  <thead>
+                    <tr className="text-gray-400 text-left">
+                      <th className="w-8 font-normal">#</th>
+                      <th className="font-normal">Protein</th>
+                      <th className="font-normal">Veg</th>
+                      <th className="font-normal">Starch</th>
+                      <th className="w-6"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from({ length: mealsPerWeek }).map((_, idx) => {
+                      const meal = meals[idx];
+                      const isEditing = editingClient === clientId && editingMealIdx === idx;
+                      const isEmpty = meal && !meal.protein && !meal.veg && !meal.starch;
+
+                      if (!meal) {
+                        // No menu row for this meal slot
+                        return (
+                          <tr key={idx} className="text-gray-300">
+                            <td className="py-0.5">M{idx + 1}</td>
+                            <td colSpan={4} className="py-0.5 italic">Not scheduled</td>
+                          </tr>
+                        );
+                      }
+
+                      if (isEditing) {
+                        // Inline edit mode
+                        return (
+                          <tr key={meal.id || idx} className="bg-blue-50">
+                            <td className="py-0.5">M{idx + 1}</td>
+                            <td className="py-0.5 pr-1">
+                              <select
+                                value={editForm.protein}
+                                onChange={(e) => setEditForm(p => ({ ...p, protein: e.target.value }))}
+                                className="w-full px-1 py-0.5 border rounded text-xs"
+                              >
+                                <option value="">—</option>
+                                {getRecipeOptions('protein').map(r => (
+                                  <option key={r.name} value={r.name}>{r.name}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="py-0.5 pr-1">
+                              <select
+                                value={editForm.veg}
+                                onChange={(e) => setEditForm(p => ({ ...p, veg: e.target.value }))}
+                                className="w-full px-1 py-0.5 border rounded text-xs"
+                              >
+                                <option value="">—</option>
+                                {getRecipeOptions('veg').map(r => (
+                                  <option key={r.name} value={r.name}>{r.name}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="py-0.5 pr-1">
+                              <select
+                                value={editForm.starch}
+                                onChange={(e) => setEditForm(p => ({ ...p, starch: e.target.value }))}
+                                className="w-full px-1 py-0.5 border rounded text-xs"
+                              >
+                                <option value="">—</option>
+                                {getRecipeOptions('starch').map(r => (
+                                  <option key={r.name} value={r.name}>{r.name}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="py-0.5">
+                              <div className="flex gap-0.5">
+                                <button
+                                  onClick={() => saveMeal(meal.id)}
+                                  className="p-0.5 text-green-600 hover:bg-green-100 rounded"
+                                  title="Save"
+                                >
+                                  <Check size={12} />
+                                </button>
+                                <button
+                                  onClick={cancelEditing}
+                                  className="p-0.5 text-gray-400 hover:bg-gray-100 rounded"
+                                  title="Cancel"
+                                >
+                                  <X size={12} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      // Display mode
+                      return (
+                        <tr
+                          key={meal.id || idx}
+                          className={isEmpty ? 'text-gray-400' : 'text-gray-700'}
+                        >
+                          <td className="py-0.5">M{idx + 1}</td>
+                          <td className="py-0.5 truncate max-w-[100px]">
+                            {truncate(meal.protein, 15) || '—'}
+                          </td>
+                          <td className="py-0.5 truncate max-w-[100px]">
+                            {truncate(meal.veg, 15) || '—'}
+                          </td>
+                          <td className="py-0.5 truncate max-w-[100px]">
+                            {truncate(meal.starch, 15) || '—'}
+                          </td>
+                          <td className="py-0.5">
+                            {status !== 'confirmed' && (
+                              <button
+                                onClick={() => startEditing(clientId, idx, meal)}
+                                className="p-0.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                                title="Edit"
+                              >
+                                <Edit2 size={10} />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Section 3: Status and Billing */}
+              <div
+                className="px-2 py-1 flex items-center justify-between border-t"
+                style={{ backgroundColor: '#fafafa', borderColor: '#e5e7eb' }}
+              >
+                <button
+                  className="flex items-center gap-1 px-2 py-0.5 text-xs rounded border hover:bg-white"
+                  style={{ borderColor: '#d1d5db', color: '#374151' }}
+                  title="Open billing"
+                >
+                  <Receipt size={10} />
+                  Billing
+                </button>
+                <div className="flex items-center gap-3">
+                  {hasEmptyMeals(meals) && (
+                    <span className="text-orange-500 text-xs">
+                      {meals.filter(m => !m.protein && !m.veg && !m.starch).length} empty
+                    </span>
+                  )}
+                  <span className="font-semibold" style={{ color: '#059669' }}>
+                    ${weeklyCost.toFixed(0)}/wk
+                  </span>
                 </div>
-              )}
+              </div>
             </div>
           );
         })}
