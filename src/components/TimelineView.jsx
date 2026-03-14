@@ -259,26 +259,94 @@ export default function TimelineView({ clients, deliverySchedule, setDeliverySch
     return { backgroundColor: INACTIVE_COLOR, color: '#ffffff' };
   };
 
+  // Calculate current week stats
+  const currentWeek = weeks[0];
+  const currentWeekStats = activeClients.reduce(
+    (stats, client) => {
+      const data = getDeliveryData(client.name, currentWeek.key);
+      if (data.status === 'scheduled') {
+        stats.scheduled++;
+        stats.unpaid++;
+        stats.portions += client.persons || 0;
+      } else if (data.status === 'paid') {
+        stats.scheduled++;
+        stats.paid++;
+        stats.portions += client.persons || 0;
+      }
+      return stats;
+    },
+    { scheduled: 0, paid: 0, unpaid: 0, portions: 0 }
+  );
+
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <h2 className="text-xl font-bold" style={{ color: COLORS.deepBlue }}>
-          Schedule
-        </h2>
-        <div className="flex gap-6 text-sm">
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded" style={{ backgroundColor: INACTIVE_COLOR }} />
-            <span style={{ color: COLORS.darkBrown }}>Inactive</span>
+      {/* Week Summary Header */}
+      <div
+        className="bg-white rounded-lg shadow-md p-4"
+        style={{ borderLeft: `4px solid ${COLORS.deepBlue}` }}
+      >
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <h2 className="text-xl font-bold" style={{ color: COLORS.deepBlue }}>
+              Week of {currentWeek.label}
+            </h2>
+            <p className="text-sm" style={{ color: COLORS.darkBrown, opacity: 0.7 }}>
+              Current week summary
+            </p>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded border-2" style={{ backgroundColor: '#e8e8e8', borderColor: '#ccc' }} />
-            <span style={{ color: COLORS.darkBrown }}>Scheduled (light)</span>
+          <div className="flex gap-6">
+            <div className="text-center">
+              <div className="text-2xl font-bold" style={{ color: COLORS.deepBlue }}>
+                {currentWeekStats.scheduled}
+              </div>
+              <div className="text-xs uppercase tracking-wide" style={{ color: COLORS.darkBrown }}>
+                Scheduled
+              </div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold" style={{ color: COLORS.green }}>
+                {currentWeekStats.paid}
+              </div>
+              <div className="text-xs uppercase tracking-wide" style={{ color: COLORS.darkBrown }}>
+                Paid
+              </div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold" style={{ color: '#d97706' }}>
+                {currentWeekStats.unpaid}
+              </div>
+              <div className="text-xs uppercase tracking-wide" style={{ color: COLORS.darkBrown }}>
+                Unpaid
+              </div>
+            </div>
+            <div
+              className="text-center pl-6"
+              style={{ borderLeft: `1px solid ${COLORS.warmTan}` }}
+            >
+              <div className="text-2xl font-bold" style={{ color: COLORS.darkBrown }}>
+                {currentWeekStats.portions}
+              </div>
+              <div className="text-xs uppercase tracking-wide" style={{ color: COLORS.darkBrown }}>
+                Portions
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded" style={{ backgroundColor: COLORS.deepBlue }} />
-            <span style={{ color: COLORS.darkBrown }}>Paid (dark)</span>
-          </div>
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div className="flex justify-end gap-6 text-sm">
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded" style={{ backgroundColor: INACTIVE_COLOR }} />
+          <span style={{ color: COLORS.darkBrown }}>Inactive</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded border-2" style={{ backgroundColor: '#e8e8e8', borderColor: '#ccc' }} />
+          <span style={{ color: COLORS.darkBrown }}>Scheduled (light)</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded" style={{ backgroundColor: COLORS.deepBlue }} />
+          <span style={{ color: COLORS.darkBrown }}>Paid (dark)</span>
         </div>
       </div>
 

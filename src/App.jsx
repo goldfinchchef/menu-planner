@@ -34,8 +34,8 @@ export default function App() {
   } = useAppData();
 
   // Two-level navigation state
-  const [activeSection, setActiveSection] = useState('dashboard');
-  const [activeSubview, setActiveSubview] = useState(null);
+  const [activeSection, setActiveSection] = useState('clients');
+  const [activeSubview, setActiveSubview] = useState('schedule');
 
   // Menu building state
   const [selectedClients, setSelectedClients] = useState([]);
