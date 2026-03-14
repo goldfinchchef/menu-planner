@@ -1,11 +1,11 @@
 import React from 'react';
-import { LayoutDashboard, Users, UtensilsCrossed, ChefHat } from 'lucide-react';
+import { Calendar, UtensilsCrossed, ChefHat, Users } from 'lucide-react';
 
 const SECTIONS = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'clients', label: 'Clients', icon: Users },
-  { id: 'menus', label: 'Menus', icon: UtensilsCrossed },
-  { id: 'kitchen', label: 'Kitchen', icon: ChefHat }
+  { id: 'schedule', label: 'Schedule', icon: Calendar },
+  { id: 'menu', label: 'Menu', icon: UtensilsCrossed },
+  { id: 'kitchen', label: 'Kitchen', icon: ChefHat },
+  { id: 'clients', label: 'Clients', icon: Users }
 ];
 
 export default function TopNav({ activeSection, setActiveSection, setActiveSubview, defaultSubviews }) {

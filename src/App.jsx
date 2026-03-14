@@ -12,7 +12,6 @@ import SubNav, { DEFAULT_SUBVIEWS } from './components/SubNav';
 import WeekSelector from '../components/WeekSelector';
 
 // View components
-import DashboardView from './components/DashboardView';
 import MenuTab from './components/MenuTab';
 import TimelineView from './components/TimelineView';
 import RecipesTab from './components/RecipesTab';
@@ -21,9 +20,6 @@ import PrepListTab from './components/PrepListTab';
 import HistoryTab from './components/HistoryTab';
 import ClientsTab from './components/ClientsTab';
 import IngredientsTab from './components/IngredientsTab';
-import BillingView from './components/BillingView';
-import PackagesView from './components/PackagesView';
-import CostingView from './components/CostingView';
 
 export default function App() {
   const {
@@ -36,8 +32,8 @@ export default function App() {
   } = useAppData();
 
   // Two-level navigation state
-  const [activeSection, setActiveSection] = useState('clients');
-  const [activeSubview, setActiveSubview] = useState('schedule');
+  const [activeSection, setActiveSection] = useState('schedule');
+  const [activeSubview, setActiveSubview] = useState('weekly-schedule');
 
   // Week selection state
   const [selectedWeekId, setSelectedWeekId] = useState(getWeekId());
@@ -293,13 +289,19 @@ export default function App() {
 
   // Render the appropriate view based on section and subview
   const renderContent = () => {
-    // Dashboard - no subviews
-    if (activeSection === 'dashboard') {
-      return <DashboardView />;
+    // Schedule section
+    if (activeSection === 'schedule') {
+      return (
+        <TimelineView
+          clients={clients}
+          deliverySchedule={deliverySchedule}
+          setDeliverySchedule={setDeliverySchedule}
+        />
+      );
     }
 
-    // Top-level Menus - direct view, same as Clients > Menus
-    if (activeSection === 'menus') {
+    // Menu section
+    if (activeSection === 'menu') {
       return (
         <MenuTab
           clients={clients}
@@ -318,82 +320,9 @@ export default function App() {
       );
     }
 
-    // Clients section
-    if (activeSection === 'clients') {
-      switch (activeSubview) {
-        case 'schedule':
-          return (
-            <TimelineView
-              clients={clients}
-              deliverySchedule={deliverySchedule}
-              setDeliverySchedule={setDeliverySchedule}
-            />
-          );
-        case 'directory':
-          return (
-            <ClientsTab
-              clients={clients}
-              setClients={setClients}
-              clientsFileRef={clientsFileRef}
-            />
-          );
-        case 'billing':
-          return <BillingView />;
-        case 'packages':
-          return <PackagesView />;
-        case 'menus':
-          return (
-            <MenuTab
-              clients={clients}
-              selectedClients={selectedClients}
-              setSelectedClients={setSelectedClients}
-              menuDate={menuDate}
-              setMenuDate={setMenuDate}
-              newMenuItem={newMenuItem}
-              setNewMenuItem={setNewMenuItem}
-              recipes={recipes}
-              menuItems={menuItems}
-              addMenuItem={addMenuItem}
-              deleteMenuItem={deleteMenuItem}
-              clearMenu={clearMenu}
-            />
-          );
-        default:
-          return (
-            <TimelineView
-              clients={clients}
-              deliverySchedule={deliverySchedule}
-              setDeliverySchedule={setDeliverySchedule}
-            />
-          );
-      }
-    }
-
     // Kitchen section
     if (activeSection === 'kitchen') {
       switch (activeSubview) {
-        case 'recipes':
-          return (
-            <RecipesTab
-              recipes={recipes}
-              setRecipes={setRecipes}
-              masterIngredients={masterIngredients}
-              addToMasterIngredients={addToMasterIngredients}
-              recipesFileRef={recipesFileRef}
-            />
-          );
-        case 'ingredients':
-          return (
-            <IngredientsTab
-              masterIngredients={masterIngredients}
-              setMasterIngredients={setMasterIngredients}
-              recipes={recipes}
-              setRecipes={setRecipes}
-              ingredientsFileRef={ingredientsFileRef}
-            />
-          );
-        case 'costing':
-          return <CostingView />;
         case 'dish-totals':
           return (
             <>
@@ -423,11 +352,9 @@ export default function App() {
               />
             </>
           );
-        case 'shop':
+        case 'shopping-list':
           return <PrepListTab prepList={getPrepList()} />;
-        case 'history':
-          return <HistoryTab orderHistory={orderHistory} />;
-        default:
+        case 'recipes':
           return (
             <RecipesTab
               recipes={recipes}
@@ -437,11 +364,80 @@ export default function App() {
               recipesFileRef={recipesFileRef}
             />
           );
+        case 'ingredients':
+          return (
+            <IngredientsTab
+              masterIngredients={masterIngredients}
+              setMasterIngredients={setMasterIngredients}
+              recipes={recipes}
+              setRecipes={setRecipes}
+              ingredientsFileRef={ingredientsFileRef}
+            />
+          );
+        default:
+          return (
+            <>
+              <div className="mb-4">
+                <WeekSelector
+                  selectedWeekId={selectedWeekId}
+                  setSelectedWeekId={setSelectedWeekId}
+                  weeks={weeks}
+                  compact={true}
+                />
+              </div>
+              <KDSTab
+                menuItems={menuItems}
+                recipes={recipes}
+                completedDishes={completedDishes}
+                toggleDishComplete={toggleDishComplete}
+                allDishesComplete={allDishesComplete}
+                completeAllOrders={completeAllOrders}
+                getKDSView={getKDSView}
+                selectedWeekId={selectedWeekId}
+                currentWeek={currentWeek}
+                kdsLoading={kdsLoading}
+                kdsLastRefresh={kdsLastRefresh}
+                lastMenusApprovedAt={lastMenusApprovedAt}
+                unapprovedMenuCount={unapprovedMenuCount}
+                unapprovedByClient={unapprovedByClient}
+              />
+            </>
+          );
       }
     }
 
-    // Fallback
-    return <DashboardView />;
+    // Clients section
+    if (activeSection === 'clients') {
+      switch (activeSubview) {
+        case 'directory':
+          return (
+            <ClientsTab
+              clients={clients}
+              setClients={setClients}
+              clientsFileRef={clientsFileRef}
+            />
+          );
+        case 'history':
+          return <HistoryTab orderHistory={orderHistory} />;
+        default:
+          return (
+            <ClientsTab
+              clients={clients}
+              setClients={setClients}
+              clientsFileRef={clientsFileRef}
+            />
+          );
+      }
+    }
+
+    // Fallback to Schedule
+    return (
+      <TimelineView
+        clients={clients}
+        deliverySchedule={deliverySchedule}
+        setDeliverySchedule={setDeliverySchedule}
+      />
+    );
   };
 
   return (

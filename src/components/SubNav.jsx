@@ -1,29 +1,32 @@
 import React from 'react';
-import { Calendar, Users, Receipt, Package, UtensilsCrossed, Book, Apple, DollarSign, LayoutGrid, ShoppingCart, Clock } from 'lucide-react';
+import { Calendar, UtensilsCrossed, LayoutGrid, ShoppingCart, Book, Apple, Users, Clock } from 'lucide-react';
 
 // Subview definitions for each section
 const SUBVIEWS = {
-  clients: [
-    { id: 'schedule', label: 'Schedule', icon: Calendar },
-    { id: 'directory', label: 'Directory', icon: Users },
-    { id: 'billing', label: 'Billing', icon: Receipt },
-    { id: 'packages', label: 'Packages', icon: Package },
-    { id: 'menus', label: 'Menus', icon: UtensilsCrossed }
+  schedule: [
+    { id: 'weekly-schedule', label: 'Weekly Schedule', icon: Calendar }
+  ],
+  menu: [
+    { id: 'menu-builder', label: 'Weekly Menu Builder', icon: UtensilsCrossed }
   ],
   kitchen: [
-    { id: 'recipes', label: 'Recipes', icon: Book },
-    { id: 'ingredients', label: 'Ingredients', icon: Apple },
-    { id: 'costing', label: 'Costing', icon: DollarSign },
     { id: 'dish-totals', label: 'Dish Totals', icon: LayoutGrid },
-    { id: 'shop', label: 'Shop', icon: ShoppingCart },
-    { id: 'history', label: 'History', icon: Clock }
+    { id: 'shopping-list', label: 'Shopping List', icon: ShoppingCart },
+    { id: 'recipes', label: 'Recipes', icon: Book },
+    { id: 'ingredients', label: 'Ingredients', icon: Apple }
+  ],
+  clients: [
+    { id: 'directory', label: 'Client Directory', icon: Users },
+    { id: 'history', label: 'Order History', icon: Clock }
   ]
 };
 
 // Default subviews when entering a section
 const DEFAULT_SUBVIEWS = {
-  clients: 'schedule',
-  kitchen: 'recipes'
+  schedule: 'weekly-schedule',
+  menu: 'menu-builder',
+  kitchen: 'dish-totals',
+  clients: 'directory'
 };
 
 export default function SubNav({ activeSection, activeSubview, setActiveSubview }) {
