@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Calendar, Link, DollarSign, Check, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { X, Calendar, Check, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 
 // Retro palette colors
 const COLORS = {
@@ -11,19 +11,12 @@ const COLORS = {
   green: '#22c55e'
 };
 
-// Week colors - each week gets its own distinct color
-const WEEK_PALETTES = [
-  { light: '#c5d4e8', dark: '#3d59ab', name: 'Blue' },
-  { light: '#f5d9b3', dark: '#d4883c', name: 'Orange' },
-  { light: '#c8e6c9', dark: '#388e3c', name: 'Green' },
-  { light: '#e1bee7', dark: '#7b1fa2', name: 'Purple' },
-  { light: '#b2dfdb', dark: '#00796b', name: 'Teal' },
-  { light: '#ffccbc', dark: '#e64a19', name: 'DeepOrange' },
-  { light: '#d1c4e9', dark: '#512da8', name: 'DeepPurple' },
-  { light: '#b3e5fc', dark: '#0288d1', name: 'LightBlue' }
-];
-
-const INACTIVE_COLOR = '#e5e7eb';
+// Status-only cell colors (no week-based alternating)
+const STATUS_COLORS = {
+  skipped: { bg: '#6b7280', text: '#ffffff' },     // dark gray - no menu row
+  scheduled: { bg: '#bbf7d0', text: '#166534' },   // light green - menu exists
+  confirmed: { bg: '#3d59ab', text: '#ffffff' }    // dark blue - approved
+};
 
 // Get Monday of the week containing the given date
 function getWeekStart(date) {
@@ -80,8 +73,7 @@ function getWeeksWithOffset(count, offset) {
       dateKey: getDateString(weekStart),
       label: formatWeekLabel(weekStart),
       start: new Date(weekStart),
-      isCurrentWeek,
-      palette: WEEK_PALETTES[i % WEEK_PALETTES.length]
+      isCurrentWeek
     });
   }
 
@@ -92,7 +84,6 @@ function getWeeksWithOffset(count, offset) {
 function ScheduleModal({ isOpen, onClose, client, week, cellState, onSchedule, onUnschedule }) {
   if (!isOpen || !client || !week) return null;
 
-  const palette = week.palette || WEEK_PALETTES[0];
   const isScheduled = cellState?.status === 'scheduled' || cellState?.status === 'approved';
   const isApproved = cellState?.status === 'approved';
   const menu = cellState?.menu;
@@ -117,7 +108,7 @@ function ScheduleModal({ isOpen, onClose, client, week, cellState, onSchedule, o
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
         <div
           className="flex items-center justify-between p-4 rounded-t-lg"
-          style={{ backgroundColor: palette.dark, color: 'white' }}
+          style={{ backgroundColor: COLORS.deepBlue, color: 'white' }}
         >
           <div>
             <h3 className="text-lg font-bold">{client.name}</h3>
@@ -136,18 +127,27 @@ function ScheduleModal({ isOpen, onClose, client, week, cellState, onSchedule, o
             </div>
             <div className="flex items-center gap-2">
               {!isScheduled && (
-                <span className="px-3 py-1.5 rounded-full text-sm bg-gray-100 text-gray-600">
-                  Not Scheduled
+                <span
+                  className="px-3 py-1.5 rounded-full text-sm"
+                  style={{ backgroundColor: STATUS_COLORS.skipped.bg, color: STATUS_COLORS.skipped.text }}
+                >
+                  Skipped
                 </span>
               )}
               {isScheduled && !isApproved && (
-                <span className="px-3 py-1.5 rounded-full text-sm" style={{ backgroundColor: palette.light, color: COLORS.darkBrown }}>
+                <span
+                  className="px-3 py-1.5 rounded-full text-sm"
+                  style={{ backgroundColor: STATUS_COLORS.scheduled.bg, color: STATUS_COLORS.scheduled.text }}
+                >
                   Scheduled {menu?.isEmpty ? '(Empty)' : '(Has Menu)'}
                 </span>
               )}
               {isApproved && (
-                <span className="px-3 py-1.5 rounded-full text-sm text-white" style={{ backgroundColor: palette.dark }}>
-                  Approved
+                <span
+                  className="px-3 py-1.5 rounded-full text-sm"
+                  style={{ backgroundColor: STATUS_COLORS.confirmed.bg, color: STATUS_COLORS.confirmed.text }}
+                >
+                  Confirmed
                 </span>
               )}
             </div>
@@ -263,15 +263,16 @@ export default function TimelineView({
     }
   };
 
-  const getCellStyleForState = (cellState, palette) => {
+  // Status-only cell styling (no week colors)
+  const getCellStyle = (cellState) => {
     if (!cellState || cellState.status === 'inactive') {
-      return { backgroundColor: INACTIVE_COLOR, color: '#9ca3af' };
+      return { backgroundColor: STATUS_COLORS.skipped.bg, color: STATUS_COLORS.skipped.text };
     }
     if (cellState.status === 'approved') {
-      return { backgroundColor: palette.dark, color: '#ffffff' };
+      return { backgroundColor: STATUS_COLORS.confirmed.bg, color: STATUS_COLORS.confirmed.text };
     }
     // Scheduled (not approved)
-    return { backgroundColor: palette.light, color: COLORS.darkBrown };
+    return { backgroundColor: STATUS_COLORS.scheduled.bg, color: STATUS_COLORS.scheduled.text };
   };
 
   return (
@@ -311,19 +312,19 @@ export default function TimelineView({
           )}
         </div>
 
-        {/* Legend */}
+        {/* Legend - status only */}
         <div className="flex gap-4 text-sm">
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded" style={{ backgroundColor: INACTIVE_COLOR }} />
-            <span style={{ color: COLORS.darkBrown }}>Not Scheduled</span>
+            <div className="w-4 h-4 rounded" style={{ backgroundColor: STATUS_COLORS.skipped.bg }} />
+            <span style={{ color: COLORS.darkBrown }}>Skipped</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded" style={{ backgroundColor: '#c5d4e8' }} />
+            <div className="w-4 h-4 rounded" style={{ backgroundColor: STATUS_COLORS.scheduled.bg }} />
             <span style={{ color: COLORS.darkBrown }}>Scheduled</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded" style={{ backgroundColor: COLORS.deepBlue }} />
-            <span style={{ color: COLORS.darkBrown }}>Approved</span>
+            <div className="w-4 h-4 rounded" style={{ backgroundColor: STATUS_COLORS.confirmed.bg }} />
+            <span style={{ color: COLORS.darkBrown }}>Confirmed</span>
           </div>
         </div>
       </div>
@@ -331,7 +332,7 @@ export default function TimelineView({
       {/* Schedule Grid */}
       <div className="bg-white rounded-lg shadow-md overflow-hidden">
         <div className="overflow-x-auto">
-          {/* Week Headers */}
+          {/* Week Headers - neutral, consistent */}
           <div className="flex border-b-2" style={{ borderColor: COLORS.warmTan }}>
             <div
               className="flex-shrink-0 p-3 font-medium"
@@ -343,20 +344,19 @@ export default function TimelineView({
               <div
                 key={week.weekId}
                 className="flex-1 p-2 text-center relative min-w-[100px]"
-                style={{ backgroundColor: week.palette.light + '40' }}
+                style={{
+                  backgroundColor: week.isCurrentWeek ? '#fefce8' : '#f9fafb',
+                  borderLeft: week.isCurrentWeek ? `3px solid ${COLORS.goldenYellow}` : 'none'
+                }}
               >
                 {week.isCurrentWeek && (
                   <div
-                    className="absolute left-0 top-0 bottom-0 w-1"
-                    style={{ backgroundColor: COLORS.goldenYellow }}
-                  />
+                    className="text-xs uppercase tracking-wide font-medium mb-0.5"
+                    style={{ color: COLORS.darkBrown }}
+                  >
+                    This Week
+                  </div>
                 )}
-                <div
-                  className="text-xs uppercase tracking-wide font-medium"
-                  style={{ color: week.palette.dark }}
-                >
-                  {week.isCurrentWeek ? 'This Week' : ''}
-                </div>
                 <div className="text-sm font-semibold" style={{ color: COLORS.darkBrown }}>
                   {week.label}
                 </div>
@@ -376,7 +376,7 @@ export default function TimelineView({
                 className="flex border-b"
                 style={{
                   borderColor: '#e5e7eb',
-                  backgroundColor: clientIdx % 2 === 0 ? 'white' : COLORS.cream
+                  backgroundColor: clientIdx % 2 === 0 ? 'white' : '#fafafa'
                 }}
               >
                 {/* Client Name Cell */}
@@ -384,7 +384,7 @@ export default function TimelineView({
                   className="flex-shrink-0 p-2.5"
                   style={{
                     width: '180px',
-                    backgroundColor: clientIdx % 2 === 0 ? 'white' : COLORS.cream
+                    backgroundColor: clientIdx % 2 === 0 ? 'white' : '#fafafa'
                   }}
                 >
                   <div className="font-medium text-sm" style={{ color: COLORS.darkBrown }}>
@@ -395,10 +395,10 @@ export default function TimelineView({
                   </div>
                 </div>
 
-                {/* Week Cells */}
+                {/* Week Cells - neutral background, status-only colors */}
                 {weeks.map((week) => {
                   const cellState = getScheduleCellState(client.id, week.weekId);
-                  const cellStyle = getCellStyleForState(cellState, week.palette);
+                  const cellStyle = getCellStyle(cellState);
                   const isLoading = actionLoading === `${client.id}::${week.weekId}`;
                   const isScheduled = cellState?.status === 'scheduled' || cellState?.status === 'approved';
                   const isApproved = cellState?.status === 'approved';
@@ -408,14 +408,11 @@ export default function TimelineView({
                     <div
                       key={week.weekId}
                       className="flex-1 p-1 min-w-[100px] relative"
-                      style={{ backgroundColor: week.palette.light + '15' }}
+                      style={{
+                        backgroundColor: week.isCurrentWeek ? '#fefce8' : 'transparent',
+                        borderLeft: week.isCurrentWeek ? `3px solid ${COLORS.goldenYellow}` : 'none'
+                      }}
                     >
-                      {week.isCurrentWeek && (
-                        <div
-                          className="absolute left-0 top-0 bottom-0 w-1"
-                          style={{ backgroundColor: COLORS.goldenYellow }}
-                        />
-                      )}
                       <button
                         onClick={() => openModal(client, week)}
                         disabled={isLoading}
