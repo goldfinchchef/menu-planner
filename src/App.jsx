@@ -4,17 +4,19 @@ import { ChefHat } from 'lucide-react';
 import { useAppData } from './hooks/useAppData';
 import { findExactMatch, normalizeName, categorizeIngredient, getRecipeCost } from './utils/ingredients';
 import { importClientsCSV, importRecipesCSV, importIngredientsCSV } from './utils/csv';
+import { getWeekId, getWeekIdFromDate } from '../utils/weekUtils';
 
 // Navigation components
 import TopNav from './components/TopNav';
 import SubNav, { DEFAULT_SUBVIEWS } from './components/SubNav';
+import WeekSelector from '../components/WeekSelector';
 
 // View components
 import DashboardView from './components/DashboardView';
 import MenuTab from './components/MenuTab';
 import TimelineView from './components/TimelineView';
 import RecipesTab from './components/RecipesTab';
-import KDSTab from './components/KDSTab';
+import KDSTab from '../tabs/KDSTab';
 import PrepListTab from './components/PrepListTab';
 import HistoryTab from './components/HistoryTab';
 import ClientsTab from './components/ClientsTab';
@@ -36,6 +38,17 @@ export default function App() {
   // Two-level navigation state
   const [activeSection, setActiveSection] = useState('clients');
   const [activeSubview, setActiveSubview] = useState('schedule');
+
+  // Week selection state
+  const [selectedWeekId, setSelectedWeekId] = useState(getWeekId());
+  const [weeks, setWeeks] = useState({});
+
+  // KDS state
+  const [kdsLoading, setKdsLoading] = useState(false);
+  const [kdsLastRefresh, setKdsLastRefresh] = useState(null);
+  const [lastMenusApprovedAt, setLastMenusApprovedAt] = useState(null);
+  const [unapprovedMenuCount, setUnapprovedMenuCount] = useState(0);
+  const [unapprovedByClient, setUnapprovedByClient] = useState({});
 
   // Menu building state
   const [selectedClients, setSelectedClients] = useState([]);
@@ -126,6 +139,17 @@ export default function App() {
   const toggleDishComplete = (dishName) => {
     setCompletedDishes(prev => ({ ...prev, [dishName]: !prev[dishName] }));
   };
+
+  // Check if all dishes in KDS view are complete
+  const allDishesComplete = () => {
+    const kds = getKDSView();
+    const dishNames = Object.keys(kds);
+    if (dishNames.length === 0) return false;
+    return dishNames.every(name => completedDishes[name]);
+  };
+
+  // Current week is the selected week
+  const currentWeek = selectedWeekId;
 
   const completeAllOrders = () => {
     if (!window.confirm('Mark all orders complete and move to history?')) return;
@@ -330,14 +354,32 @@ export default function App() {
           return <CostingView />;
         case 'dish-totals':
           return (
-            <KDSTab
-              menuItems={menuItems}
-              recipes={recipes}
-              completedDishes={completedDishes}
-              toggleDishComplete={toggleDishComplete}
-              completeAllOrders={completeAllOrders}
-              getKDSView={getKDSView}
-            />
+            <>
+              <div className="mb-4">
+                <WeekSelector
+                  selectedWeekId={selectedWeekId}
+                  setSelectedWeekId={setSelectedWeekId}
+                  weeks={weeks}
+                  compact={true}
+                />
+              </div>
+              <KDSTab
+                menuItems={menuItems}
+                recipes={recipes}
+                completedDishes={completedDishes}
+                toggleDishComplete={toggleDishComplete}
+                allDishesComplete={allDishesComplete}
+                completeAllOrders={completeAllOrders}
+                getKDSView={getKDSView}
+                selectedWeekId={selectedWeekId}
+                currentWeek={currentWeek}
+                kdsLoading={kdsLoading}
+                kdsLastRefresh={kdsLastRefresh}
+                lastMenusApprovedAt={lastMenusApprovedAt}
+                unapprovedMenuCount={unapprovedMenuCount}
+                unapprovedByClient={unapprovedByClient}
+              />
+            </>
           );
         case 'shop':
           return <PrepListTab prepList={getPrepList()} />;
