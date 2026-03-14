@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Calendar, Check, ChevronLeft, ChevronRight, Loader2, Receipt } from 'lucide-react';
+import { X, Loader2, Receipt } from 'lucide-react';
 
 // Retro palette colors
 const COLORS = {
@@ -305,10 +305,6 @@ export default function TimelineView({
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   };
 
-  const shiftWeeks = (direction) => {
-    setWeekOffset(prev => prev + direction);
-  };
-
   const openModal = (client, week) => {
     const cellState = getScheduleCellState(client.id, week.weekId);
     const clientWeekMeals = getClientWeekMeals(client.id, week.weekId);
@@ -343,68 +339,19 @@ export default function TimelineView({
 
   return (
     <div className="space-y-4">
-      {/* Header with navigation and legend */}
-      <div className="flex justify-between items-center">
-        {/* Week navigation */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => shiftWeeks(-1)}
-            className="p-2 rounded-lg hover:bg-white transition-colors border"
-            style={{ borderColor: COLORS.warmTan, color: COLORS.darkBrown }}
-            title="Show earlier weeks"
-          >
-            <ChevronLeft size={20} />
-          </button>
-          <span className="text-sm font-medium px-2" style={{ color: COLORS.darkBrown }}>
-            {weeks[0]?.label} — {weeks[weeks.length - 1]?.label}
-          </span>
-          <button
-            onClick={() => shiftWeeks(1)}
-            className="p-2 rounded-lg hover:bg-white transition-colors border"
-            style={{ borderColor: COLORS.warmTan, color: COLORS.darkBrown }}
-            title="Show later weeks"
-          >
-            <ChevronRight size={20} />
-          </button>
-          <button
-            onClick={() => setWeekOffset(-2)}
-            className="ml-2 px-3 py-1.5 text-xs rounded border hover:bg-white transition-colors"
-            style={{ borderColor: COLORS.warmTan, color: COLORS.darkBrown }}
-          >
-            Reset
-          </button>
-          {scheduleMenusLoading && (
-            <Loader2 size={16} className="animate-spin ml-2" style={{ color: COLORS.deepBlue }} />
-          )}
-        </div>
-
-        {/* Legend - status only */}
-        <div className="flex gap-4 text-sm">
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded" style={{ backgroundColor: STATUS_COLORS.skipped.bg }} />
-            <span style={{ color: COLORS.darkBrown }}>Skipped</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded" style={{ backgroundColor: STATUS_COLORS.scheduled.bg }} />
-            <span style={{ color: COLORS.darkBrown }}>Scheduled</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded" style={{ backgroundColor: STATUS_COLORS.confirmed.bg }} />
-            <span style={{ color: COLORS.darkBrown }}>Confirmed</span>
-          </div>
-        </div>
-      </div>
-
       {/* Schedule Grid */}
       <div className="bg-white rounded-lg shadow-md overflow-hidden">
         <div className="overflow-x-auto">
           {/* Week Headers */}
           <div className="flex border-b-2" style={{ borderColor: COLORS.warmTan }}>
             <div
-              className="flex-shrink-0 p-3 font-medium"
-              style={{ width: '180px', color: COLORS.darkBrown, backgroundColor: COLORS.cream }}
+              className="flex-shrink-0 p-2 font-medium text-sm flex items-center gap-2"
+              style={{ width: '140px', color: COLORS.darkBrown, backgroundColor: COLORS.cream }}
             >
-              Client ({activeClients.length})
+              <span>Clients ({activeClients.length})</span>
+              {scheduleMenusLoading && (
+                <Loader2 size={12} className="animate-spin" style={{ color: COLORS.deepBlue }} />
+              )}
             </div>
             {weeks.map((week) => (
               <div
@@ -447,18 +394,15 @@ export default function TimelineView({
               >
                 {/* Client Name Cell */}
                 <div
-                  className="flex-shrink-0 p-2.5"
+                  className="flex-shrink-0 p-2 flex items-center"
                   style={{
-                    width: '180px',
+                    width: '140px',
                     backgroundColor: clientIdx % 2 === 0 ? 'white' : '#fafafa'
                   }}
                 >
-                  <div className="font-medium text-sm" style={{ color: COLORS.darkBrown }}>
+                  <span className="font-medium text-sm truncate" style={{ color: COLORS.darkBrown }}>
                     {client.name}
-                  </div>
-                  <div className="text-xs" style={{ color: COLORS.darkBrown, opacity: 0.7 }}>
-                    {client.persons}p • {client.mealsPerWeek || client.meals_per_week} meals
-                  </div>
+                  </span>
                 </div>
 
                 {/* Week Cells */}
@@ -467,7 +411,6 @@ export default function TimelineView({
                   const cellStyle = getCellStyle(cellState);
                   const isLoading = actionLoading === `${client.id}::${week.weekId}`;
                   const status = cellState?.status || 'skipped';
-                  const isScheduled = status === 'scheduled' || status === 'confirmed';
                   const isEmpty = cellState?.isEmpty;
 
                   return (
@@ -482,29 +425,18 @@ export default function TimelineView({
                       <button
                         onClick={() => openModal(client, week)}
                         disabled={isLoading}
-                        className="w-full h-9 rounded-lg flex items-center justify-center gap-1
-                                   transition-all hover:scale-[1.02] hover:shadow-md cursor-pointer disabled:opacity-50"
+                        className="w-full h-8 rounded flex items-center justify-center relative
+                                   transition-all hover:opacity-90 cursor-pointer disabled:opacity-50"
                         style={cellStyle}
                       >
                         {isLoading ? (
-                          <Loader2 size={14} className="animate-spin" />
-                        ) : status === 'skipped' ? (
-                          <span className="text-sm">—</span>
-                        ) : status === 'confirmed' ? (
-                          <>
-                            <Check size={12} />
-                            <span className="text-xs font-medium">Done</span>
-                          </>
-                        ) : isEmpty ? (
-                          <>
-                            <Calendar size={12} />
-                            <span className="text-xs">Empty</span>
-                          </>
+                          <Loader2 size={12} className="animate-spin" />
                         ) : (
-                          <>
-                            <Calendar size={12} />
-                            <span className="text-xs font-medium">Menu</span>
-                          </>
+                          <span className="text-xs font-medium">{status}</span>
+                        )}
+                        {/* Yellow dot for action needed: scheduled but empty */}
+                        {status === 'scheduled' && isEmpty && (
+                          <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-yellow-400 rounded-full border border-yellow-500" />
                         )}
                       </button>
                     </div>
@@ -515,10 +447,6 @@ export default function TimelineView({
           )}
         </div>
       </div>
-
-      <p className="text-sm text-center" style={{ color: COLORS.darkBrown, opacity: 0.7 }}>
-        Click any cell to schedule or view details • Use arrows to navigate weeks
-      </p>
 
       {/* Schedule Modal */}
       <ScheduleModal
