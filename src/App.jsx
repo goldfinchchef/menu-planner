@@ -4,7 +4,7 @@ import { ChefHat, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAppData } from './hooks/useAppData';
 import { findExactMatch, normalizeName, categorizeIngredient, getRecipeCost } from './utils/ingredients';
 import { importClientsCSV, importRecipesCSV, importIngredientsCSV } from './utils/csv';
-import { getWeekId, getWeekIdFromDate, formatWeekRange, getAdjacentWeekId } from '../utils/weekUtils';
+import { getWeekId, getWeekIdFromDate, formatWeekRange, getAdjacentWeekId, getWeekStartDate } from '../utils/weekUtils';
 
 // Navigation components
 import TopNav from './components/TopNav';
@@ -55,6 +55,33 @@ export default function App() {
   const clientsFileRef = useRef();
   const recipesFileRef = useRef();
   const ingredientsFileRef = useRef();
+
+  // Calculate week stats based on selectedWeekId (global source of truth)
+  const getWeekStats = () => {
+    const weekKey = getWeekStartDate(selectedWeekId);
+    const activeClients = clients.filter(c => c.status === 'Active');
+
+    return activeClients.reduce(
+      (stats, client) => {
+        const scheduleKey = `${client.name}::${weekKey}`;
+        const data = deliverySchedule[scheduleKey] || { status: 'inactive' };
+
+        if (data.status === 'scheduled') {
+          stats.scheduled++;
+          stats.unpaid++;
+          stats.portions += client.persons || 0;
+        } else if (data.status === 'paid') {
+          stats.scheduled++;
+          stats.paid++;
+          stats.portions += client.persons || 0;
+        }
+        return stats;
+      },
+      { scheduled: 0, paid: 0, unpaid: 0, portions: 0 }
+    );
+  };
+
+  const weekStats = getWeekStats();
 
   // Ingredient management
   const addToMasterIngredients = (ingredient) => {
@@ -477,8 +504,25 @@ export default function App() {
             </span>
           </div>
 
-          {/* Right: Spacer for balance (metrics will go here when available) */}
-          <div className="w-24" />
+          {/* Right: Week stats */}
+          <div className="flex items-center gap-3 text-xs">
+            <div className="text-center">
+              <div className="font-bold">{weekStats.scheduled}</div>
+              <div className="opacity-75">Scheduled</div>
+            </div>
+            <div className="text-center">
+              <div className="font-bold text-green-300">{weekStats.paid}</div>
+              <div className="opacity-75">Paid</div>
+            </div>
+            <div className="text-center">
+              <div className="font-bold text-amber-300">{weekStats.unpaid}</div>
+              <div className="opacity-75">Unpaid</div>
+            </div>
+            <div className="text-center border-l border-white/30 pl-3">
+              <div className="font-bold">{weekStats.portions}</div>
+              <div className="opacity-75">Portions</div>
+            </div>
+          </div>
         </div>
       </div>
 
