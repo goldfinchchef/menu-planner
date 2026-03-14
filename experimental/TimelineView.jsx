@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Calendar, Link, DollarSign, Check } from 'lucide-react';
+import { X, Calendar, Link, DollarSign, Check, ChevronLeft, ChevronRight } from 'lucide-react';
 
 // Retro palette colors
 const COLORS = {
@@ -17,7 +17,11 @@ const WEEK_PALETTES = [
   { light: '#c5d4e8', dark: '#3d59ab', name: 'Blue' },      // Week 1 - Blue
   { light: '#f5d9b3', dark: '#d4883c', name: 'Orange' },    // Week 2 - Orange/Tan
   { light: '#c8e6c9', dark: '#388e3c', name: 'Green' },     // Week 3 - Green
-  { light: '#e1bee7', dark: '#7b1fa2', name: 'Purple' }     // Week 4 - Purple
+  { light: '#e1bee7', dark: '#7b1fa2', name: 'Purple' },    // Week 4 - Purple
+  { light: '#b2dfdb', dark: '#00796b', name: 'Teal' },      // Week 5 - Teal
+  { light: '#ffccbc', dark: '#e64a19', name: 'DeepOrange' },// Week 6 - Deep Orange
+  { light: '#d1c4e9', dark: '#512da8', name: 'DeepPurple' },// Week 7 - Deep Purple
+  { light: '#b3e5fc', dark: '#0288d1', name: 'LightBlue' }  // Week 8 - Light Blue
 ];
 
 const INACTIVE_COLOR = '#9ca3af';
@@ -49,26 +53,29 @@ function getWeekKey(date) {
   return start.toISOString().split('T')[0];
 }
 
-function getNextNWeeks(n) {
+function getWeeksWithOffset(count, offset) {
   const weeks = [];
   const today = new Date();
+  const currentWeekStart = getWeekStart(today);
 
-  for (let i = 0; i < n; i++) {
-    const weekStart = getWeekStart(today);
-    weekStart.setDate(weekStart.getDate() + (i * 7));
+  for (let i = 0; i < count; i++) {
+    const weekStart = new Date(currentWeekStart);
+    weekStart.setDate(weekStart.getDate() + ((offset + i) * 7));
+    const weekKey = getWeekKey(weekStart);
+    const isCurrentWeek = weekKey === getWeekKey(currentWeekStart);
     weeks.push({
-      key: getWeekKey(weekStart),
+      key: weekKey,
       label: formatWeekLabel(weekStart),
       start: new Date(weekStart),
-      isCurrentWeek: i === 0,
-      palette: WEEK_PALETTES[i]
+      isCurrentWeek,
+      palette: WEEK_PALETTES[i % WEEK_PALETTES.length]
     });
   }
 
   return weeks;
 }
 
-function BillingModal({ isOpen, onClose, client, week, weekIdx, data, onSave }) {
+function BillingModal({ isOpen, onClose, client, week, data, onSave }) {
   const [formData, setFormData] = useState({
     status: data?.status || 'inactive',
     dueDate: data?.dueDate || '',
@@ -79,7 +86,7 @@ function BillingModal({ isOpen, onClose, client, week, weekIdx, data, onSave }) 
 
   if (!isOpen) return null;
 
-  const palette = WEEK_PALETTES[weekIdx];
+  const palette = week?.palette || WEEK_PALETTES[0];
 
   const handleSave = () => {
     onSave(formData);
@@ -217,12 +224,19 @@ function BillingModal({ isOpen, onClose, client, week, weekIdx, data, onSave }) 
   );
 }
 
+const VISIBLE_WEEKS = 8;
+
 export default function TimelineView({ clients, deliverySchedule, setDeliverySchedule }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedCell, setSelectedCell] = useState(null);
+  const [weekOffset, setWeekOffset] = useState(-2); // Start 2 weeks in the past to show history
 
-  const weeks = getNextNWeeks(4);
+  const weeks = getWeeksWithOffset(VISIBLE_WEEKS, weekOffset);
   const activeClients = clients.filter(c => c.status === 'Active');
+
+  const shiftWeeks = (direction) => {
+    setWeekOffset(prev => prev + direction);
+  };
 
   const getScheduleKey = (clientName, weekKey) => `${clientName}::${weekKey}`;
 
@@ -245,8 +259,7 @@ export default function TimelineView({ clients, deliverySchedule, setDeliverySch
     }));
   };
 
-  const getCellStyle = (status, weekIdx) => {
-    const palette = WEEK_PALETTES[weekIdx];
+  const getCellStyleForWeek = (status, palette) => {
     if (status === 'inactive') {
       return { backgroundColor: INACTIVE_COLOR, color: '#ffffff' };
     }
@@ -261,19 +274,52 @@ export default function TimelineView({ clients, deliverySchedule, setDeliverySch
 
   return (
     <div className="space-y-4">
-      {/* Legend */}
-      <div className="flex justify-end gap-6 text-sm">
+      {/* Header with navigation and legend */}
+      <div className="flex justify-between items-center">
+        {/* Week navigation */}
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded" style={{ backgroundColor: INACTIVE_COLOR }} />
-          <span style={{ color: COLORS.darkBrown }}>Inactive</span>
+          <button
+            onClick={() => shiftWeeks(-1)}
+            className="p-2 rounded-lg hover:bg-white transition-colors border"
+            style={{ borderColor: COLORS.warmTan, color: COLORS.darkBrown }}
+            title="Show earlier weeks"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          <span className="text-sm font-medium px-2" style={{ color: COLORS.darkBrown }}>
+            {weeks[0]?.label} — {weeks[weeks.length - 1]?.label}
+          </span>
+          <button
+            onClick={() => shiftWeeks(1)}
+            className="p-2 rounded-lg hover:bg-white transition-colors border"
+            style={{ borderColor: COLORS.warmTan, color: COLORS.darkBrown }}
+            title="Show later weeks"
+          >
+            <ChevronRight size={20} />
+          </button>
+          <button
+            onClick={() => setWeekOffset(-2)}
+            className="ml-2 px-3 py-1.5 text-xs rounded border hover:bg-white transition-colors"
+            style={{ borderColor: COLORS.warmTan, color: COLORS.darkBrown }}
+          >
+            Reset
+          </button>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded border-2" style={{ backgroundColor: '#e8e8e8', borderColor: '#ccc' }} />
-          <span style={{ color: COLORS.darkBrown }}>Scheduled (light)</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded" style={{ backgroundColor: COLORS.deepBlue }} />
-          <span style={{ color: COLORS.darkBrown }}>Paid (dark)</span>
+
+        {/* Legend */}
+        <div className="flex gap-6 text-sm">
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded" style={{ backgroundColor: INACTIVE_COLOR }} />
+            <span style={{ color: COLORS.darkBrown }}>Inactive</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded border-2" style={{ backgroundColor: '#e8e8e8', borderColor: '#ccc' }} />
+            <span style={{ color: COLORS.darkBrown }}>Scheduled</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded" style={{ backgroundColor: COLORS.deepBlue }} />
+            <span style={{ color: COLORS.darkBrown }}>Paid</span>
+          </div>
         </div>
       </div>
 
@@ -291,8 +337,8 @@ export default function TimelineView({ clients, deliverySchedule, setDeliverySch
             {weeks.map((week, idx) => (
               <div
                 key={week.key}
-                className="flex-1 p-3 text-center relative min-w-[140px]"
-                style={{ backgroundColor: WEEK_PALETTES[idx].light + '40' }}
+                className="flex-1 p-2 text-center relative min-w-[110px]"
+                style={{ backgroundColor: week.palette.light + '40' }}
               >
                 {week.isCurrentWeek && (
                   <div
@@ -302,11 +348,11 @@ export default function TimelineView({ clients, deliverySchedule, setDeliverySch
                 )}
                 <div
                   className="text-xs uppercase tracking-wide font-medium"
-                  style={{ color: WEEK_PALETTES[idx].dark }}
+                  style={{ color: week.palette.dark }}
                 >
-                  {week.isCurrentWeek ? 'This Week' : `Week ${idx + 1}`}
+                  {week.isCurrentWeek ? 'This Week' : ''}
                 </div>
-                <div className="font-semibold" style={{ color: COLORS.darkBrown }}>
+                <div className="text-sm font-semibold" style={{ color: COLORS.darkBrown }}>
                   {week.label}
                 </div>
               </div>
@@ -347,13 +393,13 @@ export default function TimelineView({ clients, deliverySchedule, setDeliverySch
                 {/* Week Cells - Gantt Bars */}
                 {weeks.map((week, weekIdx) => {
                   const data = getDeliveryData(client.name, week.key);
-                  const cellStyle = getCellStyle(data.status, weekIdx);
+                  const cellStyle = getCellStyleForWeek(data.status, week.palette);
 
                   return (
                     <div
                       key={week.key}
-                      className="flex-1 p-2 min-w-[140px] relative"
-                      style={{ backgroundColor: WEEK_PALETTES[weekIdx].light + '20' }}
+                      className="flex-1 p-1.5 min-w-[110px] relative"
+                      style={{ backgroundColor: week.palette.light + '20' }}
                     >
                       {week.isCurrentWeek && (
                         <div
@@ -363,7 +409,7 @@ export default function TimelineView({ clients, deliverySchedule, setDeliverySch
                       )}
                       <button
                         onClick={() => openBillingModal(client, week, weekIdx)}
-                        className="w-full h-12 rounded-lg flex items-center justify-center gap-2
+                        className="w-full h-10 rounded-lg flex items-center justify-center gap-1.5
                                    transition-all hover:scale-[1.02] hover:shadow-md cursor-pointer"
                         style={cellStyle}
                       >
@@ -372,13 +418,13 @@ export default function TimelineView({ clients, deliverySchedule, setDeliverySch
                         )}
                         {data.status === 'scheduled' && (
                           <>
-                            <Calendar size={14} />
-                            <span className="text-xs font-medium">Scheduled</span>
+                            <Calendar size={12} />
+                            <span className="text-xs font-medium">Sched</span>
                           </>
                         )}
                         {data.status === 'paid' && (
                           <>
-                            <Check size={14} />
+                            <Check size={12} />
                             <span className="text-xs font-medium">Paid</span>
                           </>
                         )}
@@ -386,19 +432,19 @@ export default function TimelineView({ clients, deliverySchedule, setDeliverySch
                       {/* Show due date if scheduled */}
                       {data.status === 'scheduled' && data.dueDate && (
                         <div
-                          className="text-xs text-center mt-1"
-                          style={{ color: WEEK_PALETTES[weekIdx].dark }}
+                          className="text-xs text-center mt-0.5"
+                          style={{ color: week.palette.dark }}
                         >
-                          Due: {new Date(data.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          {new Date(data.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                         </div>
                       )}
                       {/* Show paid date if paid */}
                       {data.status === 'paid' && data.paidDate && (
                         <div
-                          className="text-xs text-center mt-1"
-                          style={{ color: WEEK_PALETTES[weekIdx].dark }}
+                          className="text-xs text-center mt-0.5"
+                          style={{ color: week.palette.dark }}
                         >
-                          Paid: {new Date(data.paidDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          {new Date(data.paidDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                         </div>
                       )}
                     </div>
@@ -410,21 +456,8 @@ export default function TimelineView({ clients, deliverySchedule, setDeliverySch
         </div>
       </div>
 
-      {/* Legend showing week colors */}
-      <div className="flex justify-center gap-6 text-xs" style={{ color: COLORS.darkBrown }}>
-        {WEEK_PALETTES.map((palette, idx) => (
-          <div key={idx} className="flex items-center gap-2">
-            <div className="flex gap-1">
-              <div className="w-3 h-3 rounded" style={{ backgroundColor: palette.light }} />
-              <div className="w-3 h-3 rounded" style={{ backgroundColor: palette.dark }} />
-            </div>
-            <span>Week {idx + 1}</span>
-          </div>
-        ))}
-      </div>
-
       <p className="text-sm text-center" style={{ color: COLORS.darkBrown, opacity: 0.7 }}>
-        Click any cell to open billing details
+        Click any cell to open billing details • Use arrows to navigate weeks
       </p>
 
       {/* Billing Modal */}
@@ -433,7 +466,6 @@ export default function TimelineView({ clients, deliverySchedule, setDeliverySch
         onClose={() => setModalOpen(false)}
         client={selectedCell?.client}
         week={selectedCell?.week}
-        weekIdx={selectedCell?.weekIdx}
         data={selectedCell ? getDeliveryData(selectedCell.client.name, selectedCell.week.key) : null}
         onSave={handleSaveBilling}
       />

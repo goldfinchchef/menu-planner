@@ -87,6 +87,7 @@ export default function ExperimentalLayout() {
   const [billingCycles, setBillingCycles] = useState([]);
   const [billingCyclesLoading, setBillingCyclesLoading] = useState(false);
   const [billingCyclesError, setBillingCyclesError] = useState(null);
+  const [billingCyclesInitialized, setBillingCyclesInitialized] = useState(false);
 
   // File refs for CSV imports
   const clientsFileRef = useRef();
@@ -227,6 +228,7 @@ export default function ExperimentalLayout() {
       setBillingCyclesError(err.message);
     } finally {
       setBillingCyclesLoading(false);
+      setBillingCyclesInitialized(true);
     }
   }, [recipes, getRecipeCost]);
 
@@ -850,6 +852,7 @@ export default function ExperimentalLayout() {
     billingCycles,
     billingCyclesLoading,
     billingCyclesError,
+    billingCyclesInitialized,
     loadBillingCycles,
     generateBillingCycleInvoice
   };

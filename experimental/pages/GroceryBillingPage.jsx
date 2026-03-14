@@ -37,6 +37,7 @@ export default function GroceryBillingPage() {
     billingCycles,
     billingCyclesLoading,
     billingCyclesError,
+    billingCyclesInitialized,
     loadBillingCycles,
     generateBillingCycleInvoice,
     exportInvoiceJSON,
@@ -252,7 +253,7 @@ export default function GroceryBillingPage() {
           </button>
         </div>
 
-        {/* Error state */}
+        {/* Error state - shown alongside other states */}
         {billingCyclesError && (
           <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded flex items-center gap-2 text-red-700 text-sm">
             <AlertCircle size={14} />
@@ -260,25 +261,23 @@ export default function GroceryBillingPage() {
           </div>
         )}
 
-        {/* Loading state */}
-        {billingCyclesLoading && billingCycles.length === 0 && (
+        {/* Loading state - show when loading OR not yet initialized */}
+        {(billingCyclesLoading || !billingCyclesInitialized) && !billingCyclesError ? (
           <div className="text-center py-6 text-gray-500 text-sm">
             <RefreshCw size={20} className="animate-spin mx-auto mb-1" />
             Loading...
           </div>
-        )}
-
-        {/* Empty state */}
-        {!billingCyclesLoading && billingCycles.length === 0 && !billingCyclesError && (
+        ) : billingCyclesInitialized && billingCycles.length === 0 && !billingCyclesError ? (
+          /* Empty state - only show when initialized, not loading, no error, no data */
           <div className="text-center py-6 text-gray-500 text-sm">
             <Clock size={24} className="mx-auto mb-1 opacity-50" />
             <p>No billing cycles found.</p>
             <p className="text-xs mt-1">Create billing cycles in Admin to get started.</p>
           </div>
-        )}
+        ) : null}
 
         {/* Client list - compact */}
-        {clientNames.length > 0 && (
+        {billingCyclesInitialized && clientNames.length > 0 && (
           <div className="space-y-1.5">
             {clientNames.map(clientName => {
               const client = clientData[clientName];
