@@ -147,10 +147,7 @@ export default function App() {
         // Week filter: item's date must match selectedWeekId
         if (!item.date) return false;
         const itemWeekId = getWeekIdFromDate(item.date);
-        if (itemWeekId !== selectedWeekId) return false;
-        // Approval filter: show if approved !== false (undefined treated as approved)
-        if (item.approved === false) return false;
-        return true;
+        return itemWeekId === selectedWeekId;
       })
       .forEach(item => {
         const prodDay = getProductionDay(item.date);
