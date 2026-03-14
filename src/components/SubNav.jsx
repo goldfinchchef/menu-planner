@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Users, Receipt, Package, UtensilsCrossed, Book, Apple, DollarSign, Grid3X3, ShoppingCart, Clock } from 'lucide-react';
+import { Calendar, Users, Receipt, Package, UtensilsCrossed, Book, Apple, DollarSign, LayoutGrid, ShoppingCart, Clock } from 'lucide-react';
 
 // Subview definitions for each section
 const SUBVIEWS = {
@@ -14,7 +14,7 @@ const SUBVIEWS = {
     { id: 'recipes', label: 'Recipes', icon: Book },
     { id: 'ingredients', label: 'Ingredients', icon: Apple },
     { id: 'costing', label: 'Costing', icon: DollarSign },
-    { id: 'dish-totals', label: 'Dish Totals', icon: Grid3X3 },
+    { id: 'dish-totals', label: 'Dish Totals', icon: LayoutGrid },
     { id: 'shop', label: 'Shop', icon: ShoppingCart },
     { id: 'history', label: 'History', icon: Clock }
   ]
