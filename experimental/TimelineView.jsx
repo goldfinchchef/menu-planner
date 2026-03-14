@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Calendar, Link, DollarSign, Check, ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, Calendar, Link, DollarSign, Check, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 
 // Retro palette colors
 const COLORS = {
@@ -12,20 +12,20 @@ const COLORS = {
 };
 
 // Week colors - each week gets its own distinct color
-// light = scheduled/unpaid, dark = paid/confirmed
 const WEEK_PALETTES = [
-  { light: '#c5d4e8', dark: '#3d59ab', name: 'Blue' },      // Week 1 - Blue
-  { light: '#f5d9b3', dark: '#d4883c', name: 'Orange' },    // Week 2 - Orange/Tan
-  { light: '#c8e6c9', dark: '#388e3c', name: 'Green' },     // Week 3 - Green
-  { light: '#e1bee7', dark: '#7b1fa2', name: 'Purple' },    // Week 4 - Purple
-  { light: '#b2dfdb', dark: '#00796b', name: 'Teal' },      // Week 5 - Teal
-  { light: '#ffccbc', dark: '#e64a19', name: 'DeepOrange' },// Week 6 - Deep Orange
-  { light: '#d1c4e9', dark: '#512da8', name: 'DeepPurple' },// Week 7 - Deep Purple
-  { light: '#b3e5fc', dark: '#0288d1', name: 'LightBlue' }  // Week 8 - Light Blue
+  { light: '#c5d4e8', dark: '#3d59ab', name: 'Blue' },
+  { light: '#f5d9b3', dark: '#d4883c', name: 'Orange' },
+  { light: '#c8e6c9', dark: '#388e3c', name: 'Green' },
+  { light: '#e1bee7', dark: '#7b1fa2', name: 'Purple' },
+  { light: '#b2dfdb', dark: '#00796b', name: 'Teal' },
+  { light: '#ffccbc', dark: '#e64a19', name: 'DeepOrange' },
+  { light: '#d1c4e9', dark: '#512da8', name: 'DeepPurple' },
+  { light: '#b3e5fc', dark: '#0288d1', name: 'LightBlue' }
 ];
 
-const INACTIVE_COLOR = '#9ca3af';
+const INACTIVE_COLOR = '#e5e7eb';
 
+// Get Monday of the week containing the given date
 function getWeekStart(date) {
   const d = new Date(date);
   const day = d.getDay();
@@ -33,6 +33,7 @@ function getWeekStart(date) {
   return new Date(d.setDate(diff));
 }
 
+// Format date range as "Mar 10-16"
 function formatWeekLabel(date) {
   const start = getWeekStart(date);
   const end = new Date(start);
@@ -48,11 +49,22 @@ function formatWeekLabel(date) {
   return `${startMonth} ${startDay} - ${endMonth} ${endDay}`;
 }
 
-function getWeekKey(date) {
-  const start = getWeekStart(date);
-  return start.toISOString().split('T')[0];
+// Get ISO week ID from date (e.g., "2026-W12")
+function getWeekId(date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);
+  const week1 = new Date(d.getFullYear(), 0, 4);
+  const weekNum = 1 + Math.round(((d - week1) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+  return `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
 }
 
+// Get date string from date (YYYY-MM-DD)
+function getDateString(date) {
+  return date.toISOString().split('T')[0];
+}
+
+// Generate array of week objects with offset from current week
 function getWeeksWithOffset(count, offset) {
   const weeks = [];
   const today = new Date();
@@ -61,10 +73,11 @@ function getWeeksWithOffset(count, offset) {
   for (let i = 0; i < count; i++) {
     const weekStart = new Date(currentWeekStart);
     weekStart.setDate(weekStart.getDate() + ((offset + i) * 7));
-    const weekKey = getWeekKey(weekStart);
-    const isCurrentWeek = weekKey === getWeekKey(currentWeekStart);
+    const weekId = getWeekId(weekStart);
+    const isCurrentWeek = weekId === getWeekId(currentWeekStart);
     weeks.push({
-      key: weekKey,
+      weekId,
+      dateKey: getDateString(weekStart),
       label: formatWeekLabel(weekStart),
       start: new Date(weekStart),
       isCurrentWeek,
@@ -75,21 +88,27 @@ function getWeeksWithOffset(count, offset) {
   return weeks;
 }
 
-function BillingModal({ isOpen, onClose, client, week, data, onSave }) {
-  const [formData, setFormData] = useState({
-    status: data?.status || 'inactive',
-    dueDate: data?.dueDate || '',
-    invoiceLink: data?.invoiceLink || '',
-    paidDate: data?.paidDate || '',
-    notes: data?.notes || ''
-  });
+// Scheduling modal for a client + week cell
+function ScheduleModal({ isOpen, onClose, client, week, cellState, onSchedule, onUnschedule }) {
+  if (!isOpen || !client || !week) return null;
 
-  if (!isOpen) return null;
+  const palette = week.palette || WEEK_PALETTES[0];
+  const isScheduled = cellState?.status === 'scheduled' || cellState?.status === 'approved';
+  const isApproved = cellState?.status === 'approved';
+  const menu = cellState?.menu;
 
-  const palette = week?.palette || WEEK_PALETTES[0];
+  const handleSchedule = async () => {
+    await onSchedule(client, week.weekId, week.dateKey);
+    onClose();
+  };
 
-  const handleSave = () => {
-    onSave(formData);
+  const handleUnschedule = async () => {
+    if (isApproved) {
+      if (!window.confirm('This menu is already approved. Are you sure you want to unschedule it?')) {
+        return;
+      }
+    }
+    await onUnschedule(client.id, week.weekId);
     onClose();
   };
 
@@ -101,8 +120,8 @@ function BillingModal({ isOpen, onClose, client, week, data, onSave }) {
           style={{ backgroundColor: palette.dark, color: 'white' }}
         >
           <div>
-            <h3 className="text-lg font-bold">{client?.name}</h3>
-            <p className="text-sm opacity-90">{week?.label}</p>
+            <h3 className="text-lg font-bold">{client.name}</h3>
+            <p className="text-sm opacity-90">{week.label}</p>
           </div>
           <button onClick={onClose} className="p-1 hover:bg-white hover:bg-opacity-20 rounded">
             <X size={20} />
@@ -110,97 +129,48 @@ function BillingModal({ isOpen, onClose, client, week, data, onSave }) {
         </div>
 
         <div className="p-4 space-y-4">
+          {/* Current status */}
           <div>
-            <label className="block text-sm font-medium mb-2" style={{ color: COLORS.darkBrown }}>
-              Delivery Status
-            </label>
-            <div className="flex gap-2">
-              {[
-                { value: 'inactive', label: 'Inactive', color: INACTIVE_COLOR },
-                { value: 'scheduled', label: 'Scheduled', color: palette.light },
-                { value: 'paid', label: 'Paid', color: palette.dark }
-              ].map(opt => (
-                <button
-                  key={opt.value}
-                  onClick={() => setFormData(prev => ({ ...prev, status: opt.value }))}
-                  className={`flex-1 py-2 px-3 rounded-lg border-2 font-medium transition-all ${
-                    formData.status === opt.value ? 'ring-2 ring-offset-2' : ''
-                  }`}
-                  style={{
-                    backgroundColor: formData.status === opt.value ? opt.color : 'white',
-                    borderColor: opt.color,
-                    color: formData.status === opt.value && opt.value !== 'scheduled' ? 'white' : COLORS.darkBrown,
-                    ringColor: opt.color
-                  }}
-                >
-                  {opt.label}
-                </button>
-              ))}
+            <div className="text-sm font-medium mb-2" style={{ color: COLORS.darkBrown }}>
+              Status
+            </div>
+            <div className="flex items-center gap-2">
+              {!isScheduled && (
+                <span className="px-3 py-1.5 rounded-full text-sm bg-gray-100 text-gray-600">
+                  Not Scheduled
+                </span>
+              )}
+              {isScheduled && !isApproved && (
+                <span className="px-3 py-1.5 rounded-full text-sm" style={{ backgroundColor: palette.light, color: COLORS.darkBrown }}>
+                  Scheduled {menu?.isEmpty ? '(Empty)' : '(Has Menu)'}
+                </span>
+              )}
+              {isApproved && (
+                <span className="px-3 py-1.5 rounded-full text-sm text-white" style={{ backgroundColor: palette.dark }}>
+                  Approved
+                </span>
+              )}
             </div>
           </div>
 
-          {formData.status !== 'inactive' && (
-            <>
-              <div>
-                <label className="flex items-center gap-2 text-sm font-medium mb-2" style={{ color: COLORS.darkBrown }}>
-                  <Calendar size={16} />
-                  Bill Due Date
-                </label>
-                <input
-                  type="date"
-                  value={formData.dueDate}
-                  onChange={(e) => setFormData(prev => ({ ...prev, dueDate: e.target.value }))}
-                  className="w-full p-2 border-2 rounded-lg"
-                  style={{ borderColor: COLORS.warmTan }}
-                />
+          {/* Menu details if scheduled */}
+          {menu && (
+            <div className="bg-gray-50 rounded-lg p-3">
+              <div className="text-xs text-gray-500 uppercase mb-2">Menu</div>
+              <div className="space-y-1 text-sm">
+                <div><span className="text-gray-500">Protein:</span> {menu.protein || '—'}</div>
+                <div><span className="text-gray-500">Veg:</span> {menu.veg || '—'}</div>
+                <div><span className="text-gray-500">Starch:</span> {menu.starch || '—'}</div>
+                <div><span className="text-gray-500">Portions:</span> {menu.portions || '—'}</div>
               </div>
-
-              <div>
-                <label className="flex items-center gap-2 text-sm font-medium mb-2" style={{ color: COLORS.darkBrown }}>
-                  <Link size={16} />
-                  Invoice Link
-                </label>
-                <input
-                  type="url"
-                  value={formData.invoiceLink}
-                  onChange={(e) => setFormData(prev => ({ ...prev, invoiceLink: e.target.value }))}
-                  placeholder="https://..."
-                  className="w-full p-2 border-2 rounded-lg"
-                  style={{ borderColor: COLORS.warmTan }}
-                />
-              </div>
-
-              {formData.status === 'paid' && (
-                <div>
-                  <label className="flex items-center gap-2 text-sm font-medium mb-2" style={{ color: COLORS.darkBrown }}>
-                    <DollarSign size={16} />
-                    Paid Date
-                  </label>
-                  <input
-                    type="date"
-                    value={formData.paidDate}
-                    onChange={(e) => setFormData(prev => ({ ...prev, paidDate: e.target.value }))}
-                    className="w-full p-2 border-2 rounded-lg"
-                    style={{ borderColor: COLORS.warmTan }}
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: COLORS.darkBrown }}>
-                  Notes
-                </label>
-                <textarea
-                  value={formData.notes}
-                  onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                  rows={2}
-                  className="w-full p-2 border-2 rounded-lg resize-none"
-                  style={{ borderColor: COLORS.warmTan }}
-                  placeholder="Optional notes..."
-                />
-              </div>
-            </>
+            </div>
           )}
+
+          {/* Client info */}
+          <div className="text-sm text-gray-500">
+            <div>{client.persons}p • {client.mealsPerWeek || client.meals_per_week} meals/week</div>
+            {client.deliveryDay && <div>Delivery: {client.deliveryDay}</div>}
+          </div>
         </div>
 
         <div className="flex gap-2 p-4 border-t">
@@ -209,15 +179,24 @@ function BillingModal({ isOpen, onClose, client, week, data, onSave }) {
             className="flex-1 py-2 px-4 rounded-lg border-2"
             style={{ borderColor: COLORS.warmTan, color: COLORS.darkBrown }}
           >
-            Cancel
+            Close
           </button>
-          <button
-            onClick={handleSave}
-            className="flex-1 py-2 px-4 rounded-lg font-medium"
-            style={{ backgroundColor: COLORS.deepBlue, color: 'white' }}
-          >
-            Save
-          </button>
+          {!isScheduled ? (
+            <button
+              onClick={handleSchedule}
+              className="flex-1 py-2 px-4 rounded-lg font-medium text-white"
+              style={{ backgroundColor: COLORS.deepBlue }}
+            >
+              Schedule
+            </button>
+          ) : (
+            <button
+              onClick={handleUnschedule}
+              className="flex-1 py-2 px-4 rounded-lg font-medium text-white bg-red-500 hover:bg-red-600"
+            >
+              Unschedule
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -226,50 +205,73 @@ function BillingModal({ isOpen, onClose, client, week, data, onSave }) {
 
 const VISIBLE_WEEKS = 8;
 
-export default function TimelineView({ clients, deliverySchedule, setDeliverySchedule }) {
+export default function TimelineView({
+  clients,
+  scheduleMenus,
+  scheduleMenusLoading,
+  loadScheduleMenus,
+  scheduleClientWeek,
+  unscheduleClientWeek,
+  getScheduleCellState
+}) {
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedCell, setSelectedCell] = useState(null);
-  const [weekOffset, setWeekOffset] = useState(-2); // Start 2 weeks in the past to show history
+  const [weekOffset, setWeekOffset] = useState(-2); // Start 2 weeks in the past
+  const [actionLoading, setActionLoading] = useState(null); // Track which cell is loading
 
-  const weeks = getWeeksWithOffset(VISIBLE_WEEKS, weekOffset);
-  const activeClients = clients.filter(c => c.status === 'Active');
+  const weeks = useMemo(() => getWeeksWithOffset(VISIBLE_WEEKS, weekOffset), [weekOffset]);
+  const weekIds = useMemo(() => weeks.map(w => w.weekId), [weeks]);
+
+  // All active clients - always show as rows
+  const activeClients = useMemo(() =>
+    clients.filter(c => c.status === 'Active' || c.status === 'active'),
+    [clients]
+  );
+
+  // Load schedule menus when visible weeks change
+  useEffect(() => {
+    if (loadScheduleMenus && weekIds.length > 0) {
+      loadScheduleMenus(weekIds);
+    }
+  }, [weekIds, loadScheduleMenus]);
 
   const shiftWeeks = (direction) => {
     setWeekOffset(prev => prev + direction);
   };
 
-  const getScheduleKey = (clientName, weekKey) => `${clientName}::${weekKey}`;
-
-  const getDeliveryData = (clientName, weekKey) => {
-    const key = getScheduleKey(clientName, weekKey);
-    return deliverySchedule[key] || { status: 'inactive' };
-  };
-
-  const openBillingModal = (client, week, weekIdx) => {
-    setSelectedCell({ client, week, weekIdx });
+  const openModal = (client, week) => {
+    const cellState = getScheduleCellState(client.id, week.weekId);
+    setSelectedCell({ client, week, cellState });
     setModalOpen(true);
   };
 
-  const handleSaveBilling = (formData) => {
-    if (!selectedCell) return;
-    const key = getScheduleKey(selectedCell.client.name, selectedCell.week.key);
-    setDeliverySchedule(prev => ({
-      ...prev,
-      [key]: formData
-    }));
+  const handleSchedule = async (client, weekId, dateKey) => {
+    setActionLoading(`${client.id}::${weekId}`);
+    try {
+      await scheduleClientWeek(client, weekId, dateKey);
+    } finally {
+      setActionLoading(null);
+    }
   };
 
-  const getCellStyleForWeek = (status, palette) => {
-    if (status === 'inactive') {
-      return { backgroundColor: INACTIVE_COLOR, color: '#ffffff' };
+  const handleUnschedule = async (clientId, weekId) => {
+    setActionLoading(`${clientId}::${weekId}`);
+    try {
+      await unscheduleClientWeek(clientId, weekId);
+    } finally {
+      setActionLoading(null);
     }
-    if (status === 'scheduled') {
-      return { backgroundColor: palette.light, color: COLORS.darkBrown };
+  };
+
+  const getCellStyleForState = (cellState, palette) => {
+    if (!cellState || cellState.status === 'inactive') {
+      return { backgroundColor: INACTIVE_COLOR, color: '#9ca3af' };
     }
-    if (status === 'paid') {
+    if (cellState.status === 'approved') {
       return { backgroundColor: palette.dark, color: '#ffffff' };
     }
-    return { backgroundColor: INACTIVE_COLOR, color: '#ffffff' };
+    // Scheduled (not approved)
+    return { backgroundColor: palette.light, color: COLORS.darkBrown };
   };
 
   return (
@@ -304,40 +306,43 @@ export default function TimelineView({ clients, deliverySchedule, setDeliverySch
           >
             Reset
           </button>
+          {scheduleMenusLoading && (
+            <Loader2 size={16} className="animate-spin ml-2" style={{ color: COLORS.deepBlue }} />
+          )}
         </div>
 
         {/* Legend */}
-        <div className="flex gap-6 text-sm">
+        <div className="flex gap-4 text-sm">
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 rounded" style={{ backgroundColor: INACTIVE_COLOR }} />
-            <span style={{ color: COLORS.darkBrown }}>Inactive</span>
+            <span style={{ color: COLORS.darkBrown }}>Not Scheduled</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded border-2" style={{ backgroundColor: '#e8e8e8', borderColor: '#ccc' }} />
+            <div className="w-4 h-4 rounded" style={{ backgroundColor: '#c5d4e8' }} />
             <span style={{ color: COLORS.darkBrown }}>Scheduled</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 rounded" style={{ backgroundColor: COLORS.deepBlue }} />
-            <span style={{ color: COLORS.darkBrown }}>Paid</span>
+            <span style={{ color: COLORS.darkBrown }}>Approved</span>
           </div>
         </div>
       </div>
 
-      {/* Gantt Chart */}
+      {/* Schedule Grid */}
       <div className="bg-white rounded-lg shadow-md overflow-hidden">
         <div className="overflow-x-auto">
           {/* Week Headers */}
           <div className="flex border-b-2" style={{ borderColor: COLORS.warmTan }}>
             <div
               className="flex-shrink-0 p-3 font-medium"
-              style={{ width: '200px', color: COLORS.darkBrown, backgroundColor: COLORS.cream }}
+              style={{ width: '180px', color: COLORS.darkBrown, backgroundColor: COLORS.cream }}
             >
-              Client
+              Client ({activeClients.length})
             </div>
-            {weeks.map((week, idx) => (
+            {weeks.map((week) => (
               <div
-                key={week.key}
-                className="flex-1 p-2 text-center relative min-w-[110px]"
+                key={week.weekId}
+                className="flex-1 p-2 text-center relative min-w-[100px]"
                 style={{ backgroundColor: week.palette.light + '40' }}
               >
                 {week.isCurrentWeek && (
@@ -367,7 +372,7 @@ export default function TimelineView({ clients, deliverySchedule, setDeliverySch
           ) : (
             activeClients.map((client, clientIdx) => (
               <div
-                key={client.name}
+                key={client.id || client.name}
                 className="flex border-b"
                 style={{
                   borderColor: '#e5e7eb',
@@ -376,30 +381,34 @@ export default function TimelineView({ clients, deliverySchedule, setDeliverySch
               >
                 {/* Client Name Cell */}
                 <div
-                  className="flex-shrink-0 p-3"
+                  className="flex-shrink-0 p-2.5"
                   style={{
-                    width: '200px',
+                    width: '180px',
                     backgroundColor: clientIdx % 2 === 0 ? 'white' : COLORS.cream
                   }}
                 >
-                  <div className="font-medium" style={{ color: COLORS.darkBrown }}>
+                  <div className="font-medium text-sm" style={{ color: COLORS.darkBrown }}>
                     {client.name}
                   </div>
                   <div className="text-xs" style={{ color: COLORS.darkBrown, opacity: 0.7 }}>
-                    {client.persons}p / {client.mealsPerWeek} meals
+                    {client.persons}p • {client.mealsPerWeek || client.meals_per_week} meals
                   </div>
                 </div>
 
-                {/* Week Cells - Gantt Bars */}
-                {weeks.map((week, weekIdx) => {
-                  const data = getDeliveryData(client.name, week.key);
-                  const cellStyle = getCellStyleForWeek(data.status, week.palette);
+                {/* Week Cells */}
+                {weeks.map((week) => {
+                  const cellState = getScheduleCellState(client.id, week.weekId);
+                  const cellStyle = getCellStyleForState(cellState, week.palette);
+                  const isLoading = actionLoading === `${client.id}::${week.weekId}`;
+                  const isScheduled = cellState?.status === 'scheduled' || cellState?.status === 'approved';
+                  const isApproved = cellState?.status === 'approved';
+                  const isEmpty = cellState?.isEmpty;
 
                   return (
                     <div
-                      key={week.key}
-                      className="flex-1 p-1.5 min-w-[110px] relative"
-                      style={{ backgroundColor: week.palette.light + '20' }}
+                      key={week.weekId}
+                      className="flex-1 p-1 min-w-[100px] relative"
+                      style={{ backgroundColor: week.palette.light + '15' }}
                     >
                       {week.isCurrentWeek && (
                         <div
@@ -408,45 +417,33 @@ export default function TimelineView({ clients, deliverySchedule, setDeliverySch
                         />
                       )}
                       <button
-                        onClick={() => openBillingModal(client, week, weekIdx)}
-                        className="w-full h-10 rounded-lg flex items-center justify-center gap-1.5
-                                   transition-all hover:scale-[1.02] hover:shadow-md cursor-pointer"
+                        onClick={() => openModal(client, week)}
+                        disabled={isLoading}
+                        className="w-full h-9 rounded-lg flex items-center justify-center gap-1
+                                   transition-all hover:scale-[1.02] hover:shadow-md cursor-pointer disabled:opacity-50"
                         style={cellStyle}
                       >
-                        {data.status === 'inactive' && (
-                          <span className="text-sm opacity-70">-</span>
-                        )}
-                        {data.status === 'scheduled' && (
-                          <>
-                            <Calendar size={12} />
-                            <span className="text-xs font-medium">Sched</span>
-                          </>
-                        )}
-                        {data.status === 'paid' && (
+                        {isLoading ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : !isScheduled ? (
+                          <span className="text-sm">—</span>
+                        ) : isApproved ? (
                           <>
                             <Check size={12} />
-                            <span className="text-xs font-medium">Paid</span>
+                            <span className="text-xs font-medium">Done</span>
+                          </>
+                        ) : isEmpty ? (
+                          <>
+                            <Calendar size={12} />
+                            <span className="text-xs">Empty</span>
+                          </>
+                        ) : (
+                          <>
+                            <Calendar size={12} />
+                            <span className="text-xs font-medium">Menu</span>
                           </>
                         )}
                       </button>
-                      {/* Show due date if scheduled */}
-                      {data.status === 'scheduled' && data.dueDate && (
-                        <div
-                          className="text-xs text-center mt-0.5"
-                          style={{ color: week.palette.dark }}
-                        >
-                          {new Date(data.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                        </div>
-                      )}
-                      {/* Show paid date if paid */}
-                      {data.status === 'paid' && data.paidDate && (
-                        <div
-                          className="text-xs text-center mt-0.5"
-                          style={{ color: week.palette.dark }}
-                        >
-                          {new Date(data.paidDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                        </div>
-                      )}
                     </div>
                   );
                 })}
@@ -457,17 +454,18 @@ export default function TimelineView({ clients, deliverySchedule, setDeliverySch
       </div>
 
       <p className="text-sm text-center" style={{ color: COLORS.darkBrown, opacity: 0.7 }}>
-        Click any cell to open billing details • Use arrows to navigate weeks
+        Click any cell to schedule or view details • Use arrows to navigate weeks
       </p>
 
-      {/* Billing Modal */}
-      <BillingModal
+      {/* Schedule Modal */}
+      <ScheduleModal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         client={selectedCell?.client}
         week={selectedCell?.week}
-        data={selectedCell ? getDeliveryData(selectedCell.client.name, selectedCell.week.key) : null}
-        onSave={handleSaveBilling}
+        cellState={selectedCell?.cellState}
+        onSchedule={handleSchedule}
+        onUnschedule={handleUnschedule}
       />
     </div>
   );

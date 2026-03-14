@@ -1,20 +1,33 @@
 /**
  * SchedulePage - /test/schedule
  * Renders the experimental TimelineView (schedule gantt chart)
+ * Wired to Supabase menus table for scheduling data
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useExperimentalContext } from '../ExperimentalContext';
 import TimelineView from '../TimelineView';
 
 export default function SchedulePage() {
-  const { clients, deliverySchedule, setDeliverySchedule } = useExperimentalContext();
+  const {
+    clients,
+    scheduleMenus,
+    scheduleMenusLoading,
+    loadScheduleMenus,
+    scheduleClientWeek,
+    unscheduleClientWeek,
+    getScheduleCellState
+  } = useExperimentalContext();
 
   return (
     <TimelineView
       clients={clients}
-      deliverySchedule={deliverySchedule}
-      setDeliverySchedule={setDeliverySchedule}
+      scheduleMenus={scheduleMenus}
+      scheduleMenusLoading={scheduleMenusLoading}
+      loadScheduleMenus={loadScheduleMenus}
+      scheduleClientWeek={scheduleClientWeek}
+      unscheduleClientWeek={unscheduleClientWeek}
+      getScheduleCellState={getScheduleCellState}
     />
   );
 }

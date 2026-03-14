@@ -5,7 +5,7 @@
  * Single owner of useAppData state, provides context to child pages via Outlet.
  */
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Outlet, Link } from 'react-router-dom';
 import { ChefHat, ChevronLeft, ChevronRight, Settings } from 'lucide-react';
 
@@ -28,7 +28,9 @@ import {
   setKdsDishDone,
   fetchBillingCycles,
   fetchApprovedMenusForBilling,
-  updateBillingCycleInvoice
+  updateBillingCycleInvoice,
+  fetchMenusForWeekRange,
+  upsertScheduledMenu
 } from '../lib/database';
 import { isConfigured, checkConnection } from '../lib/supabase';
 
@@ -83,11 +85,14 @@ export default function ExperimentalLayout() {
   // Grocery invoice state
   const [groceryInvoices, setGroceryInvoices] = useState([]);
 
-  // Billing cycle state
+  // Billing cycle state - start loading=true to prevent empty flash
   const [billingCycles, setBillingCycles] = useState([]);
-  const [billingCyclesLoading, setBillingCyclesLoading] = useState(false);
+  const [billingCyclesLoading, setBillingCyclesLoading] = useState(true);
   const [billingCyclesError, setBillingCyclesError] = useState(null);
-  const [billingCyclesInitialized, setBillingCyclesInitialized] = useState(false);
+
+  // Schedule menus state (for TimelineView)
+  const [scheduleMenus, setScheduleMenus] = useState([]);
+  const [scheduleMenusLoading, setScheduleMenusLoading] = useState(false);
 
   // File refs for CSV imports
   const clientsFileRef = useRef();
@@ -228,7 +233,6 @@ export default function ExperimentalLayout() {
       setBillingCyclesError(err.message);
     } finally {
       setBillingCyclesLoading(false);
-      setBillingCyclesInitialized(true);
     }
   }, [recipes, getRecipeCost]);
 
@@ -287,6 +291,102 @@ export default function ExperimentalLayout() {
   useEffect(() => {
     loadBillingCycles();
   }, [loadBillingCycles]);
+
+  // ============ SCHEDULE MENUS ============
+
+  // Load menus for visible weeks in schedule grid
+  const loadScheduleMenus = useCallback(async (weekIds) => {
+    if (!isSupabaseMode() || !isConfigured() || !weekIds || weekIds.length === 0) {
+      return;
+    }
+
+    setScheduleMenusLoading(true);
+    try {
+      const menus = await fetchMenusForWeekRange(weekIds);
+      setScheduleMenus(menus);
+    } catch (err) {
+      console.error('[ScheduleMenus] Error loading:', err);
+    } finally {
+      setScheduleMenusLoading(false);
+    }
+  }, []);
+
+  // Schedule a client for a week (creates empty menu row)
+  const scheduleClientWeek = useCallback(async (client, weekId, weekStartDate) => {
+    if (!isSupabaseMode() || !isConfigured()) {
+      console.log('[ScheduleMenus] Supabase not configured');
+      return { success: false };
+    }
+
+    try {
+      const result = await upsertScheduledMenu({
+        clientId: client.id,
+        clientName: client.name,
+        weekId: weekId,
+        date: weekStartDate,
+        portions: client.portions || 4
+      });
+
+      // Refresh schedule menus after scheduling
+      if (result.created) {
+        setScheduleMenus(prev => [...prev, result.data]);
+      }
+
+      return { success: true, data: result.data, created: result.created };
+    } catch (err) {
+      console.error('[ScheduleMenus] Error scheduling:', err);
+      return { success: false, error: err.message };
+    }
+  }, []);
+
+  // Unschedule a client from a week (removes menu row)
+  const unscheduleClientWeek = useCallback(async (clientId, weekId) => {
+    if (!isSupabaseMode() || !isConfigured()) {
+      return { success: false };
+    }
+
+    try {
+      const { deleteScheduledMenu } = await import('../lib/database');
+      await deleteScheduledMenu({ clientId, weekId });
+
+      // Remove from local state
+      setScheduleMenus(prev => prev.filter(m => !(m.client_id === clientId && m.week_id === weekId)));
+
+      return { success: true };
+    } catch (err) {
+      console.error('[ScheduleMenus] Error unscheduling:', err);
+      return { success: false, error: err.message };
+    }
+  }, []);
+
+  // Build lookup map for schedule grid: clientId::weekId -> menu
+  const scheduleMenuLookup = useMemo(() => {
+    const lookup = {};
+    scheduleMenus.forEach(menu => {
+      const key = `${menu.client_id}::${menu.week_id}`;
+      lookup[key] = menu;
+    });
+    return lookup;
+  }, [scheduleMenus]);
+
+  // Get menu state for a client + week cell
+  const getScheduleCellState = useCallback((clientId, weekId) => {
+    const menu = scheduleMenuLookup[`${clientId}::${weekId}`];
+    if (!menu) {
+      return { status: 'inactive', menu: null };
+    }
+
+    const isEmpty = !menu.protein && !menu.veg && !menu.starch;
+    const isApproved = menu.approved === true;
+
+    if (isApproved) {
+      return { status: 'approved', menu, isEmpty };
+    }
+    if (isEmpty) {
+      return { status: 'scheduled', menu, isEmpty: true };
+    }
+    return { status: 'scheduled', menu, isEmpty: false };
+  }, [scheduleMenuLookup]);
 
   // Build per-client grocery cost breakdown grouped by week
   const buildClientBreakdown = () => {
@@ -852,9 +952,17 @@ export default function ExperimentalLayout() {
     billingCycles,
     billingCyclesLoading,
     billingCyclesError,
-    billingCyclesInitialized,
     loadBillingCycles,
-    generateBillingCycleInvoice
+    generateBillingCycleInvoice,
+
+    // Schedule menus (for TimelineView)
+    scheduleMenus,
+    scheduleMenusLoading,
+    scheduleMenuLookup,
+    loadScheduleMenus,
+    scheduleClientWeek,
+    unscheduleClientWeek,
+    getScheduleCellState
   };
 
   return (

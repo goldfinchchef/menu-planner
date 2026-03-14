@@ -37,7 +37,6 @@ export default function GroceryBillingPage() {
     billingCycles,
     billingCyclesLoading,
     billingCyclesError,
-    billingCyclesInitialized,
     loadBillingCycles,
     generateBillingCycleInvoice,
     exportInvoiceJSON,
@@ -47,6 +46,14 @@ export default function GroceryBillingPage() {
     getRecipeCost,
     recipes
   } = useExperimentalContext();
+
+  // Derive single render state with clear priority - prevents flicker
+  const renderState = useMemo(() => {
+    if (billingCyclesError) return 'error';
+    if (billingCyclesLoading) return 'loading';
+    if (billingCycles.length === 0) return 'empty';
+    return 'data';
+  }, [billingCyclesError, billingCyclesLoading, billingCycles.length]);
 
   // UI state
   const [expandedClients, setExpandedClients] = useState({});
@@ -253,31 +260,31 @@ export default function GroceryBillingPage() {
           </button>
         </div>
 
-        {/* Error state - shown alongside other states */}
-        {billingCyclesError && (
+        {/* Single state rendering - no flicker */}
+        {renderState === 'error' && (
           <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded flex items-center gap-2 text-red-700 text-sm">
             <AlertCircle size={14} />
             <span>{billingCyclesError}</span>
           </div>
         )}
 
-        {/* Loading state - show when loading OR not yet initialized */}
-        {(billingCyclesLoading || !billingCyclesInitialized) && !billingCyclesError ? (
+        {renderState === 'loading' && (
           <div className="text-center py-6 text-gray-500 text-sm">
             <RefreshCw size={20} className="animate-spin mx-auto mb-1" />
             Loading...
           </div>
-        ) : billingCyclesInitialized && billingCycles.length === 0 && !billingCyclesError ? (
-          /* Empty state - only show when initialized, not loading, no error, no data */
+        )}
+
+        {renderState === 'empty' && (
           <div className="text-center py-6 text-gray-500 text-sm">
             <Clock size={24} className="mx-auto mb-1 opacity-50" />
             <p>No billing cycles found.</p>
             <p className="text-xs mt-1">Create billing cycles in Admin to get started.</p>
           </div>
-        ) : null}
+        )}
 
-        {/* Client list - compact */}
-        {billingCyclesInitialized && clientNames.length > 0 && (
+        {/* Client list - only when we have data */}
+        {renderState === 'data' && (
           <div className="space-y-1.5">
             {clientNames.map(clientName => {
               const client = clientData[clientName];
