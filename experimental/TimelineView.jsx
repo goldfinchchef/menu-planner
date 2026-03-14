@@ -58,6 +58,7 @@ function getDateString(date) {
 }
 
 // Generate array of week objects with offset from current week
+// Returns newest → oldest (for left-to-right rendering)
 function getWeeksWithOffset(count, offset) {
   const weeks = [];
   const today = new Date();
@@ -77,7 +78,33 @@ function getWeeksWithOffset(count, offset) {
     });
   }
 
-  return weeks;
+  // Reverse so newest weeks appear on the left
+  return weeks.reverse();
+}
+
+// Generate specific issues for a client/week
+function getIssuesForClientWeek(clientWeekMeals, mealsPerWeek, status) {
+  // Only check scheduled weeks (not skipped, not confirmed)
+  if (status !== 'scheduled') return [];
+
+  const issues = [];
+
+  for (let i = 0; i < mealsPerWeek; i++) {
+    const meal = clientWeekMeals[i];
+    const mealNum = i + 1;
+
+    if (!meal) {
+      issues.push(`Meal ${mealNum} not planned`);
+    } else {
+      if (!meal.protein) issues.push(`Meal ${mealNum} protein missing`);
+      if (!meal.veg) issues.push(`Meal ${mealNum} veg missing`);
+      if (!meal.starch) issues.push(`Meal ${mealNum} starch missing`);
+    }
+  }
+
+  // Future: billing cycle missing, invoice due date missing
+
+  return issues;
 }
 
 // Truncate text helper
@@ -104,6 +131,7 @@ function ScheduleModal({
   week,
   cellState,
   clientWeekMeals,
+  issues,
   onSchedule,
   onUnschedule,
   onStatusChange
@@ -133,6 +161,7 @@ function ScheduleModal({
   const isScheduled = status === 'scheduled' || status === 'confirmed';
   const mealsPerWeek = client.meals_per_week || client.mealsPerWeek || 4;
   const portions = client.portions || 1;
+  const modalIssues = issues || [];
 
   const handleSchedule = async () => {
     await onSchedule(client, week.weekId, week.dateKey);
@@ -235,6 +264,17 @@ function ScheduleModal({
             </button>
           </div>
         </div>
+
+        {/* Alert line - show first issue if any */}
+        {modalIssues.length > 0 && (
+          <div
+            className="px-3 py-1 text-xs flex items-center gap-1"
+            style={{ backgroundColor: '#fef9c3', borderBottom: '1px solid #fde047', color: '#854d0e' }}
+          >
+            <span>⚠</span>
+            <span>{modalIssues[0]}</span>
+          </div>
+        )}
 
         {/* Logistics rows */}
         <div style={{ fontSize: '11px', backgroundColor: '#fafafa', borderBottom: '1px solid #f3f4f6' }}>
@@ -374,7 +414,10 @@ export default function TimelineView({
   const openModal = (client, week) => {
     const cellState = getScheduleCellState(client.id, week.weekId);
     const clientWeekMeals = getClientWeekMeals(client.id, week.weekId);
-    setSelectedCell({ client, week, cellState, clientWeekMeals });
+    const mealsPerWeek = client.meals_per_week || client.mealsPerWeek || 4;
+    const status = cellState?.status || 'skipped';
+    const issues = getIssuesForClientWeek(clientWeekMeals, mealsPerWeek, status);
+    setSelectedCell({ client, week, cellState, clientWeekMeals, issues });
     setModalOpen(true);
   };
 
@@ -483,7 +526,9 @@ export default function TimelineView({
                   const cellStyle = getCellStyle(cellState);
                   const isLoading = actionLoading === `${client.id}::${week.weekId}`;
                   const status = cellState?.status || 'skipped';
-                  const isIncomplete = cellState?.isIncomplete;
+                  const mealsPerWeek = client.meals_per_week || client.mealsPerWeek || 4;
+                  const clientWeekMeals = getClientWeekMeals(client.id, week.weekId);
+                  const issues = getIssuesForClientWeek(clientWeekMeals, mealsPerWeek, status);
 
                   return (
                     <div
@@ -506,8 +551,8 @@ export default function TimelineView({
                         ) : (
                           <span className="text-xs font-medium">{status}</span>
                         )}
-                        {/* Yellow dot: menu planning needs attention (scheduled + incomplete) */}
-                        {status === 'scheduled' && isIncomplete && (
+                        {/* Yellow dot: menu planning needs attention */}
+                        {issues.length > 0 && (
                           <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-yellow-400 rounded-full border border-yellow-500" />
                         )}
                       </button>
@@ -528,6 +573,7 @@ export default function TimelineView({
         week={selectedCell?.week}
         cellState={selectedCell?.cellState}
         clientWeekMeals={selectedCell?.clientWeekMeals || []}
+        issues={selectedCell?.issues || []}
         onSchedule={handleSchedule}
         onUnschedule={handleUnschedule}
         onStatusChange={handleStatusChange}
