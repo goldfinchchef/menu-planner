@@ -59,14 +59,17 @@ function getDateString(date) {
 
 // Generate array of week objects with offset from current week
 // Returns newest → oldest (for left-to-right rendering)
+// offset defines the oldest week in the range (e.g., -2 = 2 weeks ago)
 function getWeeksWithOffset(count, offset) {
   const weeks = [];
   const today = new Date();
   const currentWeekStart = getWeekStart(today);
 
+  // Generate from newest to oldest: start at (offset + count - 1) and go down
   for (let i = 0; i < count; i++) {
     const weekStart = new Date(currentWeekStart);
-    weekStart.setDate(weekStart.getDate() + ((offset + i) * 7));
+    const weekIndex = offset + count - 1 - i; // newest first
+    weekStart.setDate(weekStart.getDate() + (weekIndex * 7));
     const weekId = getWeekId(weekStart);
     const isCurrentWeek = weekId === getWeekId(currentWeekStart);
     weeks.push({
@@ -78,8 +81,7 @@ function getWeeksWithOffset(count, offset) {
     });
   }
 
-  // Reverse so newest weeks appear on the left
-  return weeks.reverse();
+  return weeks;
 }
 
 // Generate specific issues for a client/week
