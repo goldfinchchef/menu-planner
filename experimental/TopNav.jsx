@@ -1,12 +1,13 @@
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Calendar, UtensilsCrossed, ChefHat, Users } from 'lucide-react';
+import { Calendar, UtensilsCrossed, ChefHat, Users, DollarSign } from 'lucide-react';
 
 const SECTIONS = [
   { id: 'schedule', label: 'Schedule', icon: Calendar, path: '/test/schedule' },
   { id: 'menu', label: 'Menu', icon: UtensilsCrossed, path: '/test/menu/builder' },
   { id: 'kitchen', label: 'Kitchen', icon: ChefHat, path: '/test/kitchen/dish-totals' },
-  { id: 'clients', label: 'Clients', icon: Users, path: '/test/clients/directory' }
+  { id: 'clients', label: 'Clients', icon: Users, path: '/test/clients/directory' },
+  { id: 'finance', label: 'Finance', icon: DollarSign, path: '/test/finance/grocery-billing' }
 ];
 
 export default function TopNav() {
@@ -19,6 +20,7 @@ export default function TopNav() {
     if (path.startsWith('/test/menu')) return 'menu';
     if (path.startsWith('/test/kitchen')) return 'kitchen';
     if (path.startsWith('/test/clients')) return 'clients';
+    if (path.startsWith('/test/finance')) return 'finance';
     return 'schedule';
   };
 

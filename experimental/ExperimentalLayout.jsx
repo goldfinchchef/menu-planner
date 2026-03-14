@@ -18,12 +18,15 @@ import SubNav from './SubNav';
 import ExperimentalContext from './ExperimentalContext';
 
 // Production utilities
-import { getWeekId, getWeekIdFromDate, formatWeekRange, getAdjacentWeekId } from '../utils/weekUtils';
+import { getWeekId, getWeekIdFromDate, getWeekStartDate, getWeekEndDate, formatWeekRange, getAdjacentWeekId } from '../utils/weekUtils';
 import { DEFAULT_NEW_RECIPE, DEFAULT_NEW_INGREDIENT } from '../constants';
-import { exportRecipesCSV, categorizeIngredient } from '../utils';
+import { exportRecipesCSV, exportIngredientsCSV, categorizeIngredient } from '../utils';
 import { isSupabaseMode } from '../lib/dataMode';
 import { saveRecipeToSupabase, deleteRecipeFromSupabase, setKdsDishDone } from '../lib/database';
 import { isConfigured, checkConnection } from '../lib/supabase';
+
+// Grocery invoice configuration
+const GROCERY_MARKUP_PERCENT = 30;
 
 export default function ExperimentalLayout() {
   // Production data hook - single source of truth
@@ -42,6 +45,7 @@ export default function ExperimentalLayout() {
     editingRecipe, setEditingRecipe,
     editingIngredientId, setEditingIngredientId,
     editingIngredientData, setEditingIngredientData,
+    duplicateWarnings, setDuplicateWarnings,
     completedDishes, setCompletedDishes,
     orderHistory,
     weeks,
@@ -52,6 +56,8 @@ export default function ExperimentalLayout() {
     updateMasterIngredientCost,
     syncRecipeIngredientsFromMaster,
     getUniqueVendors,
+    mergeIngredients,
+    scanForDuplicates,
     getRecipeCost,
     getRecipeCounts,
     units, addUnit
@@ -67,10 +73,196 @@ export default function ExperimentalLayout() {
   const [unapprovedMenuCount, setUnapprovedMenuCount] = useState(0);
   const [unapprovedByClient, setUnapprovedByClient] = useState({});
 
+  // Grocery invoice state
+  const [groceryInvoices, setGroceryInvoices] = useState([]);
+
   // File refs for CSV imports
   const clientsFileRef = useRef();
   const recipesFileRef = useRef();
   const ingredientsFileRef = useRef();
+
+  // Ingredient functions
+  const addMasterIngredient = () => {
+    if (!newIngredient.name) { alert('Please enter an ingredient name'); return; }
+    const similar = findSimilarIngredients(newIngredient.name);
+    const exact = findExactMatch(newIngredient.name);
+    if (exact) { alert(`"${newIngredient.name}" already exists as "${exact.name}"`); return; }
+    if (similar.length > 0 && !window.confirm(`Similar ingredients found: ${similar.map(s => s.name).join(', ')}\n\nAdd "${newIngredient.name}" anyway?`)) return;
+    setMasterIngredients([...masterIngredients, { ...newIngredient, id: Date.now() }]);
+    setNewIngredient(DEFAULT_NEW_INGREDIENT);
+    alert('Ingredient added!');
+  };
+
+  const deleteMasterIngredient = (id) => {
+    if (window.confirm('Delete this ingredient?')) {
+      setMasterIngredients(masterIngredients.filter(ing => ing.id !== id));
+    }
+  };
+
+  const startEditingMasterIngredient = (ing) => {
+    setEditingIngredientId(ing.id);
+    setEditingIngredientData({ ...ing });
+  };
+
+  const saveEditingMasterIngredient = () => {
+    setMasterIngredients(prev => prev.map(ing => ing.id === editingIngredientId ? { ...editingIngredientData } : ing));
+    setEditingIngredientId(null);
+    setEditingIngredientData(null);
+  };
+
+  const cancelEditingMasterIngredient = () => {
+    setEditingIngredientId(null);
+    setEditingIngredientData(null);
+  };
+
+  // Build per-client grocery cost breakdown grouped by week
+  const buildClientBreakdown = () => {
+    const approvedItems = menuItems.filter(item => item.approved);
+    const weekData = {};
+
+    approvedItems.forEach(item => {
+      const clientName = item.clientName || 'Unknown';
+      const itemDate = item.date || new Date().toISOString().split('T')[0];
+      const weekId = getWeekIdFromDate(itemDate);
+      const label = formatWeekRange(weekId);
+
+      if (!weekData[weekId]) {
+        weekData[weekId] = {
+          weekId,
+          label,
+          weekStart: getWeekStartDate(weekId),
+          weekEnd: getWeekEndDate(weekId),
+          clients: {}
+        };
+      }
+
+      if (!weekData[weekId].clients[clientName]) {
+        weekData[weekId].clients[clientName] = { meals: [], total: 0 };
+      }
+
+      const portions = item.portions || 1;
+      const mealDishes = [];
+      let mealCostPerPortion = 0;
+
+      // Gather protein, veg, starch
+      ['protein', 'veg', 'starch'].forEach(type => {
+        if (item[type]) {
+          const recipe = recipes[type]?.find(r => r.name === item[type]);
+          const costPerPortion = recipe ? getRecipeCost(recipe) : 0;
+          mealDishes.push({ name: item[type], type, costPerPortion });
+          mealCostPerPortion += costPerPortion;
+        }
+      });
+
+      // Add extras if any
+      if (item.extras && item.extras.length > 0) {
+        item.extras.forEach(extra => {
+          const category = ['sauces', 'breakfast', 'soups'].find(cat =>
+            recipes[cat]?.find(r => r.name === extra)
+          );
+          const recipe = category ? recipes[category].find(r => r.name === extra) : null;
+          const costPerPortion = recipe ? getRecipeCost(recipe) : 0;
+          mealDishes.push({ name: extra, type: 'extra', costPerPortion });
+          mealCostPerPortion += costPerPortion;
+        });
+      }
+
+      const mealTotal = mealCostPerPortion * portions;
+      weekData[weekId].clients[clientName].meals.push({
+        dishes: mealDishes,
+        portions,
+        costPerPortion: mealCostPerPortion,
+        total: mealTotal,
+        date: item.date
+      });
+      weekData[weekId].clients[clientName].total += mealTotal;
+    });
+
+    return weekData;
+  };
+
+  // Generate grocery invoice for a client-week
+  const generateGroceryInvoice = (clientName, weekId, weekData) => {
+    const weekInfo = weekData[weekId];
+    const clientData = weekInfo.clients[clientName];
+
+    // Build line items from meals
+    const lineItems = clientData.meals.map(meal => {
+      const mainDishes = meal.dishes.filter(d => d.type !== 'extra').map(d => d.name).join(' + ');
+      const extras = meal.dishes.filter(d => d.type === 'extra').map(d => d.name);
+      const description = extras.length > 0
+        ? `${mainDishes} (+ ${extras.join(', ')})`
+        : mainDishes;
+
+      return {
+        description,
+        portions: meal.portions,
+        costPerPortion: meal.costPerPortion,
+        subtotal: meal.total,
+        date: meal.date
+      };
+    });
+
+    // Build itemized description text
+    const itemizedDescription = lineItems.map(item =>
+      `${item.date}: ${item.description} × ${item.portions} portions = $${item.subtotal.toFixed(2)}`
+    ).join('\n');
+
+    // Calculate financials
+    const rawGroceryTotal = clientData.total;
+    const markupAmount = rawGroceryTotal * (GROCERY_MARKUP_PERCENT / 100);
+    const billableTotal = rawGroceryTotal + markupAmount;
+
+    // Calculate due date (7 days from invoice creation)
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 7);
+
+    const invoice = {
+      // Identity
+      id: `INV-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      status: 'draft',
+
+      // Client & Period
+      clientName,
+      weekId,
+      weekLabel: weekInfo.label,
+      weekStart: weekInfo.weekStart,
+      weekEnd: weekInfo.weekEnd,
+
+      // Financials
+      rawGroceryTotal,
+      markupPercent: GROCERY_MARKUP_PERCENT,
+      markupAmount,
+      billableTotal,
+
+      // Line Items
+      lineItems,
+      itemizedDescription,
+
+      // Billing fields (for future HoneyBook integration)
+      invoiceDueDate: dueDate.toISOString().split('T')[0],
+      honeybookUrl: '' // To be populated when sent to HoneyBook
+    };
+
+    // Add to invoices state
+    setGroceryInvoices(prev => [...prev, invoice]);
+
+    return invoice;
+  };
+
+  // Export invoice as JSON
+  const exportInvoiceJSON = (invoice) => {
+    const blob = new Blob([JSON.stringify(invoice, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${invoice.id}-${invoice.clientName.replace(/\s+/g, '-')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   // Current week reference
   const currentWeek = weeks[selectedWeekId] || null;
@@ -402,6 +594,7 @@ export default function ExperimentalLayout() {
     editingRecipe, setEditingRecipe,
     editingIngredientId, setEditingIngredientId,
     editingIngredientData, setEditingIngredientData,
+    duplicateWarnings, setDuplicateWarnings,
     completedDishes, setCompletedDishes,
     orderHistory,
     weeks,
@@ -436,6 +629,18 @@ export default function ExperimentalLayout() {
     getShoppingListsByDay,
     getPrepList,
 
+    // Duplicate/merge functions
+    scanForDuplicates,
+    mergeIngredients,
+
+    // Ingredient actions
+    addMasterIngredient,
+    deleteMasterIngredient,
+    startEditingMasterIngredient,
+    saveEditingMasterIngredient,
+    cancelEditingMasterIngredient,
+    exportIngredientsCSV: () => exportIngredientsCSV(masterIngredients),
+
     // Actions
     toggleDishComplete,
     allDishesComplete,
@@ -448,7 +653,14 @@ export default function ExperimentalLayout() {
     updateEditingIngredient,
     addEditingIngredient,
     removeEditingIngredient,
-    saveEditingRecipe
+    saveEditingRecipe,
+
+    // Grocery billing
+    groceryInvoices,
+    buildClientBreakdown,
+    generateGroceryInvoice,
+    exportInvoiceJSON,
+    GROCERY_MARKUP_PERCENT
   };
 
   return (

@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Calendar, UtensilsCrossed, LayoutGrid, ShoppingCart, Book, Apple, Users, Clock } from 'lucide-react';
+import { Calendar, UtensilsCrossed, LayoutGrid, ShoppingCart, Book, Apple, Users, Clock, Receipt } from 'lucide-react';
 
 // Subview definitions for each section with route paths
 const SUBVIEWS = {
@@ -19,6 +19,9 @@ const SUBVIEWS = {
   clients: [
     { id: 'directory', label: 'Client Directory', icon: Users, path: '/test/clients/directory' },
     { id: 'history', label: 'Order History', icon: Clock, path: '/test/clients/history' }
+  ],
+  finance: [
+    { id: 'grocery-billing', label: 'Grocery Billing', icon: Receipt, path: '/test/finance/grocery-billing' }
   ]
 };
 
@@ -32,6 +35,7 @@ export default function SubNav() {
     if (path.startsWith('/test/menu')) return 'menu';
     if (path.startsWith('/test/kitchen')) return 'kitchen';
     if (path.startsWith('/test/clients')) return 'clients';
+    if (path.startsWith('/test/finance')) return 'finance';
     return null;
   };
 

@@ -9,34 +9,41 @@ import IngredientsTab from '../../tabs/IngredientsTab';
 
 export default function IngredientsPage() {
   const {
-    masterIngredients, setMasterIngredients,
+    masterIngredients,
     newIngredient, setNewIngredient,
-    editingIngredientId, setEditingIngredientId,
+    editingIngredientId,
     editingIngredientData, setEditingIngredientData,
     ingredientsFileRef,
-    findSimilarIngredients,
-    findExactMatch,
-    recipes, setRecipes,
-    units, addUnit
+    duplicateWarnings, setDuplicateWarnings,
+    scanForDuplicates,
+    mergeIngredients,
+    addMasterIngredient,
+    deleteMasterIngredient,
+    startEditingMasterIngredient,
+    saveEditingMasterIngredient,
+    cancelEditingMasterIngredient,
+    exportIngredientsCSV
   } = useExperimentalContext();
 
   return (
     <IngredientsTab
       masterIngredients={masterIngredients}
-      setMasterIngredients={setMasterIngredients}
       newIngredient={newIngredient}
       setNewIngredient={setNewIngredient}
       editingIngredientId={editingIngredientId}
-      setEditingIngredientId={setEditingIngredientId}
       editingIngredientData={editingIngredientData}
       setEditingIngredientData={setEditingIngredientData}
+      duplicateWarnings={duplicateWarnings}
+      setDuplicateWarnings={setDuplicateWarnings}
+      scanForDuplicates={scanForDuplicates}
+      mergeIngredients={mergeIngredients}
+      addMasterIngredient={addMasterIngredient}
+      deleteMasterIngredient={deleteMasterIngredient}
+      startEditingMasterIngredient={startEditingMasterIngredient}
+      saveEditingMasterIngredient={saveEditingMasterIngredient}
+      cancelEditingMasterIngredient={cancelEditingMasterIngredient}
       ingredientsFileRef={ingredientsFileRef}
-      findSimilarIngredients={findSimilarIngredients}
-      findExactMatch={findExactMatch}
-      recipes={recipes}
-      setRecipes={setRecipes}
-      units={units}
-      addUnit={addUnit}
+      exportIngredientsCSV={exportIngredientsCSV}
     />
   );
 }

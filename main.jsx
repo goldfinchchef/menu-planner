@@ -17,6 +17,7 @@ import RecipesPage from './experimental/pages/RecipesPage.jsx'
 import IngredientsPage from './experimental/pages/IngredientsPage.jsx'
 import ClientsDirectoryPage from './experimental/pages/ClientsDirectoryPage.jsx'
 import HistoryPage from './experimental/pages/HistoryPage.jsx'
+import GroceryBillingPage from './experimental/pages/GroceryBillingPage.jsx'
 
 // Error boundary to catch React crashes
 class ErrorBoundary extends React.Component {
@@ -99,6 +100,10 @@ ReactDOM.createRoot(document.getElementById('root')).render(
               <Route index element={<Navigate to="/test/clients/directory" replace />} />
               <Route path="directory" element={<ClientsDirectoryPage />} />
               <Route path="history" element={<HistoryPage />} />
+            </Route>
+            <Route path="finance">
+              <Route index element={<Navigate to="/test/finance/grocery-billing" replace />} />
+              <Route path="grocery-billing" element={<GroceryBillingPage />} />
             </Route>
           </Route>
         </Routes>
