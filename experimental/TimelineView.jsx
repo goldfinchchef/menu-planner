@@ -483,7 +483,7 @@ export default function TimelineView({
                   const cellStyle = getCellStyle(cellState);
                   const isLoading = actionLoading === `${client.id}::${week.weekId}`;
                   const status = cellState?.status || 'skipped';
-                  const isEmpty = cellState?.isEmpty;
+                  const isIncomplete = cellState?.isIncomplete;
 
                   return (
                     <div
@@ -506,8 +506,8 @@ export default function TimelineView({
                         ) : (
                           <span className="text-xs font-medium">{status}</span>
                         )}
-                        {/* Yellow dot for action needed: scheduled but empty */}
-                        {status === 'scheduled' && isEmpty && (
+                        {/* Yellow dot: menu planning needs attention (scheduled + incomplete) */}
+                        {status === 'scheduled' && isIncomplete && (
                           <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-yellow-400 rounded-full border border-yellow-500" />
                         )}
                       </button>

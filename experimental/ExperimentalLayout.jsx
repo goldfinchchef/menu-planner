@@ -401,14 +401,15 @@ export default function ExperimentalLayout() {
   const getScheduleCellState = useCallback((clientId, weekId) => {
     const menu = scheduleMenuLookup[`${clientId}::${weekId}`];
     if (!menu) {
-      return { status: 'skipped', menu: null };
+      return { status: 'skipped', menu: null, isIncomplete: false };
     }
 
-    const isEmpty = !menu.protein && !menu.veg && !menu.starch;
+    // isIncomplete = missing ANY of protein, veg, or starch
+    const isIncomplete = !menu.protein || !menu.veg || !menu.starch;
     // Use menus.status directly, fallback to 'scheduled' for older rows
     const menuStatus = menu.status || 'scheduled';
 
-    return { status: menuStatus, menu, isEmpty };
+    return { status: menuStatus, menu, isIncomplete };
   }, [scheduleMenuLookup]);
 
   // Build per-client grocery cost breakdown grouped by week
