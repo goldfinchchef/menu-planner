@@ -18,10 +18,30 @@ const COLORS = {
 //   confirmed = menus row exists (date picked & paid)
 //   skipped = client_week_status.status = 'skipped' (explicit opt-out)
 const STATUS_COLORS = {
-  empty: { bg: '#fef3c7', text: '#92400e', label: 'empty' },
-  unconfirmed: { bg: '#bbf7d0', text: '#166534', label: 'unconfirmed' },
-  confirmed: { bg: '#3d59ab', text: '#ffffff', label: 'confirmed' },
-  skipped: { bg: '#6b7280', text: '#ffffff', label: 'skipped' }
+  empty: {
+    bg: '#fef7ed',           // warm tan
+    text: '#9ca3af',         // muted grey
+    border: '1px dashed #d1d5db',
+    label: ''
+  },
+  unconfirmed: {
+    bg: '#ecfdf5',           // soft green
+    text: '#059669',         // green text
+    border: '1px solid #10b981',
+    label: 'unconfirmed'
+  },
+  confirmed: {
+    bg: '#3d59ab',           // deep navy
+    text: '#ffffff',         // white text
+    border: 'none',
+    label: 'confirmed'
+  },
+  skipped: {
+    bg: '#f9fafb',           // very light grey
+    text: '#9ca3af',         // muted text
+    border: 'none',
+    label: 'skipped'
+  }
 };
 
 // Get Monday of the week containing the given date
@@ -32,20 +52,12 @@ function getWeekStart(date) {
   return new Date(d.setDate(diff));
 }
 
-// Format date range as "Mar 10-16"
+// Format date as "Mar 9" (week start only)
 function formatWeekLabel(date) {
   const start = getWeekStart(date);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 6);
-  const startMonth = start.toLocaleDateString('en-US', { month: 'short' });
-  const endMonth = end.toLocaleDateString('en-US', { month: 'short' });
-  const startDay = start.getDate();
-  const endDay = end.getDate();
-
-  if (startMonth === endMonth) {
-    return `${startMonth} ${startDay}-${endDay}`;
-  }
-  return `${startMonth} ${startDay} - ${endMonth} ${endDay}`;
+  const month = start.toLocaleDateString('en-US', { month: 'short' });
+  const day = start.getDate();
+  return `${month} ${day}`;
 }
 
 // Get ISO week ID from date (e.g., "2026-W12")
@@ -215,6 +227,23 @@ function ScheduleModal({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [statusDropdownOpen]);
 
+  // Close on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (showConfirmDialog) {
+          setShowConfirmDialog(null);
+        } else {
+          onClose();
+        }
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, showConfirmDialog, onClose]);
+
   if (!isOpen || !client || !week) return null;
 
   // Status from cell state: empty, unconfirmed, confirmed, skipped
@@ -285,11 +314,33 @@ function ScheduleModal({
     };
   };
 
+  // Handle backdrop click
+  const handleBackdropClick = (e) => {
+    if (e.target === e.currentTarget) {
+      if (showConfirmDialog) {
+        setShowConfirmDialog(null);
+      } else {
+        onClose();
+      }
+    }
+  };
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div
+      className="fixed inset-0 flex items-center justify-center z-50 p-4"
+      style={{
+        backgroundColor: 'rgba(0, 0, 0, 0.3)',
+        backdropFilter: 'blur(4px)'
+      }}
+      onClick={handleBackdropClick}
+    >
       {/* Confirmation Dialog */}
       {showConfirmDialog && (
-        <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm p-4 z-60" style={{ fontSize: '12px' }}>
+        <div
+          className="bg-white rounded-lg shadow-2xl w-full max-w-sm p-4"
+          style={{ fontSize: '12px' }}
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className="flex items-center gap-2 mb-3">
             <span className="text-xl">⚠</span>
             <span className="font-semibold" style={{ color: COLORS.darkBrown }}>
@@ -335,8 +386,9 @@ function ScheduleModal({
       {/* Main Modal */}
       {!showConfirmDialog && (
         <div
-          className="bg-white rounded-lg shadow-xl w-full max-w-sm max-h-[90vh] overflow-auto"
-          style={{ fontSize: '12px' }}
+          className="bg-white rounded-lg shadow-xl w-full max-h-[90vh] overflow-auto"
+          style={{ fontSize: '12px', maxWidth: '800px' }}
+          onClick={(e) => e.stopPropagation()}
         >
           {/* Header - compact with actions */}
           <div
@@ -555,145 +607,226 @@ export default function TimelineView({
   const getCellStyle = (cellState) => {
     const status = cellState?.status || 'empty';
     const colors = STATUS_COLORS[status] || STATUS_COLORS.empty;
-    return { backgroundColor: colors.bg, color: colors.text };
+    return {
+      backgroundColor: colors.bg,
+      color: colors.text,
+      border: colors.border || 'none'
+    };
   };
+
+  // Current week highlight (subtle saffron)
+  const currentWeekHighlight = 'rgba(244, 180, 0, 0.05)';
 
   return (
     <div className="space-y-4">
       {/* Schedule Grid */}
-      <div className="bg-white rounded-lg shadow-md overflow-hidden">
-        <div className="overflow-x-auto">
-          {/* Week Headers */}
-          <div className="flex border-b-2" style={{ borderColor: COLORS.warmTan }}>
-            <div
-              className="flex-shrink-0 p-2 font-medium text-sm flex items-center gap-2"
-              style={{ width: '140px', color: COLORS.darkBrown, backgroundColor: COLORS.cream }}
-            >
-              <span>Clients ({activeClients.length})</span>
-              {scheduleMenusLoading && (
-                <Loader2 size={12} className="animate-spin" style={{ color: COLORS.deepBlue }} />
-              )}
-            </div>
-            {weeks.map((week) => {
-              // Selected week = primary highlight (blue)
-              // Current week = secondary highlight (gold) - only shows label if not selected
-              const bgColor = week.isSelectedWeek ? '#dbeafe' : week.isCurrentWeek ? '#fefce8' : '#f9fafb';
-              const borderLeft = week.isSelectedWeek
-                ? `3px solid ${COLORS.deepBlue}`
-                : week.isCurrentWeek
-                  ? `3px solid ${COLORS.goldenYellow}`
-                  : 'none';
-
-              return (
-                <div
-                  key={week.weekId}
-                  className="flex-1 p-2 text-center relative min-w-[100px]"
-                  style={{ backgroundColor: bgColor, borderLeft }}
-                >
-                  {/* Label: Selected takes priority over Current */}
-                  {week.isSelectedWeek ? (
-                    <div
-                      className="text-xs uppercase tracking-wide font-medium mb-0.5"
-                      style={{ color: COLORS.deepBlue }}
-                    >
-                      Selected
-                    </div>
-                  ) : week.isCurrentWeek ? (
-                    <div
-                      className="text-xs uppercase tracking-wide font-medium mb-0.5"
-                      style={{ color: COLORS.darkBrown }}
-                    >
-                      Today
-                    </div>
-                  ) : null}
-                  <div className="text-sm font-semibold" style={{ color: COLORS.darkBrown }}>
-                    {week.label}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Client Rows */}
-          {activeClients.length === 0 ? (
-            <div className="p-8 text-center" style={{ color: COLORS.darkBrown }}>
-              No active clients. Add clients in the Clients tab.
-            </div>
-          ) : (
-            activeClients.map((client, clientIdx) => (
-              <div
-                key={client.id || client.name}
-                className="flex border-b"
+      <div
+        className="bg-white rounded-lg shadow-md"
+        style={{ overflow: 'auto', maxHeight: 'calc(100vh - 180px)' }}
+      >
+        <table
+          className="w-full"
+          style={{
+            borderCollapse: 'separate',
+            borderSpacing: 0,
+            minWidth: '900px',
+            fontSize: '11px'
+          }}
+        >
+          {/* Sticky Header Row */}
+          <thead>
+            <tr style={{ position: 'sticky', top: 0, zIndex: 20 }}>
+              {/* Corner cell - sticky both directions */}
+              <th
+                className="text-left font-normal"
                 style={{
-                  borderColor: '#e5e7eb',
-                  backgroundColor: clientIdx % 2 === 0 ? 'white' : '#fafafa'
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: 30,
+                  width: '140px',
+                  minWidth: '140px',
+                  padding: '6px 8px',
+                  backgroundColor: COLORS.cream,
+                  borderBottom: `2px solid ${COLORS.warmTan}`,
+                  color: COLORS.darkBrown
                 }}
               >
-                {/* Client Name Cell */}
-                <div
-                  className="flex-shrink-0 p-2 flex items-center"
-                  style={{
-                    width: '140px',
-                    backgroundColor: clientIdx % 2 === 0 ? 'white' : '#fafafa'
-                  }}
-                >
-                  <span className="font-medium text-sm truncate" style={{ color: COLORS.darkBrown }}>
-                    {client.name}
-                  </span>
-                </div>
+                <span className="flex items-center gap-1.5">
+                  <span style={{ fontWeight: 500 }}>Clients ({activeClients.length})</span>
+                  {scheduleMenusLoading && (
+                    <Loader2 size={10} className="animate-spin" style={{ color: COLORS.deepBlue }} />
+                  )}
+                </span>
+              </th>
+              {/* Week header cells */}
+              {weeks.map((week) => {
+                // Selected week = primary highlight (blue border)
+                // Current week = subtle saffron background
+                const isCurrentNotSelected = week.isCurrentWeek && !week.isSelectedWeek;
+                const bgColor = week.isSelectedWeek
+                  ? '#dbeafe'
+                  : isCurrentNotSelected
+                    ? currentWeekHighlight
+                    : '#f9fafb';
 
-                {/* Week Cells */}
-                {weeks.map((week) => {
-                  const cellState = getScheduleCellState(client.id, week.weekId);
-                  const cellStyle = getCellStyle(cellState);
-                  const isLoading = actionLoading === `${client.id}::${week.weekId}`;
-                  const status = cellState?.status || 'skipped';
-                  const mealsPerWeek = client.meals_per_week || client.mealsPerWeek || 4;
-                  const clientWeekMeals = getClientWeekMeals(client.id, week.weekId);
-                  const issues = getIssuesForClientWeek(clientWeekMeals, mealsPerWeek, status);
-                  const stripeColor = getAlertStripeColor(issues, status);
-
-                  // Match header styling: selected = blue, current = gold
-                  const cellBgColor = week.isSelectedWeek ? '#dbeafe' : week.isCurrentWeek ? '#fefce8' : 'transparent';
-                  const cellBorderLeft = week.isSelectedWeek
-                    ? `3px solid ${COLORS.deepBlue}`
-                    : week.isCurrentWeek
-                      ? `3px solid ${COLORS.goldenYellow}`
-                      : 'none';
-
-                  return (
-                    <div
-                      key={week.weekId}
-                      className="flex-1 p-1 min-w-[100px] relative"
-                      style={{ backgroundColor: cellBgColor, borderLeft: cellBorderLeft }}
-                    >
-                      <button
-                        onClick={() => openModal(client, week)}
-                        disabled={isLoading}
-                        className="w-full h-8 rounded flex items-center justify-center relative overflow-hidden
-                                   transition-all hover:opacity-90 cursor-pointer disabled:opacity-50"
-                        style={cellStyle}
+                return (
+                  <th
+                    key={week.weekId}
+                    className="text-center font-normal"
+                    style={{
+                      padding: '6px 4px',
+                      minWidth: '80px',
+                      backgroundColor: bgColor,
+                      borderBottom: `2px solid ${COLORS.warmTan}`,
+                      borderLeft: week.isSelectedWeek ? `3px solid ${COLORS.deepBlue}` : 'none'
+                    }}
+                  >
+                    {/* Label: Selected takes priority over Current */}
+                    {week.isSelectedWeek ? (
+                      <div
+                        style={{
+                          fontSize: '9px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.05em',
+                          fontWeight: 500,
+                          color: COLORS.deepBlue,
+                          marginBottom: '2px'
+                        }}
                       >
-                        {/* Alert stripe - left edge */}
-                        {stripeColor && (
-                          <span
-                            className="absolute left-0 top-0 bottom-0 w-1 rounded-l"
-                            style={{ backgroundColor: stripeColor }}
-                          />
-                        )}
-                        {isLoading ? (
-                          <Loader2 size={12} className="animate-spin" />
-                        ) : (
-                          <span className="text-[10px]">{status || '—'}</span>
-                        )}
-                      </button>
+                        Selected
+                      </div>
+                    ) : week.isCurrentWeek ? (
+                      <div
+                        style={{
+                          fontSize: '9px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.05em',
+                          fontWeight: 500,
+                          color: '#b45309',
+                          marginBottom: '2px'
+                        }}
+                      >
+                        Today
+                      </div>
+                    ) : null}
+                    <div style={{ fontWeight: 500, color: COLORS.darkBrown }}>
+                      {week.label}
                     </div>
-                  );
-                })}
-              </div>
-            ))
-          )}
-        </div>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+
+          {/* Client Rows */}
+          <tbody>
+            {activeClients.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={weeks.length + 1}
+                  className="text-center"
+                  style={{ padding: '32px', color: COLORS.darkBrown }}
+                >
+                  No active clients. Add clients in the Clients tab.
+                </td>
+              </tr>
+            ) : (
+              activeClients.map((client, clientIdx) => {
+                const rowBg = clientIdx % 2 === 0 ? '#ffffff' : '#fafafa';
+
+                return (
+                  <tr key={client.id || client.name}>
+                    {/* Sticky Client Name Cell */}
+                    <td
+                      style={{
+                        position: 'sticky',
+                        left: 0,
+                        zIndex: 10,
+                        width: '140px',
+                        minWidth: '140px',
+                        padding: '4px 8px',
+                        backgroundColor: rowBg,
+                        borderBottom: '1px solid #e5e7eb',
+                        fontWeight: 500,
+                        color: COLORS.darkBrown
+                      }}
+                    >
+                      <span className="truncate block" style={{ maxWidth: '124px' }}>
+                        {client.name}
+                      </span>
+                    </td>
+
+                    {/* Week Cells */}
+                    {weeks.map((week) => {
+                      const cellState = getScheduleCellState(client.id, week.weekId);
+                      const cellStyle = getCellStyle(cellState);
+                      const isLoading = actionLoading === `${client.id}::${week.weekId}`;
+                      const status = cellState?.status || 'empty';
+                      const mealsPerWeek = client.meals_per_week || client.mealsPerWeek || 4;
+                      const clientWeekMeals = getClientWeekMeals(client.id, week.weekId);
+                      const issues = getIssuesForClientWeek(clientWeekMeals, mealsPerWeek, status);
+                      const stripeColor = getAlertStripeColor(issues, status);
+                      const isCurrentNotSelected = week.isCurrentWeek && !week.isSelectedWeek;
+                      const isEmpty = status === 'empty';
+
+                      // Column background: selected = blue tint, current = subtle saffron
+                      const colBgColor = week.isSelectedWeek
+                        ? '#dbeafe'
+                        : isCurrentNotSelected
+                          ? currentWeekHighlight
+                          : rowBg;
+
+                      return (
+                        <td
+                          key={week.weekId}
+                          style={{
+                            padding: '3px 4px',
+                            backgroundColor: colBgColor,
+                            borderBottom: '1px solid #e5e7eb',
+                            borderLeft: week.isSelectedWeek ? `3px solid ${COLORS.deepBlue}` : 'none'
+                          }}
+                        >
+                          <button
+                            onClick={() => openModal(client, week)}
+                            disabled={isLoading}
+                            className="w-full rounded flex items-center justify-center relative overflow-hidden transition-all hover:opacity-90 cursor-pointer disabled:opacity-50 group"
+                            style={{
+                              ...cellStyle,
+                              height: '24px'
+                            }}
+                          >
+                            {/* Alert stripe - left edge */}
+                            {stripeColor && (
+                              <span
+                                className="absolute left-0 top-0 bottom-0 w-1 rounded-l"
+                                style={{ backgroundColor: stripeColor }}
+                              />
+                            )}
+                            {isLoading ? (
+                              <Loader2 size={10} className="animate-spin" />
+                            ) : isEmpty ? (
+                              /* Empty cell: show + on hover only */
+                              <span
+                                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                                style={{ fontSize: '14px', color: '#9ca3af' }}
+                              >
+                                +
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '10px', fontWeight: 400 }}>
+                                {STATUS_COLORS[status]?.label || ''}
+                              </span>
+                            )}
+                          </button>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
       </div>
 
       {/* Schedule Modal */}
