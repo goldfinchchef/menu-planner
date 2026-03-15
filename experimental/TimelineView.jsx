@@ -11,11 +11,12 @@ const COLORS = {
   green: '#22c55e'
 };
 
-// Status colors - uses menus.status as source of truth
+// Status colors - four visible states
 const STATUS_COLORS = {
-  skipped: { bg: '#6b7280', text: '#ffffff', label: 'Skipped' },
-  scheduled: { bg: '#bbf7d0', text: '#166534', label: 'Scheduled' },
-  confirmed: { bg: '#3d59ab', text: '#ffffff', label: 'Confirmed' }
+  skipped: { bg: '#6b7280', text: '#ffffff', label: 'skipped' },
+  empty: { bg: '#fef3c7', text: '#92400e', label: 'empty' },
+  scheduled: { bg: '#bbf7d0', text: '#166534', label: 'scheduled' },
+  confirmed: { bg: '#3d59ab', text: '#ffffff', label: 'confirmed' }
 };
 
 // Get Monday of the week containing the given date
@@ -190,10 +191,11 @@ function ScheduleModal({
 
   if (!isOpen || !client || !week) return null;
 
-  // Status from menus.status (not derived from approved)
+  // Status from cell state (skipped, empty, scheduled, confirmed)
   const status = cellState?.status || 'skipped';
   const statusStyle = STATUS_COLORS[status] || STATUS_COLORS.skipped;
-  const isScheduled = status === 'scheduled' || status === 'confirmed';
+  // Has menu row (empty, scheduled, or confirmed) - can be removed
+  const hasMenuRow = status === 'empty' || status === 'scheduled' || status === 'confirmed';
   const mealsPerWeek = client.meals_per_week || client.mealsPerWeek || 4;
   const portions = client.portions || 1;
   const modalIssues = issues || [];
@@ -203,9 +205,9 @@ function ScheduleModal({
     onClose();
   };
 
-  const handleUnschedule = async () => {
+  const handleRemove = async () => {
     if (status === 'confirmed') {
-      if (!window.confirm('This menu is confirmed. Are you sure you want to unschedule it?')) {
+      if (!window.confirm('This menu is confirmed. Are you sure you want to remove it?')) {
         return;
       }
     }
@@ -246,7 +248,7 @@ function ScheduleModal({
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             {/* Status dropdown or badge */}
-            {isScheduled ? (
+            {hasMenuRow ? (
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setStatusDropdownOpen(!statusDropdownOpen)}
@@ -290,13 +292,13 @@ function ScheduleModal({
                 {statusStyle.label}
               </span>
             )}
-            {/* Schedule or Unschedule action */}
-            {isScheduled ? (
+            {/* Schedule or Remove action */}
+            {hasMenuRow ? (
               <button
-                onClick={handleUnschedule}
+                onClick={handleRemove}
                 className="px-1.5 py-0.5 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
               >
-                Unschedule
+                Remove
               </button>
             ) : (
               <button
@@ -599,7 +601,7 @@ export default function TimelineView({
                         {isLoading ? (
                           <Loader2 size={12} className="animate-spin" />
                         ) : (
-                          <span className="text-xs font-medium">{status}</span>
+                          <span className="text-[10px]">{status}</span>
                         )}
                         {/* Yellow dot: menu planning needs attention */}
                         {issues.length > 0 && (

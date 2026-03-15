@@ -397,20 +397,38 @@ export default function ExperimentalLayout() {
   }, [scheduleMenus]);
 
   // Get menu state for a client + week cell
-  // Uses menus.status as source of truth (not derived from approved)
+  // Four states: skipped, empty, scheduled, confirmed
   const getScheduleCellState = useCallback((clientId, weekId) => {
-    const menu = scheduleMenuLookup[`${clientId}::${weekId}`];
-    if (!menu) {
-      return { status: 'skipped', menu: null, isIncomplete: false };
+    // Get ALL menus for this client/week
+    const clientWeekMenus = scheduleMenus.filter(
+      m => m.client_id === clientId && m.week_id === weekId
+    );
+
+    // No menu rows → skipped
+    if (clientWeekMenus.length === 0) {
+      return { status: 'skipped', menu: null };
     }
 
-    // isIncomplete = missing ANY of protein, veg, or starch
-    const isIncomplete = !menu.protein || !menu.veg || !menu.starch;
-    // Use menus.status directly, fallback to 'scheduled' for older rows
-    const menuStatus = menu.status || 'scheduled';
+    const firstMenu = clientWeekMenus[0];
 
-    return { status: menuStatus, menu, isIncomplete };
-  }, [scheduleMenuLookup]);
+    // Any menu confirmed → confirmed
+    if (clientWeekMenus.some(m => m.status === 'confirmed')) {
+      return { status: 'confirmed', menu: firstMenu };
+    }
+
+    // Check if any meal has content (protein, veg, or starch)
+    const hasMealContent = clientWeekMenus.some(
+      m => m.protein || m.veg || m.starch
+    );
+
+    // No content → empty
+    if (!hasMealContent) {
+      return { status: 'empty', menu: firstMenu };
+    }
+
+    // Has content → scheduled
+    return { status: 'scheduled', menu: firstMenu };
+  }, [scheduleMenus]);
 
   // Build per-client grocery cost breakdown grouped by week
   const buildClientBreakdown = () => {
