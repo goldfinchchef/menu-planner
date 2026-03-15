@@ -228,12 +228,12 @@ function ScheduleModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div
-        className="bg-white rounded-lg shadow-xl w-full max-w-sm mx-4 overflow-hidden"
+        className="bg-white rounded-lg shadow-xl w-full max-w-sm max-h-[90vh] overflow-auto"
         style={{ fontSize: '12px' }}
       >
-        {/* Header - compact */}
+        {/* Header - compact with actions */}
         <div
           className="px-3 py-2 flex items-center justify-between"
           style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}
@@ -244,8 +244,8 @@ function ScheduleModal({
             </span>
             <span className="text-gray-500 shrink-0">{week.label}</span>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {/* Clickable status dropdown */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Status dropdown or badge */}
             {isScheduled ? (
               <div className="relative" ref={dropdownRef}>
                 <button
@@ -290,6 +290,32 @@ function ScheduleModal({
                 {statusStyle.label}
               </span>
             )}
+            {/* Schedule or Unschedule action */}
+            {isScheduled ? (
+              <button
+                onClick={handleUnschedule}
+                className="px-1.5 py-0.5 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
+              >
+                Unschedule
+              </button>
+            ) : (
+              <button
+                onClick={handleSchedule}
+                className="px-1.5 py-0.5 text-xs font-medium text-white rounded"
+                style={{ backgroundColor: COLORS.deepBlue }}
+              >
+                Schedule
+              </button>
+            )}
+            {/* Billing - disabled until wired */}
+            <span
+              className="px-1.5 py-0.5 text-xs rounded opacity-40 cursor-not-allowed"
+              style={{ color: '#9ca3af' }}
+              title="Billing"
+            >
+              $
+            </span>
+            {/* Close */}
             <button
               onClick={onClose}
               className="p-0.5 hover:bg-gray-200 rounded"
@@ -368,39 +394,6 @@ function ScheduleModal({
           </table>
         </div>
 
-        {/* Footer - actions */}
-        <div
-          className="px-3 py-2 flex items-center justify-between gap-2"
-          style={{ backgroundColor: '#fafafa', borderTop: '1px solid #e5e7eb' }}
-        >
-          {/* Billing button - disabled until wired */}
-          <span
-            className="flex items-center gap-1 px-2 py-1 text-xs rounded border opacity-40 cursor-not-allowed"
-            style={{ borderColor: '#e5e7eb', color: '#9ca3af' }}
-            title="Billing not yet connected"
-          >
-            Billing
-          </span>
-
-          <div className="flex gap-2">
-            {!isScheduled ? (
-              <button
-                onClick={handleSchedule}
-                className="px-3 py-1 rounded text-xs font-medium text-white"
-                style={{ backgroundColor: COLORS.deepBlue }}
-              >
-                Schedule
-              </button>
-            ) : (
-              <button
-                onClick={handleUnschedule}
-                className="px-3 py-1 rounded text-xs font-medium text-white bg-red-500 hover:bg-red-600"
-              >
-                Unschedule
-              </button>
-            )}
-          </div>
-        </div>
       </div>
     </div>
   );
