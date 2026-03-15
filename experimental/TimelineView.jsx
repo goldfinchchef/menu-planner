@@ -107,10 +107,18 @@ function getWeeksAroundWeekId(selectedWeekId, count) {
   return weeks;
 }
 
+// Issue types for structured issues array
+const ISSUE_TYPES = {
+  NOT_PLANNED: 'not_planned',
+  INCOMPLETE: 'incomplete',
+  BILLING: 'billing'
+};
+
 // Generate specific issues for a client/week
+// Returns array of { type, message } objects
 function getIssuesForClientWeek(clientWeekMeals, mealsPerWeek, status) {
-  // Only check scheduled weeks (not skipped, not confirmed)
-  if (status !== 'scheduled') return [];
+  // Only check scheduled or empty weeks (not skipped, not confirmed)
+  if (status !== 'scheduled' && status !== 'empty') return [];
 
   const issues = [];
 
@@ -120,7 +128,7 @@ function getIssuesForClientWeek(clientWeekMeals, mealsPerWeek, status) {
   );
 
   if (plannedMeals.length === 0) {
-    issues.push("Menu not planned");
+    issues.push({ type: ISSUE_TYPES.NOT_PLANNED, message: 'Menu not planned' });
     return issues;
   }
 
@@ -130,17 +138,33 @@ function getIssuesForClientWeek(clientWeekMeals, mealsPerWeek, status) {
     const mealNum = i + 1;
 
     if (!meal) {
-      issues.push(`Meal ${mealNum} not planned`);
+      issues.push({ type: ISSUE_TYPES.NOT_PLANNED, message: `Meal ${mealNum} not planned` });
     } else {
-      if (!meal.protein) issues.push(`Meal ${mealNum} protein missing`);
-      if (!meal.veg) issues.push(`Meal ${mealNum} veg missing`);
-      if (!meal.starch) issues.push(`Meal ${mealNum} starch missing`);
+      if (!meal.protein) issues.push({ type: ISSUE_TYPES.INCOMPLETE, message: `Meal ${mealNum} protein missing` });
+      if (!meal.veg) issues.push({ type: ISSUE_TYPES.INCOMPLETE, message: `Meal ${mealNum} veg missing` });
+      if (!meal.starch) issues.push({ type: ISSUE_TYPES.INCOMPLETE, message: `Meal ${mealNum} starch missing` });
     }
   }
 
   // Future: billing cycle missing, invoice due date missing
 
   return issues;
+}
+
+// Get alert stripe color based on issues (priority: incomplete > billing > not_planned)
+function getAlertStripeColor(issues, status) {
+  if (status !== 'scheduled' && status !== 'empty') return null;
+  if (issues.length === 0) return null;
+
+  const hasIncomplete = issues.some(i => i.type === ISSUE_TYPES.INCOMPLETE);
+  const hasBilling = issues.some(i => i.type === ISSUE_TYPES.BILLING);
+  const hasNotPlanned = issues.some(i => i.type === ISSUE_TYPES.NOT_PLANNED);
+
+  if (hasIncomplete) return '#f97316'; // orange
+  if (hasBilling) return '#a855f7';    // purple
+  if (hasNotPlanned) return '#eab308'; // yellow
+
+  return null;
 }
 
 // Truncate text helper
@@ -335,7 +359,7 @@ function ScheduleModal({
             style={{ backgroundColor: '#fef9c3', borderBottom: '1px solid #fde047', color: '#854d0e' }}
           >
             <span>⚠</span>
-            <span>{modalIssues[0]}</span>
+            <span>{modalIssues[0].message}</span>
           </div>
         )}
 
@@ -576,6 +600,7 @@ export default function TimelineView({
                   const mealsPerWeek = client.meals_per_week || client.mealsPerWeek || 4;
                   const clientWeekMeals = getClientWeekMeals(client.id, week.weekId);
                   const issues = getIssuesForClientWeek(clientWeekMeals, mealsPerWeek, status);
+                  const stripeColor = getAlertStripeColor(issues, status);
 
                   // Match header styling: selected = blue, current = gold
                   const cellBgColor = week.isSelectedWeek ? '#dbeafe' : week.isCurrentWeek ? '#fefce8' : 'transparent';
@@ -594,18 +619,21 @@ export default function TimelineView({
                       <button
                         onClick={() => openModal(client, week)}
                         disabled={isLoading}
-                        className="w-full h-8 rounded flex items-center justify-center relative
+                        className="w-full h-8 rounded flex items-center justify-center relative overflow-hidden
                                    transition-all hover:opacity-90 cursor-pointer disabled:opacity-50"
                         style={cellStyle}
                       >
+                        {/* Alert stripe - left edge */}
+                        {stripeColor && (
+                          <span
+                            className="absolute left-0 top-0 bottom-0 w-1 rounded-l"
+                            style={{ backgroundColor: stripeColor }}
+                          />
+                        )}
                         {isLoading ? (
                           <Loader2 size={12} className="animate-spin" />
                         ) : (
                           <span className="text-[10px]">{status}</span>
-                        )}
-                        {/* Yellow dot: menu planning needs attention */}
-                        {issues.length > 0 && (
-                          <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-yellow-400 rounded-full border border-yellow-500" />
                         )}
                       </button>
                     </div>
