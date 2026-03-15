@@ -1,10 +1,10 @@
 /**
  * SchedulePage - /test/schedule
  * Renders the experimental TimelineView (schedule gantt chart)
- * Wired to Supabase menus table for scheduling data
+ * Wired to Supabase menus + client_week_status tables
  */
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { useExperimentalContext } from '../ExperimentalContext';
 import TimelineView from '../TimelineView';
 
@@ -13,10 +13,10 @@ export default function SchedulePage() {
     clients,
     scheduleMenus,
     scheduleMenusLoading,
-    loadScheduleMenus,
-    scheduleClientWeek,
-    unscheduleClientWeek,
-    updateMenuStatus,
+    loadScheduleData,
+    transitionToConfirmed,
+    transitionToPlanning,
+    transitionToEmpty,
     getScheduleCellState,
     selectedWeekId
   } = useExperimentalContext();
@@ -26,10 +26,10 @@ export default function SchedulePage() {
       clients={clients}
       scheduleMenus={scheduleMenus}
       scheduleMenusLoading={scheduleMenusLoading}
-      loadScheduleMenus={loadScheduleMenus}
-      scheduleClientWeek={scheduleClientWeek}
-      unscheduleClientWeek={unscheduleClientWeek}
-      updateMenuStatus={updateMenuStatus}
+      loadScheduleData={loadScheduleData}
+      transitionToConfirmed={transitionToConfirmed}
+      transitionToPlanning={transitionToPlanning}
+      transitionToEmpty={transitionToEmpty}
       getScheduleCellState={getScheduleCellState}
       selectedWeekId={selectedWeekId}
     />

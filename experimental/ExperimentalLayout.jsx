@@ -30,7 +30,11 @@ import {
   fetchApprovedMenusForBilling,
   updateBillingCycleInvoice,
   fetchMenusForWeekRange,
-  upsertScheduledMenu
+  fetchClientWeekStatuses,
+  upsertClientWeekStatus,
+  deleteClientWeekStatus,
+  confirmClientWeek,
+  deleteMenusForClientWeek
 } from '../lib/database';
 import { isConfigured, checkConnection } from '../lib/supabase';
 
@@ -93,6 +97,9 @@ export default function ExperimentalLayout() {
   // Schedule menus state (for TimelineView)
   const [scheduleMenus, setScheduleMenus] = useState([]);
   const [scheduleMenusLoading, setScheduleMenusLoading] = useState(false);
+
+  // Client week status state (planning intent: unconfirmed, skipped)
+  const [clientWeekStatuses, setClientWeekStatuses] = useState([]);
 
   // File refs for CSV imports
   const clientsFileRef = useRef();
@@ -294,149 +301,180 @@ export default function ExperimentalLayout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ============ SCHEDULE MENUS ============
+  // ============ SCHEDULE DATA (menus + client_week_status) ============
 
-  // Load menus for visible weeks in schedule grid
-  const loadScheduleMenus = useCallback(async (weekIds) => {
+  // Load menus AND client_week_status for visible weeks
+  const loadScheduleData = useCallback(async (weekIds) => {
     if (!isSupabaseMode() || !isConfigured() || !weekIds || weekIds.length === 0) {
       return;
     }
 
     setScheduleMenusLoading(true);
     try {
-      const menus = await fetchMenusForWeekRange(weekIds);
+      // Fetch both in parallel
+      const [menus, statuses] = await Promise.all([
+        fetchMenusForWeekRange(weekIds),
+        fetchClientWeekStatuses(weekIds)
+      ]);
       setScheduleMenus(menus);
+      setClientWeekStatuses(statuses);
     } catch (err) {
-      console.error('[ScheduleMenus] Error loading:', err);
+      console.error('[ScheduleData] Error loading:', err);
     } finally {
       setScheduleMenusLoading(false);
     }
   }, []);
 
-  // Schedule a client for a week (creates empty menu row)
-  const scheduleClientWeek = useCallback(async (client, weekId, weekStartDate) => {
+  // Transition to Confirmed: create menu rows, delete client_week_status
+  const transitionToConfirmed = useCallback(async (client, weekId, weekStartDate) => {
     if (!isSupabaseMode() || !isConfigured()) {
-      console.log('[ScheduleMenus] Supabase not configured');
       return { success: false };
     }
 
     try {
-      const result = await upsertScheduledMenu({
-        clientId: client.id,
-        clientName: client.name,
-        weekId: weekId,
-        date: weekStartDate,
-        portions: client.portions || 4
+      const result = await confirmClientWeek({
+        client,
+        weekId,
+        weekStartDate
       });
 
-      // Refresh schedule menus after scheduling
-      if (result.created) {
-        setScheduleMenus(prev => [...prev, result.data]);
+      // Update local state: remove from statuses, add to menus
+      setClientWeekStatuses(prev => prev.filter(
+        s => !(s.client_id === client.id && s.week_id === weekId)
+      ));
+
+      if (result.created > 0) {
+        // Refetch menus for this week to get the new rows
+        const menus = await fetchMenusForWeekRange([weekId]);
+        setScheduleMenus(prev => {
+          // Remove old entries for this client/week and add new ones
+          const filtered = prev.filter(m => !(m.client_id === client.id && m.week_id === weekId));
+          const newMenus = menus.filter(m => m.client_id === client.id && m.week_id === weekId);
+          return [...filtered, ...newMenus];
+        });
       }
 
-      return { success: true, data: result.data, created: result.created };
+      return { success: true, created: result.created };
     } catch (err) {
-      console.error('[ScheduleMenus] Error scheduling:', err);
+      console.error('[Schedule] Error transitioning to confirmed:', err);
       return { success: false, error: err.message };
     }
   }, []);
 
-  // Unschedule a client from a week (removes menu row)
-  const unscheduleClientWeek = useCallback(async (clientId, weekId) => {
+  // Transition to Unconfirmed or Skipped: delete menu rows, upsert client_week_status
+  const transitionToPlanning = useCallback(async (clientId, weekId, newStatus) => {
     if (!isSupabaseMode() || !isConfigured()) {
       return { success: false };
     }
 
     try {
-      const { deleteScheduledMenu } = await import('../lib/database');
-      await deleteScheduledMenu({ clientId, weekId });
+      // Delete menu rows first
+      await deleteMenusForClientWeek({ clientId, weekId });
 
-      // Remove from local state
-      setScheduleMenus(prev => prev.filter(m => !(m.client_id === clientId && m.week_id === weekId)));
+      // Create/update planning status
+      await upsertClientWeekStatus({ clientId, weekId, status: newStatus });
+
+      // Update local state
+      setScheduleMenus(prev => prev.filter(
+        m => !(m.client_id === clientId && m.week_id === weekId)
+      ));
+      setClientWeekStatuses(prev => {
+        const filtered = prev.filter(s => !(s.client_id === clientId && s.week_id === weekId));
+        return [...filtered, { client_id: clientId, week_id: weekId, status: newStatus }];
+      });
 
       return { success: true };
     } catch (err) {
-      console.error('[ScheduleMenus] Error unscheduling:', err);
+      console.error('[Schedule] Error transitioning to planning:', err);
       return { success: false, error: err.message };
     }
   }, []);
 
-  // Update menus.status for a client + week
-  const updateMenuStatus = useCallback(async (clientId, weekId, newStatus) => {
+  // Transition to Empty: delete everything for this client/week
+  const transitionToEmpty = useCallback(async (clientId, weekId) => {
     if (!isSupabaseMode() || !isConfigured()) {
       return { success: false };
     }
 
     try {
-      const { updateMenusStatus } = await import('../lib/database');
-      const result = await updateMenusStatus({ clientId, weekId, status: newStatus });
+      // Delete menu rows if any
+      await deleteMenusForClientWeek({ clientId, weekId });
+
+      // Delete planning status if any
+      await deleteClientWeekStatus({ clientId, weekId });
 
       // Update local state
-      setScheduleMenus(prev => prev.map(m => {
-        if (m.client_id === clientId && m.week_id === weekId) {
-          return { ...m, status: newStatus };
-        }
-        return m;
-      }));
+      setScheduleMenus(prev => prev.filter(
+        m => !(m.client_id === clientId && m.week_id === weekId)
+      ));
+      setClientWeekStatuses(prev => prev.filter(
+        s => !(s.client_id === clientId && s.week_id === weekId)
+      ));
 
-      return { success: true, count: result.count };
+      return { success: true };
     } catch (err) {
-      console.error('[ScheduleMenus] Error updating status:', err);
+      console.error('[Schedule] Error transitioning to empty:', err);
       return { success: false, error: err.message };
     }
   }, []);
 
-  // Build lookup map for schedule grid: clientId::weekId -> menu
-  const scheduleMenuLookup = useMemo(() => {
-    const lookup = {};
-    scheduleMenus.forEach(menu => {
-      const key = `${menu.client_id}::${menu.week_id}`;
-      lookup[key] = menu;
-    });
-    return lookup;
-  }, [scheduleMenus]);
+  // Set planning status (unconfirmed or skipped) when no menus exist
+  const setPlanningStatus = useCallback(async (clientId, weekId, newStatus) => {
+    if (!isSupabaseMode() || !isConfigured()) {
+      return { success: false };
+    }
+
+    try {
+      await upsertClientWeekStatus({ clientId, weekId, status: newStatus });
+
+      // Update local state
+      setClientWeekStatuses(prev => {
+        const filtered = prev.filter(s => !(s.client_id === clientId && s.week_id === weekId));
+        return [...filtered, { client_id: clientId, week_id: weekId, status: newStatus }];
+      });
+
+      return { success: true };
+    } catch (err) {
+      console.error('[Schedule] Error setting planning status:', err);
+      return { success: false, error: err.message };
+    }
+  }, []);
 
   // Get menu state for a client + week cell
-  // Stored statuses: unconfirmed, confirmed, skipped
-  // Display states: null (no row), empty (derived), unconfirmed, confirmed, skipped
+  // Display states: empty, unconfirmed, confirmed, skipped
+  // Logic:
+  //   1. menus row exists → confirmed (row = date picked & paid)
+  //   2. client_week_status.status = 'skipped' → skipped
+  //   3. client_week_status.status = 'unconfirmed' → unconfirmed
+  //   4. neither → empty
   const getScheduleCellState = useCallback((clientId, weekId) => {
-    // Get ALL menus for this client/week
+    // Check menus first (source of truth for confirmed)
     const clientWeekMenus = scheduleMenus.filter(
       m => m.client_id === clientId && m.week_id === weekId
     );
 
-    // No menu rows → client not scheduled for this week
-    if (clientWeekMenus.length === 0) {
-      return { status: null, menu: null, hasRow: false };
+    if (clientWeekMenus.length > 0) {
+      const firstMenu = clientWeekMenus[0];
+      return { status: 'confirmed', menu: firstMenu, hasRow: true, menus: clientWeekMenus };
     }
 
-    const firstMenu = clientWeekMenus[0];
-    const storedStatus = firstMenu.status || 'unconfirmed';
-
-    // Stored status: confirmed
-    if (storedStatus === 'confirmed') {
-      return { status: 'confirmed', menu: firstMenu, hasRow: true };
-    }
-
-    // Stored status: skipped
-    if (storedStatus === 'skipped') {
-      return { status: 'skipped', menu: firstMenu, hasRow: true };
-    }
-
-    // Stored status: unconfirmed (or missing/null defaults to unconfirmed)
-    // Derive display state based on content
-    const hasMealContent = clientWeekMenus.some(
-      m => m.protein || m.veg || m.starch
+    // Check client_week_status for planning states
+    const planningStatus = clientWeekStatuses.find(
+      s => s.client_id === clientId && s.week_id === weekId
     );
 
-    // unconfirmed + no content → display as 'empty'
-    if (!hasMealContent) {
-      return { status: 'empty', menu: firstMenu, hasRow: true };
+    if (planningStatus) {
+      if (planningStatus.status === 'skipped') {
+        return { status: 'skipped', menu: null, hasRow: false, planningRow: true };
+      }
+      if (planningStatus.status === 'unconfirmed') {
+        return { status: 'unconfirmed', menu: null, hasRow: false, planningRow: true };
+      }
     }
 
-    // unconfirmed + has content → display as 'unconfirmed'
-    return { status: 'unconfirmed', menu: firstMenu, hasRow: true };
-  }, [scheduleMenus]);
+    // No data in either table → empty
+    return { status: 'empty', menu: null, hasRow: false, planningRow: false };
+  }, [scheduleMenus, clientWeekStatuses]);
 
   // Build per-client grocery cost breakdown grouped by week
   const buildClientBreakdown = () => {
@@ -1005,14 +1043,15 @@ export default function ExperimentalLayout() {
     loadBillingCycles,
     generateBillingCycleInvoice,
 
-    // Schedule menus (for TimelineView)
+    // Schedule data (for TimelineView)
     scheduleMenus,
     scheduleMenusLoading,
-    scheduleMenuLookup,
-    loadScheduleMenus,
-    scheduleClientWeek,
-    unscheduleClientWeek,
-    updateMenuStatus,
+    clientWeekStatuses,
+    loadScheduleData,
+    transitionToConfirmed,
+    transitionToPlanning,
+    transitionToEmpty,
+    setPlanningStatus,
     getScheduleCellState
   };
 

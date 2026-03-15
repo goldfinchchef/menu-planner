@@ -8,10 +8,12 @@ import React, { useMemo, useState } from 'react';
 import { useExperimentalContext } from '../ExperimentalContext';
 import { Receipt, Check, Edit2, X } from 'lucide-react';
 
-// Status colors (matches schedule grid)
+// Status colors for menu builder
+// All clients shown here are confirmed (have menu rows)
+// We track whether meals are complete or incomplete
 const STATUS_COLORS = {
-  unconfirmed: { bg: '#bbf7d0', text: '#166534', label: 'Unconfirmed' },
-  confirmed: { bg: '#3d59ab', text: '#ffffff', label: 'Confirmed' }
+  incomplete: { bg: '#fef3c7', text: '#92400e', label: 'Incomplete' },
+  complete: { bg: '#3d59ab', text: '#ffffff', label: 'Complete' }
 };
 
 export default function MenuBuilderPage() {
@@ -61,14 +63,14 @@ export default function MenuBuilderPage() {
     );
   }, [weekMenus, clients]);
 
-  // Get status from menus (all confirmed = confirmed, else unconfirmed)
+  // Get status from menus (all meals have content = complete, else incomplete)
   const getClientStatus = (meals) => {
-    if (meals.length === 0) return 'unconfirmed';
-    const allApproved = meals.every(m => m.approved === true);
-    return allApproved ? 'confirmed' : 'unconfirmed';
+    if (meals.length === 0) return 'incomplete';
+    const allComplete = meals.every(m => m.protein && m.veg && m.starch);
+    return allComplete ? 'complete' : 'incomplete';
   };
 
-  // Check if any meal is empty
+  // Check if any meal is empty (missing all three components)
   const hasEmptyMeals = (meals) => {
     return meals.some(m => !m.protein && !m.veg && !m.starch);
   };
@@ -151,11 +153,11 @@ export default function MenuBuilderPage() {
           </span>
         </div>
         <div className="flex gap-2">
-          <span className="px-2 py-0.5 rounded text-xs" style={{ backgroundColor: STATUS_COLORS.unconfirmed.bg, color: STATUS_COLORS.unconfirmed.text }}>
-            Unconfirmed: {clientCards.filter(c => getClientStatus(c.meals) === 'unconfirmed').length}
+          <span className="px-2 py-0.5 rounded text-xs" style={{ backgroundColor: STATUS_COLORS.incomplete.bg, color: STATUS_COLORS.incomplete.text }}>
+            Incomplete: {clientCards.filter(c => getClientStatus(c.meals) === 'incomplete').length}
           </span>
-          <span className="px-2 py-0.5 rounded text-xs" style={{ backgroundColor: STATUS_COLORS.confirmed.bg, color: STATUS_COLORS.confirmed.text }}>
-            Confirmed: {clientCards.filter(c => getClientStatus(c.meals) === 'confirmed').length}
+          <span className="px-2 py-0.5 rounded text-xs" style={{ backgroundColor: STATUS_COLORS.complete.bg, color: STATUS_COLORS.complete.text }}>
+            Complete: {clientCards.filter(c => getClientStatus(c.meals) === 'complete').length}
           </span>
         </div>
       </div>
@@ -163,7 +165,7 @@ export default function MenuBuilderPage() {
       {/* No clients message */}
       {clientCards.length === 0 && (
         <div className="bg-white rounded border p-6 text-center text-gray-500">
-          No clients scheduled for this week. Go to Schedule to add clients.
+          No confirmed clients for this week. Go to Schedule to confirm client weeks.
         </div>
       )}
 

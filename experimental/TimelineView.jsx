@@ -11,14 +11,17 @@ const COLORS = {
   green: '#22c55e'
 };
 
-// Status colors - four visible states
-// Stored: unconfirmed, confirmed, skipped
-// Display: empty (derived from unconfirmed + no content), unconfirmed, confirmed, skipped
+// Status colors - four display states
+// Architecture:
+//   empty = no data in menus or client_week_status (default)
+//   unconfirmed = client_week_status.status = 'unconfirmed' (planning intent)
+//   confirmed = menus row exists (date picked & paid)
+//   skipped = client_week_status.status = 'skipped' (explicit opt-out)
 const STATUS_COLORS = {
-  skipped: { bg: '#6b7280', text: '#ffffff', label: 'skipped' },
   empty: { bg: '#fef3c7', text: '#92400e', label: 'empty' },
   unconfirmed: { bg: '#bbf7d0', text: '#166534', label: 'unconfirmed' },
-  confirmed: { bg: '#3d59ab', text: '#ffffff', label: 'confirmed' }
+  confirmed: { bg: '#3d59ab', text: '#ffffff', label: 'confirmed' },
+  skipped: { bg: '#6b7280', text: '#ffffff', label: 'skipped' }
 };
 
 // Get Monday of the week containing the given date
@@ -111,7 +114,6 @@ function getWeeksAroundWeekId(selectedWeekId, count) {
 
 // Issue types for structured issues array
 const ISSUE_TYPES = {
-  NOT_PLANNED: 'not_planned',
   INCOMPLETE: 'incomplete',
   BILLING: 'billing'
 };
@@ -119,14 +121,12 @@ const ISSUE_TYPES = {
 // Generate specific issues for a client/week
 // Returns array of { type, message } objects
 // Issues only appear when:
-//   - status = 'unconfirmed' (has content, not confirmed)
-//   - AND some meal is incomplete
-// No issues for: empty, skipped, confirmed, or null (not scheduled)
+//   - status = 'confirmed' (menu rows exist)
+//   - AND some meal is incomplete (missing protein/veg/starch)
+// No issues for: empty, unconfirmed, skipped
 function getIssuesForClientWeek(clientWeekMeals, mealsPerWeek, status) {
-  // Only check 'unconfirmed' display state (has content but not confirmed)
-  // 'empty' = no content yet, so no issues
-  // 'skipped' / 'confirmed' / null = no issues
-  if (status !== 'unconfirmed') return [];
+  // Only check 'confirmed' status (menu rows exist, may be incomplete)
+  if (status !== 'confirmed') return [];
 
   const issues = [];
 
@@ -135,12 +135,13 @@ function getIssuesForClientWeek(clientWeekMeals, mealsPerWeek, status) {
     const meal = clientWeekMeals[i];
     const mealNum = i + 1;
 
-    if (!meal || (!meal.protein && !meal.veg && !meal.starch)) {
-      // Meal slot has no content - skip (don't flag as issue)
+    if (!meal) {
+      // Meal slot missing entirely
+      issues.push({ type: ISSUE_TYPES.INCOMPLETE, message: `Meal ${mealNum} not planned` });
       continue;
     }
 
-    // Meal has some content - check for missing components
+    // Check for missing components
     if (!meal.protein) issues.push({ type: ISSUE_TYPES.INCOMPLETE, message: `Meal ${mealNum} protein missing` });
     if (!meal.veg) issues.push({ type: ISSUE_TYPES.INCOMPLETE, message: `Meal ${mealNum} veg missing` });
     if (!meal.starch) issues.push({ type: ISSUE_TYPES.INCOMPLETE, message: `Meal ${mealNum} starch missing` });
@@ -152,10 +153,10 @@ function getIssuesForClientWeek(clientWeekMeals, mealsPerWeek, status) {
 }
 
 // Get alert stripe color based on issues (priority: incomplete > billing)
-// Only shows for 'unconfirmed' status with incomplete meals
+// Only shows for 'confirmed' status with incomplete meals
 function getAlertStripeColor(issues, status) {
-  // Only show stripes for 'unconfirmed' (has content, not confirmed)
-  if (status !== 'unconfirmed') return null;
+  // Only show stripes for 'confirmed' with issues
+  if (status !== 'confirmed') return null;
   if (issues.length === 0) return null;
 
   const hasIncomplete = issues.some(i => i.type === ISSUE_TYPES.INCOMPLETE);
@@ -192,12 +193,13 @@ function ScheduleModal({
   cellState,
   clientWeekMeals,
   issues,
-  onSchedule,
-  onUnschedule,
-  onStatusChange
+  onTransitionToConfirmed,
+  onTransitionToPlanning,
+  onTransitionToEmpty
 }) {
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(null); // { targetStatus, hasContent }
   const dropdownRef = useRef(null);
 
   // Close dropdown on outside click
@@ -215,65 +217,140 @@ function ScheduleModal({
 
   if (!isOpen || !client || !week) return null;
 
-  // Status from cell state (null, empty, unconfirmed, confirmed, skipped)
-  // null = no row in menus table (client not scheduled for this week)
-  const status = cellState?.status;
+  // Status from cell state: empty, unconfirmed, confirmed, skipped
+  const status = cellState?.status || 'empty';
   const hasMenuRow = cellState?.hasRow === true;
-  // For display, use status colors or fallback to a neutral style for null
-  const statusStyle = status ? (STATUS_COLORS[status] || STATUS_COLORS.skipped) : { bg: '#e5e7eb', text: '#6b7280', label: 'not scheduled' };
-  const mealsPerWeek = client.meals_per_week || client.mealsPerWeek || 4;
-  const portions = client.portions || 1;
+  const statusStyle = STATUS_COLORS[status] || STATUS_COLORS.empty;
+  const mealsPerWeek = client.meals_per_week || client.mealsPerWeek || 3;
+  const portions = client.portions || 4;
   const modalIssues = issues || [];
 
-  const handleSchedule = async () => {
-    await onSchedule(client, week.weekId, week.dateKey);
-    onClose();
-  };
+  // Check if confirmed week has meal content
+  const hasContent = clientWeekMeals.some(m => m?.protein || m?.veg || m?.starch);
+  const mealCount = clientWeekMeals.length;
 
-  const handleRemove = async () => {
-    if (status === 'confirmed') {
-      if (!window.confirm('This menu is confirmed. Are you sure you want to remove it?')) {
-        return;
-      }
-    }
-    await onUnschedule(client.id, week.weekId);
-    onClose();
-  };
-
+  // Handle status transitions
   const handleStatusChange = async (newStatus) => {
     if (newStatus === status) {
       setStatusDropdownOpen(false);
       return;
     }
+
+    // Changing FROM confirmed requires confirmation
+    if (status === 'confirmed') {
+      setShowConfirmDialog({ targetStatus: newStatus, hasContent });
+      setStatusDropdownOpen(false);
+      return;
+    }
+
+    // Other transitions proceed directly
+    await executeTransition(newStatus);
+  };
+
+  const executeTransition = async (newStatus) => {
     setStatusUpdating(true);
+    setStatusDropdownOpen(false);
     try {
-      await onStatusChange(client.id, week.weekId, newStatus);
+      if (newStatus === 'confirmed') {
+        await onTransitionToConfirmed(client, week.weekId, week.dateKey);
+      } else if (newStatus === 'empty') {
+        await onTransitionToEmpty(client.id, week.weekId);
+      } else {
+        // unconfirmed or skipped
+        await onTransitionToPlanning(client.id, week.weekId, newStatus);
+      }
+      onClose();
     } finally {
       setStatusUpdating(false);
-      setStatusDropdownOpen(false);
     }
+  };
+
+  const handleConfirmDialogConfirm = async () => {
+    const targetStatus = showConfirmDialog.targetStatus;
+    setShowConfirmDialog(null);
+    await executeTransition(targetStatus);
+  };
+
+  const handleConfirmDialogCancel = () => {
+    setShowConfirmDialog(null);
+  };
+
+  // Build meal summary for confirmation dialog
+  const getMealSummary = () => {
+    const proteins = clientWeekMeals.filter(m => m?.protein).map(m => m.protein);
+    return {
+      mealCount,
+      proteins: proteins.slice(0, 3).join(', ') + (proteins.length > 3 ? '...' : ''),
+      totalPortions: clientWeekMeals.reduce((sum, m) => sum + (m?.portions || 0), 0)
+    };
   };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div
-        className="bg-white rounded-lg shadow-xl w-full max-w-sm max-h-[90vh] overflow-auto"
-        style={{ fontSize: '12px' }}
-      >
-        {/* Header - compact with actions */}
-        <div
-          className="px-3 py-2 flex items-center justify-between"
-          style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}
-        >
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <span className="font-semibold truncate" style={{ color: COLORS.darkBrown }}>
-              {client.name}
+      {/* Confirmation Dialog */}
+      {showConfirmDialog && (
+        <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm p-4 z-60" style={{ fontSize: '12px' }}>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-xl">⚠</span>
+            <span className="font-semibold" style={{ color: COLORS.darkBrown }}>
+              Remove Confirmed Menu?
             </span>
-            <span className="text-gray-500 shrink-0">{week.label}</span>
           </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-            {/* Status dropdown or badge */}
-            {hasMenuRow ? (
+          {showConfirmDialog.hasContent ? (
+            <div className="mb-4 text-gray-600">
+              <p className="mb-2">This week has menu content that will be deleted:</p>
+              <ul className="list-disc list-inside text-sm space-y-1">
+                <li>{getMealSummary().mealCount} meal(s) planned</li>
+                {getMealSummary().proteins && <li>Protein: {getMealSummary().proteins}</li>}
+                <li>Total portions: {getMealSummary().totalPortions}</li>
+              </ul>
+              <p className="mt-2 text-red-600 text-xs">This action cannot be undone.</p>
+            </div>
+          ) : (
+            <div className="mb-4 text-gray-600">
+              <p>This will remove the confirmed status.</p>
+              <p className="text-sm text-gray-500">No meal content has been added yet.</p>
+            </div>
+          )}
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={handleConfirmDialogCancel}
+              className="px-3 py-1.5 text-xs rounded border hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmDialogConfirm}
+              className="px-3 py-1.5 text-xs rounded text-white"
+              style={{ backgroundColor: showConfirmDialog.hasContent ? '#dc2626' : COLORS.deepBlue }}
+            >
+              {showConfirmDialog.targetStatus === 'empty'
+                ? 'Remove Menu & Clear Week'
+                : `Remove Menu & Mark ${showConfirmDialog.targetStatus.charAt(0).toUpperCase() + showConfirmDialog.targetStatus.slice(1)}`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Main Modal */}
+      {!showConfirmDialog && (
+        <div
+          className="bg-white rounded-lg shadow-xl w-full max-w-sm max-h-[90vh] overflow-auto"
+          style={{ fontSize: '12px' }}
+        >
+          {/* Header - compact with actions */}
+          <div
+            className="px-3 py-2 flex items-center justify-between"
+            style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}
+          >
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <span className="font-semibold truncate" style={{ color: COLORS.darkBrown }}>
+                {client.name}
+              </span>
+              <span className="text-gray-500 shrink-0">{week.label}</span>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* Status dropdown - always show */}
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setStatusDropdownOpen(!statusDropdownOpen)}
@@ -293,142 +370,132 @@ function ScheduleModal({
                 {statusDropdownOpen && (
                   <div className="absolute right-0 mt-1 bg-white border rounded shadow-lg z-10" style={{ minWidth: '110px' }}>
                     <button
+                      onClick={() => handleStatusChange('empty')}
+                      className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 ${status === 'empty' ? 'font-medium bg-gray-50' : ''}`}
+                      style={{ color: STATUS_COLORS.empty.text }}
+                    >
+                      Empty
+                    </button>
+                    <button
                       onClick={() => handleStatusChange('unconfirmed')}
-                      className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 ${status === 'unconfirmed' || status === 'empty' ? 'font-medium' : ''}`}
+                      className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 ${status === 'unconfirmed' ? 'font-medium bg-gray-50' : ''}`}
                       style={{ color: STATUS_COLORS.unconfirmed.text }}
                     >
                       Unconfirmed
                     </button>
                     <button
                       onClick={() => handleStatusChange('confirmed')}
-                      className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 ${status === 'confirmed' ? 'font-medium' : ''}`}
+                      className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 ${status === 'confirmed' ? 'font-medium bg-gray-50' : ''}`}
                       style={{ color: COLORS.deepBlue }}
                     >
                       Confirmed
                     </button>
                     <button
                       onClick={() => handleStatusChange('skipped')}
-                      className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 ${status === 'skipped' ? 'font-medium' : ''}`}
-                      style={{ color: STATUS_COLORS.skipped.text === '#ffffff' ? '#6b7280' : STATUS_COLORS.skipped.text }}
+                      className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 ${status === 'skipped' ? 'font-medium bg-gray-50' : ''}`}
+                      style={{ color: '#6b7280' }}
                     >
                       Skipped
                     </button>
                   </div>
                 )}
               </div>
-            ) : (
+              {/* Billing - disabled until wired */}
               <span
-                className="px-1.5 py-0.5 rounded text-xs font-medium"
-                style={{ backgroundColor: statusStyle.bg, color: statusStyle.text }}
+                className="px-1.5 py-0.5 text-xs rounded opacity-40 cursor-not-allowed"
+                style={{ color: '#9ca3af' }}
+                title="Billing"
               >
-                {statusStyle.label}
+                $
               </span>
-            )}
-            {/* Schedule or Remove action */}
-            {hasMenuRow ? (
+              {/* Close */}
               <button
-                onClick={handleRemove}
-                className="px-1.5 py-0.5 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
+                onClick={onClose}
+                className="p-0.5 hover:bg-gray-200 rounded"
+                style={{ color: COLORS.darkBrown }}
               >
-                Remove
+                <X size={14} />
               </button>
-            ) : (
-              <button
-                onClick={handleSchedule}
-                className="px-1.5 py-0.5 text-xs font-medium text-white rounded"
-                style={{ backgroundColor: COLORS.deepBlue }}
-              >
-                Schedule
-              </button>
-            )}
-            {/* Billing - disabled until wired */}
-            <span
-              className="px-1.5 py-0.5 text-xs rounded opacity-40 cursor-not-allowed"
-              style={{ color: '#9ca3af' }}
-              title="Billing"
+            </div>
+          </div>
+
+          {/* Alert line - show first issue if any */}
+          {modalIssues.length > 0 && (
+            <div
+              className="px-3 py-1 text-xs flex items-center gap-1"
+              style={{ backgroundColor: '#fef9c3', borderBottom: '1px solid #fde047', color: '#854d0e' }}
             >
-              $
-            </span>
-            {/* Close */}
-            <button
-              onClick={onClose}
-              className="p-0.5 hover:bg-gray-200 rounded"
-              style={{ color: COLORS.darkBrown }}
-            >
-              <X size={14} />
-            </button>
+              <span>⚠</span>
+              <span>{modalIssues[0].message}</span>
+            </div>
+          )}
+
+          {/* Logistics rows */}
+          <div style={{ fontSize: '11px', backgroundColor: '#fafafa', borderBottom: '1px solid #f3f4f6' }}>
+            <div className="px-3 py-0.5 text-gray-500 truncate">
+              {[
+                truncate(client.address, 35),
+                formatPhone(client.phone),
+                client.email
+              ].filter(Boolean).join(' • ') || 'No contact info'}
+            </div>
+            <div className="px-3 py-0.5 text-gray-500 truncate">
+              {[
+                client.zone && `Zone ${client.zone}`,
+                (client.delivery_day || client.deliveryDay),
+                `${mealsPerWeek} x ${portions}`,
+                client.frequency || 'Weekly'
+              ].filter(Boolean).join(' • ')}
+            </div>
           </div>
-        </div>
 
-        {/* Alert line - show first issue if any */}
-        {modalIssues.length > 0 && (
-          <div
-            className="px-3 py-1 text-xs flex items-center gap-1"
-            style={{ backgroundColor: '#fef9c3', borderBottom: '1px solid #fde047', color: '#854d0e' }}
-          >
-            <span>⚠</span>
-            <span>{modalIssues[0].message}</span>
-          </div>
-        )}
-
-        {/* Logistics rows */}
-        <div style={{ fontSize: '11px', backgroundColor: '#fafafa', borderBottom: '1px solid #f3f4f6' }}>
-          <div className="px-3 py-0.5 text-gray-500 truncate">
-            {[
-              truncate(client.address, 35),
-              formatPhone(client.phone),
-              client.email
-            ].filter(Boolean).join(' • ') || 'No contact info'}
-          </div>
-          <div className="px-3 py-0.5 text-gray-500 truncate">
-            {[
-              client.zone && `Zone ${client.zone}`,
-              (client.delivery_day || client.deliveryDay),
-              `${mealsPerWeek} x ${portions}`,
-              client.frequency || 'Weekly'
-            ].filter(Boolean).join(' • ')}
-          </div>
-        </div>
-
-        {/* Weekly Menu table */}
-        <div className="px-3 py-2">
-          <table className="w-full" style={{ fontSize: '11px' }}>
-            <thead>
-              <tr className="text-gray-400 text-left">
-                <th className="w-8 font-normal py-0.5">#</th>
-                <th className="font-normal py-0.5">Protein</th>
-                <th className="font-normal py-0.5">Veg</th>
-                <th className="font-normal py-0.5">Starch</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Array.from({ length: mealsPerWeek }).map((_, idx) => {
-                const meal = clientWeekMeals[idx];
-                const isEmpty = meal && !meal.protein && !meal.veg && !meal.starch;
-
-                if (!meal) {
-                  return (
-                    <tr key={idx} className="text-gray-300">
-                      <td className="py-0.5">M{idx + 1}</td>
-                      <td colSpan={3} className="py-0.5 italic">Not planned</td>
-                    </tr>
-                  );
-                }
-
-                return (
-                  <tr key={meal.id || idx} className={isEmpty ? 'text-gray-400' : 'text-gray-700'}>
-                    <td className="py-0.5">M{idx + 1}</td>
-                    <td className="py-0.5 truncate max-w-[80px]">{truncate(meal.protein, 12)}</td>
-                    <td className="py-0.5 truncate max-w-[80px]">{truncate(meal.veg, 12)}</td>
-                    <td className="py-0.5 truncate max-w-[80px]">{truncate(meal.starch, 12)}</td>
+          {/* Weekly Menu table - only show for confirmed status */}
+          {status === 'confirmed' ? (
+            <div className="px-3 py-2">
+              <table className="w-full" style={{ fontSize: '11px' }}>
+                <thead>
+                  <tr className="text-gray-400 text-left">
+                    <th className="w-8 font-normal py-0.5">#</th>
+                    <th className="font-normal py-0.5">Protein</th>
+                    <th className="font-normal py-0.5">Veg</th>
+                    <th className="font-normal py-0.5">Starch</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody>
+                  {Array.from({ length: mealsPerWeek }).map((_, idx) => {
+                    const meal = clientWeekMeals[idx];
+                    const isEmpty = meal && !meal.protein && !meal.veg && !meal.starch;
 
-      </div>
+                    if (!meal) {
+                      return (
+                        <tr key={idx} className="text-gray-300">
+                          <td className="py-0.5">M{idx + 1}</td>
+                          <td colSpan={3} className="py-0.5 italic">Not planned</td>
+                        </tr>
+                      );
+                    }
+
+                    return (
+                      <tr key={meal.id || idx} className={isEmpty ? 'text-gray-400' : 'text-gray-700'}>
+                        <td className="py-0.5">M{idx + 1}</td>
+                        <td className="py-0.5 truncate max-w-[80px]">{truncate(meal.protein, 12)}</td>
+                        <td className="py-0.5 truncate max-w-[80px]">{truncate(meal.veg, 12)}</td>
+                        <td className="py-0.5 truncate max-w-[80px]">{truncate(meal.starch, 12)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="px-3 py-4 text-center text-gray-400 text-xs italic">
+              {status === 'empty' && 'No planning data for this week'}
+              {status === 'unconfirmed' && 'Week marked as unconfirmed (planning)'}
+              {status === 'skipped' && 'Week marked as skipped'}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -439,10 +506,10 @@ export default function TimelineView({
   clients,
   scheduleMenus,
   scheduleMenusLoading,
-  loadScheduleMenus,
-  scheduleClientWeek,
-  unscheduleClientWeek,
-  updateMenuStatus,
+  loadScheduleData,
+  transitionToConfirmed,
+  transitionToPlanning,
+  transitionToEmpty,
   getScheduleCellState,
   selectedWeekId
 }) {
@@ -460,12 +527,12 @@ export default function TimelineView({
     [clients]
   );
 
-  // Load schedule menus when visible weeks change
+  // Load schedule data (menus + client_week_status) when visible weeks change
   useEffect(() => {
-    if (loadScheduleMenus && weekIds.length > 0) {
-      loadScheduleMenus(weekIds);
+    if (loadScheduleData && weekIds.length > 0) {
+      loadScheduleData(weekIds);
     }
-  }, [weekIds, loadScheduleMenus]);
+  }, [weekIds, loadScheduleData]);
 
   // Get all meals for a client + week (for modal)
   const getClientWeekMeals = (clientId, weekId) => {
@@ -477,45 +544,17 @@ export default function TimelineView({
   const openModal = (client, week) => {
     const cellState = getScheduleCellState(client.id, week.weekId);
     const clientWeekMeals = getClientWeekMeals(client.id, week.weekId);
-    const mealsPerWeek = client.meals_per_week || client.mealsPerWeek || 4;
-    const status = cellState?.status || 'skipped';
+    const mealsPerWeek = client.meals_per_week || client.mealsPerWeek || 3;
+    const status = cellState?.status || 'empty';
     const issues = getIssuesForClientWeek(clientWeekMeals, mealsPerWeek, status);
     setSelectedCell({ client, week, cellState, clientWeekMeals, issues });
     setModalOpen(true);
   };
 
-  const handleSchedule = async (client, weekId, dateKey) => {
-    setActionLoading(`${client.id}::${weekId}`);
-    try {
-      await scheduleClientWeek(client, weekId, dateKey);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleUnschedule = async (clientId, weekId) => {
-    setActionLoading(`${clientId}::${weekId}`);
-    try {
-      await unscheduleClientWeek(clientId, weekId);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleStatusChange = async (clientId, weekId, newStatus) => {
-    if (updateMenuStatus) {
-      await updateMenuStatus(clientId, weekId, newStatus);
-    }
-  };
-
-  // Status-only cell styling - uses menus.status
-  // null status (no row) gets a neutral gray style
+  // Cell styling based on status
   const getCellStyle = (cellState) => {
-    const status = cellState?.status;
-    if (!status) {
-      return { backgroundColor: '#e5e7eb', color: '#6b7280' }; // neutral gray for not scheduled
-    }
-    const colors = STATUS_COLORS[status] || STATUS_COLORS.skipped;
+    const status = cellState?.status || 'empty';
+    const colors = STATUS_COLORS[status] || STATUS_COLORS.empty;
     return { backgroundColor: colors.bg, color: colors.text };
   };
 
@@ -666,9 +705,9 @@ export default function TimelineView({
         cellState={selectedCell?.cellState}
         clientWeekMeals={selectedCell?.clientWeekMeals || []}
         issues={selectedCell?.issues || []}
-        onSchedule={handleSchedule}
-        onUnschedule={handleUnschedule}
-        onStatusChange={handleStatusChange}
+        onTransitionToConfirmed={transitionToConfirmed}
+        onTransitionToPlanning={transitionToPlanning}
+        onTransitionToEmpty={transitionToEmpty}
       />
     </div>
   );
