@@ -113,6 +113,17 @@ function getIssuesForClientWeek(clientWeekMeals, mealsPerWeek, status) {
 
   const issues = [];
 
+  // Check if any meals have content at all
+  const plannedMeals = clientWeekMeals.filter(
+    m => m && (m.protein || m.veg || m.starch)
+  );
+
+  if (plannedMeals.length === 0) {
+    issues.push("Menu not planned");
+    return issues;
+  }
+
+  // Check individual meal slots for missing components
   for (let i = 0; i < mealsPerWeek; i++) {
     const meal = clientWeekMeals[i];
     const mealNum = i + 1;
