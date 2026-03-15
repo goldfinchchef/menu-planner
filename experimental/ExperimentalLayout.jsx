@@ -397,37 +397,45 @@ export default function ExperimentalLayout() {
   }, [scheduleMenus]);
 
   // Get menu state for a client + week cell
-  // Four states: skipped, empty, scheduled, confirmed
+  // Stored statuses: unconfirmed, confirmed, skipped
+  // Display states: null (no row), empty (derived), unconfirmed, confirmed, skipped
   const getScheduleCellState = useCallback((clientId, weekId) => {
     // Get ALL menus for this client/week
     const clientWeekMenus = scheduleMenus.filter(
       m => m.client_id === clientId && m.week_id === weekId
     );
 
-    // No menu rows → skipped
+    // No menu rows → client not scheduled for this week
     if (clientWeekMenus.length === 0) {
-      return { status: 'skipped', menu: null };
+      return { status: null, menu: null, hasRow: false };
     }
 
     const firstMenu = clientWeekMenus[0];
+    const storedStatus = firstMenu.status || 'unconfirmed';
 
-    // Any menu confirmed → confirmed
-    if (clientWeekMenus.some(m => m.status === 'confirmed')) {
-      return { status: 'confirmed', menu: firstMenu };
+    // Stored status: confirmed
+    if (storedStatus === 'confirmed') {
+      return { status: 'confirmed', menu: firstMenu, hasRow: true };
     }
 
-    // Check if any meal has content (protein, veg, or starch)
+    // Stored status: skipped
+    if (storedStatus === 'skipped') {
+      return { status: 'skipped', menu: firstMenu, hasRow: true };
+    }
+
+    // Stored status: unconfirmed (or missing/null defaults to unconfirmed)
+    // Derive display state based on content
     const hasMealContent = clientWeekMenus.some(
       m => m.protein || m.veg || m.starch
     );
 
-    // No content → empty
+    // unconfirmed + no content → display as 'empty'
     if (!hasMealContent) {
-      return { status: 'empty', menu: firstMenu };
+      return { status: 'empty', menu: firstMenu, hasRow: true };
     }
 
-    // Has content → scheduled
-    return { status: 'scheduled', menu: firstMenu };
+    // unconfirmed + has content → display as 'unconfirmed'
+    return { status: 'unconfirmed', menu: firstMenu, hasRow: true };
   }, [scheduleMenus]);
 
   // Build per-client grocery cost breakdown grouped by week

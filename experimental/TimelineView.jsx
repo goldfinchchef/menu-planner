@@ -12,10 +12,12 @@ const COLORS = {
 };
 
 // Status colors - four visible states
+// Stored: unconfirmed, confirmed, skipped
+// Display: empty (derived from unconfirmed + no content), unconfirmed, confirmed, skipped
 const STATUS_COLORS = {
   skipped: { bg: '#6b7280', text: '#ffffff', label: 'skipped' },
   empty: { bg: '#fef3c7', text: '#92400e', label: 'empty' },
-  scheduled: { bg: '#bbf7d0', text: '#166534', label: 'scheduled' },
+  unconfirmed: { bg: '#bbf7d0', text: '#166534', label: 'unconfirmed' },
   confirmed: { bg: '#3d59ab', text: '#ffffff', label: 'confirmed' }
 };
 
@@ -116,34 +118,32 @@ const ISSUE_TYPES = {
 
 // Generate specific issues for a client/week
 // Returns array of { type, message } objects
+// Issues only appear when:
+//   - status = 'unconfirmed' (has content, not confirmed)
+//   - AND some meal is incomplete
+// No issues for: empty, skipped, confirmed, or null (not scheduled)
 function getIssuesForClientWeek(clientWeekMeals, mealsPerWeek, status) {
-  // Only check scheduled or empty weeks (not skipped, not confirmed)
-  if (status !== 'scheduled' && status !== 'empty') return [];
+  // Only check 'unconfirmed' display state (has content but not confirmed)
+  // 'empty' = no content yet, so no issues
+  // 'skipped' / 'confirmed' / null = no issues
+  if (status !== 'unconfirmed') return [];
 
   const issues = [];
-
-  // Check if any meals have content at all
-  const plannedMeals = clientWeekMeals.filter(
-    m => m && (m.protein || m.veg || m.starch)
-  );
-
-  if (plannedMeals.length === 0) {
-    issues.push({ type: ISSUE_TYPES.NOT_PLANNED, message: 'Menu not planned' });
-    return issues;
-  }
 
   // Check individual meal slots for missing components
   for (let i = 0; i < mealsPerWeek; i++) {
     const meal = clientWeekMeals[i];
     const mealNum = i + 1;
 
-    if (!meal) {
-      issues.push({ type: ISSUE_TYPES.NOT_PLANNED, message: `Meal ${mealNum} not planned` });
-    } else {
-      if (!meal.protein) issues.push({ type: ISSUE_TYPES.INCOMPLETE, message: `Meal ${mealNum} protein missing` });
-      if (!meal.veg) issues.push({ type: ISSUE_TYPES.INCOMPLETE, message: `Meal ${mealNum} veg missing` });
-      if (!meal.starch) issues.push({ type: ISSUE_TYPES.INCOMPLETE, message: `Meal ${mealNum} starch missing` });
+    if (!meal || (!meal.protein && !meal.veg && !meal.starch)) {
+      // Meal slot has no content - skip (don't flag as issue)
+      continue;
     }
+
+    // Meal has some content - check for missing components
+    if (!meal.protein) issues.push({ type: ISSUE_TYPES.INCOMPLETE, message: `Meal ${mealNum} protein missing` });
+    if (!meal.veg) issues.push({ type: ISSUE_TYPES.INCOMPLETE, message: `Meal ${mealNum} veg missing` });
+    if (!meal.starch) issues.push({ type: ISSUE_TYPES.INCOMPLETE, message: `Meal ${mealNum} starch missing` });
   }
 
   // Future: billing cycle missing, invoice due date missing
@@ -151,18 +151,18 @@ function getIssuesForClientWeek(clientWeekMeals, mealsPerWeek, status) {
   return issues;
 }
 
-// Get alert stripe color based on issues (priority: incomplete > billing > not_planned)
+// Get alert stripe color based on issues (priority: incomplete > billing)
+// Only shows for 'unconfirmed' status with incomplete meals
 function getAlertStripeColor(issues, status) {
-  if (status !== 'scheduled' && status !== 'empty') return null;
+  // Only show stripes for 'unconfirmed' (has content, not confirmed)
+  if (status !== 'unconfirmed') return null;
   if (issues.length === 0) return null;
 
   const hasIncomplete = issues.some(i => i.type === ISSUE_TYPES.INCOMPLETE);
   const hasBilling = issues.some(i => i.type === ISSUE_TYPES.BILLING);
-  const hasNotPlanned = issues.some(i => i.type === ISSUE_TYPES.NOT_PLANNED);
 
   if (hasIncomplete) return '#f97316'; // orange
   if (hasBilling) return '#a855f7';    // purple
-  if (hasNotPlanned) return '#eab308'; // yellow
 
   return null;
 }
@@ -215,11 +215,12 @@ function ScheduleModal({
 
   if (!isOpen || !client || !week) return null;
 
-  // Status from cell state (skipped, empty, scheduled, confirmed)
-  const status = cellState?.status || 'skipped';
-  const statusStyle = STATUS_COLORS[status] || STATUS_COLORS.skipped;
-  // Has menu row (empty, scheduled, or confirmed) - can be removed
-  const hasMenuRow = status === 'empty' || status === 'scheduled' || status === 'confirmed';
+  // Status from cell state (null, empty, unconfirmed, confirmed, skipped)
+  // null = no row in menus table (client not scheduled for this week)
+  const status = cellState?.status;
+  const hasMenuRow = cellState?.hasRow === true;
+  // For display, use status colors or fallback to a neutral style for null
+  const statusStyle = status ? (STATUS_COLORS[status] || STATUS_COLORS.skipped) : { bg: '#e5e7eb', text: '#6b7280', label: 'not scheduled' };
   const mealsPerWeek = client.meals_per_week || client.mealsPerWeek || 4;
   const portions = client.portions || 1;
   const modalIssues = issues || [];
@@ -290,13 +291,13 @@ function ScheduleModal({
                   )}
                 </button>
                 {statusDropdownOpen && (
-                  <div className="absolute right-0 mt-1 bg-white border rounded shadow-lg z-10" style={{ minWidth: '100px' }}>
+                  <div className="absolute right-0 mt-1 bg-white border rounded shadow-lg z-10" style={{ minWidth: '110px' }}>
                     <button
-                      onClick={() => handleStatusChange('scheduled')}
-                      className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 ${status === 'scheduled' ? 'font-medium' : ''}`}
-                      style={{ color: STATUS_COLORS.scheduled.text === '#ffffff' ? COLORS.darkBrown : STATUS_COLORS.scheduled.text }}
+                      onClick={() => handleStatusChange('unconfirmed')}
+                      className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 ${status === 'unconfirmed' || status === 'empty' ? 'font-medium' : ''}`}
+                      style={{ color: STATUS_COLORS.unconfirmed.text }}
                     >
-                      Scheduled
+                      Unconfirmed
                     </button>
                     <button
                       onClick={() => handleStatusChange('confirmed')}
@@ -304,6 +305,13 @@ function ScheduleModal({
                       style={{ color: COLORS.deepBlue }}
                     >
                       Confirmed
+                    </button>
+                    <button
+                      onClick={() => handleStatusChange('skipped')}
+                      className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 ${status === 'skipped' ? 'font-medium' : ''}`}
+                      style={{ color: STATUS_COLORS.skipped.text === '#ffffff' ? '#6b7280' : STATUS_COLORS.skipped.text }}
+                    >
+                      Skipped
                     </button>
                   </div>
                 )}
@@ -501,8 +509,12 @@ export default function TimelineView({
   };
 
   // Status-only cell styling - uses menus.status
+  // null status (no row) gets a neutral gray style
   const getCellStyle = (cellState) => {
-    const status = cellState?.status || 'skipped';
+    const status = cellState?.status;
+    if (!status) {
+      return { backgroundColor: '#e5e7eb', color: '#6b7280' }; // neutral gray for not scheduled
+    }
     const colors = STATUS_COLORS[status] || STATUS_COLORS.skipped;
     return { backgroundColor: colors.bg, color: colors.text };
   };
@@ -633,7 +645,7 @@ export default function TimelineView({
                         {isLoading ? (
                           <Loader2 size={12} className="animate-spin" />
                         ) : (
-                          <span className="text-[10px]">{status}</span>
+                          <span className="text-[10px]">{status || '—'}</span>
                         )}
                       </button>
                     </div>

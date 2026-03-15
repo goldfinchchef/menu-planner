@@ -141,6 +141,7 @@ CREATE TABLE IF NOT EXISTS menus (
   extras JSONB DEFAULT '[]',
   portions INTEGER,
   approved BOOLEAN DEFAULT false,
+  status TEXT DEFAULT 'unconfirmed', -- unconfirmed, confirmed, skipped
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE(client_name, date)  -- Allows upsert by client + date
@@ -384,6 +385,7 @@ CREATE INDEX IF NOT EXISTS idx_recipe_ingredients_recipe_id ON recipe_ingredient
 CREATE INDEX IF NOT EXISTS idx_menus_client_id ON menus(client_id);
 CREATE INDEX IF NOT EXISTS idx_menus_week_id ON menus(week_id);
 CREATE INDEX IF NOT EXISTS idx_menus_date ON menus(date);
+CREATE INDEX IF NOT EXISTS idx_menus_status ON menus(status);
 CREATE INDEX IF NOT EXISTS idx_client_dish_picks_client_id ON client_dish_picks(client_id);
 CREATE INDEX IF NOT EXISTS idx_client_dish_picks_week_id ON client_dish_picks(week_id);
 
