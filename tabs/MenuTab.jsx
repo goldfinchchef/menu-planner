@@ -825,19 +825,36 @@ export default function MenuTab({
 
     const { client, date } = editModal;
 
+    // Resolve clientId/clientName with fallback to menuRow values
+    const resolvedClientId = client?.id || menuRow.clientId;
+    const resolvedClientName = client?.name || menuRow.clientName;
+
+    // Guard: ensure we have a valid clientId before saving
+    if (!resolvedClientId) {
+      console.error('[handleSaveMealRow] Cannot save: no client_id available', {
+        clientId: client?.id,
+        menuRowClientId: menuRow.clientId,
+        clientName: resolvedClientName,
+        menuRow
+      });
+      showToast('Cannot save: client data is missing', 'error');
+      setEditModalLoading(false);
+      return;
+    }
+
     setEditModalLoading(true);
     try {
       await saveMenu({
         ...menuRow,
-        clientId: client.id,
-        clientName: client.name,
+        clientId: resolvedClientId,
+        clientName: resolvedClientName,
         date,
         weekId: selectedWeekId
       }, menuRow.mealIndex, selectedWeekId);
 
       // Refetch menus
       const freshMenus = await fetchMenusForClientDate({
-        clientId: client.id,
+        clientId: resolvedClientId,
         date
       });
       setEditModal(prev => ({ ...prev, menus: freshMenus }));
