@@ -753,14 +753,11 @@ export default function MenuTab({
     const requiredMeals = client.mealsPerWeek || 1;
 
     // Open the edit modal with current menus
+    // Preserve clientId/clientName from database - do not overwrite with lookup
     setEditModal({
       client,
       date,
-      menus: orders.map(o => ({
-        ...o,
-        clientId: client.id,
-        clientName: client.name
-      })),
+      menus: orders.map(o => ({ ...o })),
       requiredMeals
     });
   };
