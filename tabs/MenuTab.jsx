@@ -335,6 +335,15 @@ export default function MenuTab({
     });
   }, [allClients, clients, selectedWeekId]);
 
+  // Filter menu items to only show items for the selected week
+  // Prefer stored week_id (from DB) over computing from date
+  const weekMenuItems = menuItems.filter(item => {
+    const storedWeekId = item.week_id || item.weekId;
+    if (storedWeekId) return storedWeekId === selectedWeekId;
+    const computedWeekId = item.date ? getWeekIdFromDate(item.date) : null;
+    return computedWeekId === selectedWeekId;
+  });
+
   // Clients that have menus for this week but no delivery date set — they won't appear
   // in activeClients and would otherwise be invisible to the admin.
   const orphanedMenuClients = useMemo(() => {
@@ -417,20 +426,6 @@ export default function MenuTab({
     });
     return grouped;
   }, [scheduledClients, weekDeliveryDates]);
-
-  // Filter menu items to only show items for the selected week
-  // Use stored week_id (snake_case from DB) or weekId (camelCase from transform) as source of truth
-  // Only fall back to computed-from-date if both are null/undefined
-  const weekMenuItems = menuItems.filter(item => {
-    // Check both snake_case (raw DB) and camelCase (transformed)
-    const storedWeekId = item.week_id || item.weekId;
-    if (storedWeekId) {
-      return storedWeekId === selectedWeekId;
-    }
-    // Fallback: compute from date only if week_id is null/undefined
-    const computedWeekId = item.date ? getWeekIdFromDate(item.date) : null;
-    return computedWeekId === selectedWeekId;
-  });
 
   // Get week start date (Monday)
   const getWeekStart = () => {

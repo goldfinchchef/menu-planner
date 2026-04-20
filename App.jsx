@@ -555,8 +555,12 @@ export default function App() {
       });
       return items;
     }
-    // Filter global menuItems to selected week
-    return menuItems.filter(item => getWeekIdFromDate(item.date) === selectedWeekId);
+    // Filter global menuItems to selected week — prefer stored week_id over date computation
+    return menuItems.filter(item => {
+      const storedWeekId = item.week_id || item.weekId;
+      if (storedWeekId) return storedWeekId === selectedWeekId;
+      return item.date ? getWeekIdFromDate(item.date) === selectedWeekId : false;
+    });
   };
 
   // Get approved menu items filtered to selected week
