@@ -1057,8 +1057,8 @@ export default function MenuTab({
     unapprovedByClientLocal[name] = (unapprovedByClientLocal[name] || 0) + 1;
   });
 
-  // Print function for menu planner
-  const printMenuPlanner = () => {
+  // Production List print function - grouped by meal slot, then by meal set
+  const printProductionList = () => {
     // Block if unapproved menus exist
     if (unapprovedCount > 0) {
       const topClients = Object.entries(unapprovedByClientLocal).slice(0, 3).map(([name, count]) => `${name} (${count})`).join(', ');
@@ -1067,167 +1067,221 @@ export default function MenuTab({
       return;
     }
 
+    // Helper: derive meal set key (protein + veg + starch, ignores extras)
+    const getMealSetKey = (menu) => {
+      const protein = (menu.protein || '').trim();
+      const veg = (menu.veg || '').trim();
+      const starch = (menu.starch || '').trim();
+      return `${protein}|||${veg}|||${starch}`;
+    };
+
+    // Helper: check if menu has at least one dish
+    const hasAnyDish = (menu) => {
+      return !!(menu.protein || menu.veg || menu.starch);
+    };
+
+    // Helper: find client by clientId (source of truth), fallback to name
+    const findClientById = (menu) => {
+      if (menu.clientId) {
+        const byId = activeClients.find(c => c.id === menu.clientId);
+        if (byId) return byId;
+      }
+      // Fallback to name matching only if clientId lookup fails
+      return activeClients.find(c => c.name === menu.clientName || c.displayName === menu.clientName);
+    };
+
+    // Step 1: Filter to menus with at least one dish
+    const validMenus = weekMenuItems.filter(hasAnyDish);
+
+    // Step 2: Group by mealIndex
+    const byMealSlot = {};
+    validMenus.forEach(menu => {
+      const slot = menu.mealIndex || 1;
+      if (!byMealSlot[slot]) byMealSlot[slot] = [];
+      byMealSlot[slot].push(menu);
+    });
+
+    // Step 3: Within each meal slot, group by meal set key
+    const productionData = {};
+    Object.entries(byMealSlot).forEach(([slot, menus]) => {
+      const byMealSet = {};
+
+      menus.forEach(menu => {
+        const key = getMealSetKey(menu);
+        if (!byMealSet[key]) {
+          byMealSet[key] = {
+            protein: menu.protein || '',
+            veg: menu.veg || '',
+            starch: menu.starch || '',
+            totalPortions: 0,
+            clients: []
+          };
+        }
+
+        const client = findClientById(menu);
+        const displayName = client?.displayName || client?.name || menu.clientName;
+        const dietaryRestrictions = client?.dietaryRestrictions || null;
+
+        byMealSet[key].totalPortions += menu.portions || 1;
+        byMealSet[key].clients.push({
+          name: displayName,
+          portions: menu.portions || 1,
+          dietaryRestrictions
+        });
+      });
+
+      // Convert to array and sort by totalPortions descending
+      const sortedGroups = Object.entries(byMealSet)
+        .map(([key, group]) => ({ key, ...group }))
+        .sort((a, b) => b.totalPortions - a.totalPortions);
+
+      // Determine dominant meal (largest group) for variation detection
+      const dominant = sortedGroups[0] || { protein: '', veg: '', starch: '' };
+
+      // Mark variations relative to dominant
+      sortedGroups.forEach(group => {
+        group.variations = {
+          protein: group.protein !== dominant.protein && group.protein !== '',
+          veg: group.veg !== dominant.veg && group.veg !== '',
+          starch: group.starch !== dominant.starch && group.starch !== ''
+        };
+      });
+
+      productionData[slot] = sortedGroups;
+    });
+
+    // Step 4: Render HTML
     const printWindow = window.open('', '_blank');
 
     let content = `
       <html>
       <head>
-        <title>Menu Planner - Client Orders</title>
+        <title>Production List - ${selectedWeekId}</title>
         <style>
           body {
             font-family: Arial, sans-serif;
-            padding: 15px;
-            font-size: 11px;
-            line-height: 1.3;
+            padding: 20px;
+            font-size: 12px;
+            line-height: 1.4;
           }
           h1 {
             color: #3d59ab;
-            margin-bottom: 3px;
-            font-size: 18px;
+            margin-bottom: 5px;
+            font-size: 20px;
           }
           .header {
-            margin-bottom: 12px;
-            padding-bottom: 8px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
             border-bottom: 2px solid #3d59ab;
           }
-          .header p { margin: 0; color: #666; font-size: 10px; }
-          .columns {
-            column-count: 2;
-            column-gap: 25px;
-          }
-          .client {
+          .header p { margin: 0; color: #666; font-size: 11px; }
+          .meal-slot {
+            margin-bottom: 24px;
             break-inside: avoid;
-            margin-bottom: 10px;
-            padding-bottom: 6px;
-            border-bottom: 1px dotted #ccc;
           }
-          .client-name {
+          .meal-slot-header {
+            background: #3d59ab;
+            color: white;
+            padding: 8px 12px;
+            font-size: 14px;
             font-weight: bold;
-            font-size: 12px;
-            color: #3d59ab;
-            margin-bottom: 4px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
+            margin-bottom: 12px;
           }
-          .portions {
-            color: #888;
-            font-size: 10px;
-            font-weight: normal;
+          .meal-group {
+            margin-bottom: 16px;
+            padding-left: 12px;
+            border-left: 3px solid #ebb582;
           }
-          .status { font-size: 12px; }
-          .approved { color: #22c55e; }
-          .pending { color: #f59e0b; }
-          .meals {
-            margin-left: 4px;
-          }
-          .meal {
+          .meal-name {
+            font-size: 13px;
+            font-weight: bold;
+            color: #333;
             margin-bottom: 6px;
           }
-          .protein {
+          .meal-name .portions {
+            color: #666;
+            font-weight: normal;
+            margin-left: 8px;
+          }
+          .variation {
             font-weight: bold;
+            font-style: italic;
+          }
+          .client-list {
+            margin-left: 8px;
+          }
+          .client-line {
             font-size: 11px;
             color: #333;
             padding: 2px 0;
           }
-          .protein:before {
+          .client-line:before {
             content: "•";
             margin-right: 6px;
             color: #3d59ab;
-            font-weight: bold;
           }
-          .sides {
-            margin-left: 16px;
-            color: #555;
+          .dietary {
+            margin-left: 18px;
             font-size: 10px;
-          }
-          .side {
-            padding: 1px 0;
-          }
-          .side:before {
-            content: "◦";
-            margin-right: 5px;
-            color: #999;
-          }
-          .extras {
-            margin-left: 16px;
-            margin-top: 2px;
-          }
-          .extra {
-            color: #7c3aed;
+            color: #b45309;
             font-style: italic;
-            font-size: 10px;
-            padding: 1px 0;
-          }
-          .extra:before {
-            content: "+";
-            margin-right: 4px;
           }
           @media print {
-            body { padding: 10px; }
-            .columns { column-count: 2; }
+            body { padding: 15px; }
+            .meal-slot { break-inside: avoid; }
           }
         </style>
       </head>
       <body>
         <div class="header">
-          <h1>Client Orders</h1>
-          <p>Week: ${selectedWeekId} | ${new Date().toLocaleDateString()}</p>
+          <h1>Production List</h1>
+          <p>Week: ${selectedWeekId} | Generated: ${new Date().toLocaleDateString()}</p>
         </div>
-        <div class="columns">
     `;
 
-    Object.entries(weekOrdersByClient).forEach(([clientName, orders]) => {
-      const allApproved = orders.every(o => o.approved);
-      const client = activeClients.find(c => (c.displayName || c.name) === clientName) ||
-                     activeClients.find(c => c.name === clientName);
-      const displayName = client?.displayName || clientName;
-      const portions = orders[0]?.portions || 1;
+    // Render each meal slot in order
+    const sortedSlots = Object.keys(productionData).sort((a, b) => Number(a) - Number(b));
 
-      content += `<div class="client">`;
-      content += `<div class="client-name">`;
-      content += `<span>${displayName}</span>`;
-      content += `<span class="portions">(${portions}p)</span>`;
-      content += `<span class="status ${allApproved ? 'approved' : 'pending'}">${allApproved ? '✓' : '○'}</span>`;
-      content += `</div>`;
-      content += `<div class="meals">`;
+    sortedSlots.forEach(slot => {
+      const groups = productionData[slot];
+      if (groups.length === 0) return;
 
-      orders.forEach(order => {
-        content += `<div class="meal">`;
+      content += `<div class="meal-slot">`;
+      content += `<div class="meal-slot-header">MEAL ${slot}</div>`;
 
-        if (order.protein) {
-          // Protein as main bullet
-          content += `<div class="protein">${order.protein}</div>`;
+      groups.forEach(group => {
+        // Build meal name with variation highlighting
+        const proteinPart = group.protein
+          ? (group.variations.protein ? `<span class="variation">${group.protein}</span>` : group.protein)
+          : '';
+        const vegPart = group.veg
+          ? (group.variations.veg ? `<span class="variation">${group.veg}</span>` : group.veg)
+          : '';
+        const starchPart = group.starch
+          ? (group.variations.starch ? `<span class="variation">${group.starch}</span>` : group.starch)
+          : '';
 
-          // Veg and starch as indented sub-bullets
-          if (order.veg || order.starch) {
-            content += `<div class="sides">`;
-            if (order.veg) content += `<div class="side">${order.veg}</div>`;
-            if (order.starch) content += `<div class="side">${order.starch}</div>`;
-            content += `</div>`;
+        const mealParts = [proteinPart, vegPart, starchPart].filter(Boolean);
+        const mealName = mealParts.join(' + ');
+
+        content += `<div class="meal-group">`;
+        content += `<div class="meal-name">${mealName}<span class="portions">— ${group.totalPortions} portions</span></div>`;
+        content += `<div class="client-list">`;
+
+        group.clients.forEach(client => {
+          content += `<div class="client-line">${client.name} — ${client.portions}</div>`;
+          if (client.dietaryRestrictions) {
+            content += `<div class="dietary">${client.dietaryRestrictions}</div>`;
           }
-        } else {
-          // No protein - show veg/starch as main items
-          if (order.veg) content += `<div class="protein">${order.veg}</div>`;
-          if (order.starch) content += `<div class="protein">${order.starch}</div>`;
-        }
+        });
 
-        // Extras
-        if (order.extras && order.extras.length > 0) {
-          content += `<div class="extras">`;
-          order.extras.forEach(extra => {
-            content += `<div class="extra">${extra}</div>`;
-          });
-          content += `</div>`;
-        }
-
-        content += `</div>`;
+        content += `</div></div>`;
       });
 
-      content += `</div></div>`;
+      content += `</div>`;
     });
 
-    content += `</div></body></html>`;
+    content += `</body></html>`;
 
     printWindow.document.write(content);
     printWindow.document.close();
@@ -1377,13 +1431,13 @@ export default function MenuTab({
             <div className="flex items-center gap-2">
               <div className="relative group">
                 <button
-                  onClick={printMenuPlanner}
+                  onClick={printProductionList}
                   disabled={unapprovedCount > 0}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border-2 text-sm ${
                     unapprovedCount > 0 ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
                   style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
-                  title={unapprovedCount > 0 ? 'Approve all menus to enable printing' : 'Print menus'}
+                  title={unapprovedCount > 0 ? 'Approve all menus to enable printing' : 'Print Production List'}
                 >
                   <Printer size={16} /> Print
                 </button>
