@@ -490,6 +490,22 @@ export default function RecipesTab(props) {
                           className="w-full p-2 border-2 rounded-lg mb-2 font-bold"
                           style={{ borderColor: '#ebb582' }}
                         />
+                        <div className="flex items-center gap-2 mb-2">
+                          <label className="text-sm font-medium" style={{ color: '#423d3c' }}>Category:</label>
+                          <select
+                            value={editingRecipe.category}
+                            onChange={(e) => setEditingRecipe({
+                              ...editingRecipe,
+                              category: e.target.value
+                            })}
+                            className="p-2 border-2 rounded-lg text-sm"
+                            style={{ borderColor: '#ebb582' }}
+                          >
+                            <option value="protein">Protein</option>
+                            <option value="veg">Veg</option>
+                            <option value="starch">Starch</option>
+                          </select>
+                        </div>
                         <textarea
                           value={editingRecipe.recipe.instructions}
                           onChange={(e) => setEditingRecipe({
