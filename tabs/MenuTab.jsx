@@ -1264,13 +1264,13 @@ export default function MenuTab({
       return result;
     };
 
-    // Step 1: Organize menus by meal slot
-    const mealSlots = ['meal1', 'meal2', 'meal3', 'meal4'];
-    const menusBySlot = {};
+    // Step 1: Organize menus by meal index (1, 2, 3, 4)
+    const mealNumbers = [1, 2, 3, 4];
+    const menusByMeal = {};
 
-    mealSlots.forEach(slot => {
-      menusBySlot[slot] = weekMenuItems.filter(m =>
-        m.mealSlot === slot && (m.protein || m.veg || m.starch)
+    mealNumbers.forEach(mealNum => {
+      menusByMeal[mealNum] = weekMenuItems.filter(m =>
+        m.mealIndex === mealNum && (m.protein || m.veg || m.starch)
       );
     });
 
@@ -1389,12 +1389,10 @@ export default function MenuTab({
         </div>
     `;
 
-    // Render each meal slot
-    mealSlots.forEach((slot, index) => {
-      const menus = menusBySlot[slot];
+    // Render each meal section
+    mealNumbers.forEach(mealNumber => {
+      const menus = menusByMeal[mealNumber];
       if (menus.length === 0) return;
-
-      const mealNumber = index + 1;
       content += `<div class="meal-section">`;
       content += `<div class="meal-header">MEAL ${mealNumber}</div>`;
 
