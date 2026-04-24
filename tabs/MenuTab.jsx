@@ -1322,7 +1322,46 @@ export default function MenuTab({
       );
     });
 
-    // Step 2: Render HTML
+    // Step 2: Pre-compute all groupings and log debug info BEFORE opening print window
+    console.log('\n\n==================================================');
+    console.log('PRODUCTION LIST DEBUG - ' + selectedWeekId);
+    console.log('==================================================\n');
+
+    const allGroupedData = {};
+    mealNumbers.forEach(mealNumber => {
+      const menus = menusByMeal[mealNumber];
+      if (menus.length === 0) {
+        allGroupedData[mealNumber] = [];
+        return;
+      }
+
+      // DEBUG: Log all menu rows for this meal
+      console.log(`\n========== MEAL ${mealNumber} (${menus.length} rows) ==========`);
+      console.log(`All menu rows:`);
+      menus.forEach((m, i) => {
+        console.log(`  ${i + 1}. ${m.clientName} (${m.portions || 1}p): "${m.protein || '—'}" | "${m.veg || '—'}" | "${m.starch || '—'}"`);
+      });
+
+      // Get grouped menus for this meal
+      const groups = groupMenusByBestStrategy(menus, mealNumber);
+      allGroupedData[mealNumber] = groups;
+
+      // DEBUG: Log final grouped output
+      console.log(`\nFINAL GROUPS for Meal ${mealNumber} (${groups.length} groups):`);
+      groups.forEach((g, i) => {
+        console.log(`  Group ${i + 1}: "${g.sharedName}" (${g.totalPortions}p, varies: ${g.varies})`);
+        g.variations.forEach(v => {
+          const clientList = v.clients.map(c => `${c.name}(${c.portions})`).join(', ');
+          console.log(`    → ${v.value || '(no variation)'}: ${v.totalPortions}p — ${clientList}`);
+        });
+      });
+    });
+
+    console.log('\n==================================================');
+    console.log('END DEBUG - Opening print window...');
+    console.log('==================================================\n');
+
+    // Step 3: Render HTML
     const printWindow = window.open('', '_blank');
 
     let content = `
@@ -1439,31 +1478,11 @@ export default function MenuTab({
 
     // Render each meal section
     mealNumbers.forEach(mealNumber => {
-      const menus = menusByMeal[mealNumber];
-      if (menus.length === 0) return;
-
-      // DEBUG: Log all menu rows for this meal
-      console.log(`\n========== MEAL ${mealNumber} ==========`);
-      console.log(`[DEBUG Meal ${mealNumber}] All menu rows (${menus.length} total):`);
-      menus.forEach((m, i) => {
-        console.log(`  ${i + 1}. ${m.clientName} (${m.portions || 1}p): ${m.protein || '—'} | ${m.veg || '—'} | ${m.starch || '—'}`);
-      });
+      const groups = allGroupedData[mealNumber];
+      if (!groups || groups.length === 0) return;
 
       content += `<div class="meal-section">`;
       content += `<div class="meal-header">MEAL ${mealNumber}</div>`;
-
-      // Get grouped menus for this slot
-      const groups = groupMenusByBestStrategy(menus, mealNumber);
-
-      // DEBUG: Log final grouped output
-      console.log(`[DEBUG Meal ${mealNumber}] FINAL GROUPS (${groups.length}):`);
-      groups.forEach((g, i) => {
-        console.log(`  Group ${i + 1}: "${g.sharedName}" (${g.totalPortions}p, varies: ${g.varies})`);
-        g.variations.forEach(v => {
-          const clientList = v.clients.map(c => `${c.name}(${c.portions})`).join(', ');
-          console.log(`    - ${v.value || '(no variation)'}: ${v.totalPortions}p — ${clientList}`);
-        });
-      });
 
       groups.forEach(group => {
         content += `<div class="group">`;
