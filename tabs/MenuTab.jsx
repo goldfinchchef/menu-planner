@@ -1057,7 +1057,8 @@ export default function MenuTab({
     unapprovedByClientLocal[name] = (unapprovedByClientLocal[name] || 0) + 1;
   });
 
-  // Production List print function - grouped by base plate (veg + starch), then by protein
+  // Production List print function - priority-based 2-of-3 component grouping
+  // Priority: 1) veg+starch  2) protein+veg  3) protein+starch  4) single component
   const printProductionList = () => {
     // Block if unapproved menus exist
     if (unapprovedCount > 0) {
@@ -1066,24 +1067,6 @@ export default function MenuTab({
       alert(`Cannot print yet: ${unapprovedCount} unapproved menu(s).\n\nClients: ${topClients}\n\nApprove all menus first.`);
       return;
     }
-
-    // Helper: derive base plate key (veg + starch only, ignores protein and extras)
-    const getBasePlateKey = (menu) => {
-      const veg = (menu.veg || '').trim();
-      const starch = (menu.starch || '').trim();
-      return `${veg}|||${starch}`;
-    };
-
-    // Helper: human-readable base plate name
-    const getBasePlateName = (menu) => {
-      const parts = [menu.veg, menu.starch].filter(Boolean);
-      return parts.join(' + ') || '(No sides)';
-    };
-
-    // Helper: check if menu has at least veg or starch
-    const hasBasePlate = (menu) => {
-      return !!(menu.veg || menu.starch);
-    };
 
     // Helper: find client by clientId (source of truth), fallback to name
     const findClientById = (menu) => {
@@ -1094,30 +1077,81 @@ export default function MenuTab({
       return activeClients.find(c => c.name === menu.clientName || c.displayName === menu.clientName);
     };
 
-    // Step 1: Filter to menus with a base plate
-    const validMenus = weekMenuItems.filter(hasBasePlate);
+    // Helper: assign each meal to exactly one group using priority
+    // Returns: { type, key, sharedName, varies, varyingValue }
+    const assignGroupKey = (menu) => {
+      const protein = (menu.protein || '').trim();
+      const veg = (menu.veg || '').trim();
+      const starch = (menu.starch || '').trim();
 
-    // Step 2: Group by base plate (veg + starch)
-    const byBasePlate = {};
-
-    validMenus.forEach(menu => {
-      const basePlateKey = getBasePlateKey(menu);
-      const protein = (menu.protein || '').trim() || '(No protein)';
-
-      if (!byBasePlate[basePlateKey]) {
-        byBasePlate[basePlateKey] = {
-          basePlateName: getBasePlateName(menu),
-          veg: menu.veg || '',
-          starch: menu.starch || '',
-          totalPortions: 0,
-          proteins: {}
+      // Priority 1: veg + starch (protein varies)
+      if (veg && starch) {
+        return {
+          type: 'VS',
+          key: `VS:${veg}|||${starch}`,
+          sharedName: `${veg} + ${starch}`,
+          varies: 'protein',
+          varyingValue: protein || '(No protein)'
         };
       }
 
-      // Step 3: Within base plate, group by protein
-      if (!byBasePlate[basePlateKey].proteins[protein]) {
-        byBasePlate[basePlateKey].proteins[protein] = {
-          protein: protein,
+      // Priority 2: protein + veg (starch varies)
+      if (protein && veg) {
+        return {
+          type: 'PV',
+          key: `PV:${protein}|||${veg}`,
+          sharedName: `${protein} + ${veg}`,
+          varies: 'starch',
+          varyingValue: starch || '(No starch)'
+        };
+      }
+
+      // Priority 3: protein + starch (veg varies)
+      if (protein && starch) {
+        return {
+          type: 'PS',
+          key: `PS:${protein}|||${starch}`,
+          sharedName: `${protein} + ${starch}`,
+          varies: 'veg',
+          varyingValue: veg || '(No veg)'
+        };
+      }
+
+      // Fallback: single component
+      const singleComponent = protein || veg || starch || '(Empty)';
+      return {
+        type: 'SINGLE',
+        key: `SINGLE:${singleComponent}`,
+        sharedName: singleComponent,
+        varies: null,
+        varyingValue: null
+      };
+    };
+
+    // Step 1: Filter to menus with at least one component
+    const validMenus = weekMenuItems.filter(m => m.protein || m.veg || m.starch);
+
+    // Step 2: Group menus by their assigned key
+    const groups = {};
+
+    validMenus.forEach(menu => {
+      const assignment = assignGroupKey(menu);
+      const { key, sharedName, varies, varyingValue } = assignment;
+
+      if (!groups[key]) {
+        groups[key] = {
+          sharedName,
+          varies,
+          totalPortions: 0,
+          variations: {}
+        };
+      }
+
+      // Group by the varying component value
+      const variationKey = varyingValue || '_none_';
+      if (!groups[key].variations[variationKey]) {
+        groups[key].variations[variationKey] = {
+          value: varyingValue,
           totalPortions: 0,
           clients: [],
           extrasSummary: {}
@@ -1130,41 +1164,44 @@ export default function MenuTab({
       const extras = menu.extras || [];
       const portions = menu.portions || 1;
 
-      byBasePlate[basePlateKey].totalPortions += portions;
-      byBasePlate[basePlateKey].proteins[protein].totalPortions += portions;
-      byBasePlate[basePlateKey].proteins[protein].clients.push({
+      groups[key].totalPortions += portions;
+      groups[key].variations[variationKey].totalPortions += portions;
+      groups[key].variations[variationKey].clients.push({
         name: displayName,
-        portions: portions,
+        portions,
         dietaryRestrictions,
         extras
       });
 
-      // Build extras summary for this protein group
+      // Build extras summary for this variation
       extras.forEach(extra => {
-        if (!byBasePlate[basePlateKey].proteins[protein].extrasSummary[extra]) {
-          byBasePlate[basePlateKey].proteins[protein].extrasSummary[extra] = 0;
+        if (!groups[key].variations[variationKey].extrasSummary[extra]) {
+          groups[key].variations[variationKey].extrasSummary[extra] = 0;
         }
-        byBasePlate[basePlateKey].proteins[protein].extrasSummary[extra] += portions;
+        groups[key].variations[variationKey].extrasSummary[extra] += portions;
       });
     });
 
-    // Step 4: Sort and prepare data
-    const sortedBasePlates = Object.entries(byBasePlate)
+    // Step 3: Sort and prepare data
+    const sortedGroups = Object.entries(groups)
       .map(([key, data]) => {
-        // Convert proteins to sorted array (by totalPortions descending)
-        const proteinList = Object.values(data.proteins)
+        // Convert variations to sorted array (by totalPortions descending)
+        const variationList = Object.values(data.variations)
           .sort((a, b) => b.totalPortions - a.totalPortions);
 
-        // Sort clients within each protein by portions descending
-        proteinList.forEach(proteinGroup => {
-          proteinGroup.clients.sort((a, b) => b.portions - a.portions);
+        // Sort clients within each variation by portions descending, then name
+        variationList.forEach(variation => {
+          variation.clients.sort((a, b) => {
+            if (b.portions !== a.portions) return b.portions - a.portions;
+            return a.name.localeCompare(b.name);
+          });
         });
 
-        return { key, ...data, proteinList };
+        return { key, ...data, variationList };
       })
       .sort((a, b) => b.totalPortions - a.totalPortions);
 
-    // Step 5: Render HTML
+    // Step 4: Render HTML
     const printWindow = window.open('', '_blank');
 
     let content = `
@@ -1189,11 +1226,11 @@ export default function MenuTab({
             border-bottom: 2px solid #3d59ab;
           }
           .header p { margin: 0; color: #666; font-size: 11px; }
-          .base-plate {
+          .group {
             margin-bottom: 28px;
             break-inside: avoid;
           }
-          .base-plate-header {
+          .group-header {
             background: #3d59ab;
             color: white;
             padding: 10px 14px;
@@ -1201,22 +1238,22 @@ export default function MenuTab({
             font-weight: bold;
             margin-bottom: 12px;
           }
-          .base-plate-header .portions {
+          .group-header .portions {
             font-weight: normal;
             opacity: 0.9;
           }
-          .protein-group {
+          .variation {
             margin-bottom: 16px;
             padding-left: 14px;
             border-left: 3px solid #ebb582;
           }
-          .protein-name {
+          .variation-name {
             font-size: 13px;
             font-weight: bold;
             color: #333;
             margin-bottom: 4px;
           }
-          .protein-name .portions {
+          .variation-name .portions {
             color: #666;
             font-weight: normal;
           }
@@ -1252,7 +1289,7 @@ export default function MenuTab({
           }
           @media print {
             body { padding: 15px; }
-            .base-plate { break-inside: avoid; }
+            .group { break-inside: avoid; }
           }
         </style>
       </head>
@@ -1263,18 +1300,23 @@ export default function MenuTab({
         </div>
     `;
 
-    // Render each base plate
-    sortedBasePlates.forEach(basePlate => {
-      content += `<div class="base-plate">`;
-      content += `<div class="base-plate-header">${basePlate.basePlateName} <span class="portions">— ${basePlate.totalPortions} portions</span></div>`;
+    // Render each group
+    sortedGroups.forEach(group => {
+      content += `<div class="group">`;
+      content += `<div class="group-header">${group.sharedName} <span class="portions">— ${group.totalPortions} portions</span></div>`;
 
-      // Render each protein group within this base plate
-      basePlate.proteinList.forEach(proteinGroup => {
-        content += `<div class="protein-group">`;
-        content += `<div class="protein-name">${proteinGroup.protein} <span class="portions">— ${proteinGroup.totalPortions}</span></div>`;
+      // Render each variation within this group
+      group.variationList.forEach(variation => {
+        // For SINGLE type groups, don't show variation header
+        if (group.varies === null) {
+          content += `<div class="variation">`;
+        } else {
+          content += `<div class="variation">`;
+          content += `<div class="variation-name">${variation.value} <span class="portions">— ${variation.totalPortions}</span></div>`;
+        }
 
-        // Extras summary for this protein group
-        const extrasSummaryItems = Object.entries(proteinGroup.extrasSummary);
+        // Extras summary for this variation
+        const extrasSummaryItems = Object.entries(variation.extrasSummary);
         if (extrasSummaryItems.length > 0) {
           const summaryText = extrasSummaryItems
             .sort((a, b) => b[1] - a[1])
@@ -1285,7 +1327,7 @@ export default function MenuTab({
 
         content += `<div class="client-list">`;
 
-        proteinGroup.clients.forEach(client => {
+        variation.clients.forEach(client => {
           content += `<div class="client-line">${client.name} — ${client.portions}</div>`;
           if (client.dietaryRestrictions) {
             content += `<div class="dietary">${client.dietaryRestrictions}</div>`;
