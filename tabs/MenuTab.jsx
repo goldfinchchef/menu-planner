@@ -1084,18 +1084,7 @@ export default function MenuTab({
       const veg = (menu.veg || '').trim();
       const starch = (menu.starch || '').trim();
 
-      // Priority 1: veg + starch (protein varies)
-      if (veg && starch) {
-        return {
-          type: 'VS',
-          key: `VS:${veg}|||${starch}`,
-          sharedName: `${veg} + ${starch}`,
-          varies: 'protein',
-          varyingValue: protein || '(No protein)'
-        };
-      }
-
-      // Priority 2: protein + veg (starch varies)
+      // Priority 1: protein + veg (starch varies)
       if (protein && veg) {
         return {
           type: 'PV',
@@ -1106,7 +1095,7 @@ export default function MenuTab({
         };
       }
 
-      // Priority 3: protein + starch (veg varies)
+      // Priority 2: protein + starch (veg varies)
       if (protein && starch) {
         return {
           type: 'PS',
@@ -1114,6 +1103,17 @@ export default function MenuTab({
           sharedName: `${protein} + ${starch}`,
           varies: 'veg',
           varyingValue: veg || '(No veg)'
+        };
+      }
+
+      // Priority 3: veg + starch (protein varies)
+      if (veg && starch) {
+        return {
+          type: 'VS',
+          key: `VS:${veg}|||${starch}`,
+          sharedName: `${veg} + ${starch}`,
+          varies: 'protein',
+          varyingValue: protein || '(No protein)'
         };
       }
 
