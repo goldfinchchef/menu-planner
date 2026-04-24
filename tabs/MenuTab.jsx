@@ -1057,8 +1057,7 @@ export default function MenuTab({
     unapprovedByClientLocal[name] = (unapprovedByClientLocal[name] || 0) + 1;
   });
 
-  // Production List print function - priority-based 2-of-3 component grouping
-  // Priority: 1) veg+starch  2) protein+veg  3) protein+starch  4) single component
+  // Production List print function - meal slot sections with adaptive 2-of-3 grouping
   const printProductionList = () => {
     // Block if unapproved menus exist
     if (unapprovedCount > 0) {
@@ -1077,131 +1076,205 @@ export default function MenuTab({
       return activeClients.find(c => c.name === menu.clientName || c.displayName === menu.clientName);
     };
 
-    // Helper: assign each meal to exactly one group using priority
-    // Returns: { type, key, sharedName, varies, varyingValue }
-    const assignGroupKey = (menu) => {
+    // Helper: get 2-of-3 grouping key for a menu
+    const getGroupingKeys = (menu) => {
       const protein = (menu.protein || '').trim();
       const veg = (menu.veg || '').trim();
       const starch = (menu.starch || '').trim();
 
-      // Priority 1: protein + veg (starch varies)
-      if (protein && veg) {
-        return {
-          type: 'PV',
-          key: `PV:${protein}|||${veg}`,
-          sharedName: `${protein} + ${veg}`,
-          varies: 'starch',
-          varyingValue: starch || '(No starch)'
-        };
-      }
-
-      // Priority 2: protein + starch (veg varies)
-      if (protein && starch) {
-        return {
-          type: 'PS',
-          key: `PS:${protein}|||${starch}`,
-          sharedName: `${protein} + ${starch}`,
-          varies: 'veg',
-          varyingValue: veg || '(No veg)'
-        };
-      }
-
-      // Priority 3: veg + starch (protein varies)
-      if (veg && starch) {
-        return {
-          type: 'VS',
-          key: `VS:${veg}|||${starch}`,
-          sharedName: `${veg} + ${starch}`,
-          varies: 'protein',
-          varyingValue: protein || '(No protein)'
-        };
-      }
-
-      // Fallback: single component
-      const singleComponent = protein || veg || starch || '(Empty)';
       return {
-        type: 'SINGLE',
-        key: `SINGLE:${singleComponent}`,
-        sharedName: singleComponent,
-        varies: null,
-        varyingValue: null
+        PV: protein && veg ? `${protein}|||${veg}` : null,
+        PS: protein && starch ? `${protein}|||${starch}` : null,
+        VS: veg && starch ? `${veg}|||${starch}` : null,
+        protein,
+        veg,
+        starch
       };
     };
 
-    // Step 1: Filter to menus with at least one component
-    const validMenus = weekMenuItems.filter(m => m.protein || m.veg || m.starch);
+    // Helper: find best grouping strategy for a set of menus
+    const findBestGrouping = (menus) => {
+      // Count how many menus share each possible 2-of-3 key
+      const pvCounts = {};
+      const psCounts = {};
+      const vsCounts = {};
 
-    // Step 2: Group menus by their assigned key
-    const groups = {};
-
-    validMenus.forEach(menu => {
-      const assignment = assignGroupKey(menu);
-      const { key, sharedName, varies, varyingValue } = assignment;
-
-      if (!groups[key]) {
-        groups[key] = {
-          sharedName,
-          varies,
-          totalPortions: 0,
-          variations: {}
-        };
-      }
-
-      // Group by the varying component value
-      const variationKey = varyingValue || '_none_';
-      if (!groups[key].variations[variationKey]) {
-        groups[key].variations[variationKey] = {
-          value: varyingValue,
-          totalPortions: 0,
-          clients: [],
-          extrasSummary: {}
-        };
-      }
-
-      const client = findClientById(menu);
-      const displayName = client?.displayName || client?.name || menu.clientName;
-      const dietaryRestrictions = client?.dietaryRestrictions || null;
-      const extras = menu.extras || [];
-      const portions = menu.portions || 1;
-
-      groups[key].totalPortions += portions;
-      groups[key].variations[variationKey].totalPortions += portions;
-      groups[key].variations[variationKey].clients.push({
-        name: displayName,
-        portions,
-        dietaryRestrictions,
-        extras
+      menus.forEach(menu => {
+        const keys = getGroupingKeys(menu);
+        if (keys.PV) pvCounts[keys.PV] = (pvCounts[keys.PV] || 0) + (menu.portions || 1);
+        if (keys.PS) psCounts[keys.PS] = (psCounts[keys.PS] || 0) + (menu.portions || 1);
+        if (keys.VS) vsCounts[keys.VS] = (vsCounts[keys.VS] || 0) + (menu.portions || 1);
       });
 
-      // Build extras summary for this variation
-      extras.forEach(extra => {
-        if (!groups[key].variations[variationKey].extrasSummary[extra]) {
-          groups[key].variations[variationKey].extrasSummary[extra] = 0;
+      // Find the best key for each type (highest portion count)
+      const bestPV = Object.entries(pvCounts).sort((a, b) => b[1] - a[1])[0];
+      const bestPS = Object.entries(psCounts).sort((a, b) => b[1] - a[1])[0];
+      const bestVS = Object.entries(vsCounts).sort((a, b) => b[1] - a[1])[0];
+
+      // Choose the grouping type with the highest portion count
+      // Priority order for ties: PV > PS > VS
+      const candidates = [
+        bestPV ? { type: 'PV', key: bestPV[0], portions: bestPV[1] } : null,
+        bestPS ? { type: 'PS', key: bestPS[0], portions: bestPS[1] } : null,
+        bestVS ? { type: 'VS', key: bestVS[0], portions: bestVS[1] } : null
+      ].filter(Boolean);
+
+      if (candidates.length === 0) return null;
+
+      // Sort by portions descending, then by priority (PV > PS > VS)
+      const priority = { PV: 0, PS: 1, VS: 2 };
+      candidates.sort((a, b) => {
+        if (b.portions !== a.portions) return b.portions - a.portions;
+        return priority[a.type] - priority[b.type];
+      });
+
+      return candidates[0];
+    };
+
+    // Helper: group menus by best 2-of-3 strategy
+    const groupMenusByBestStrategy = (menus) => {
+      const result = [];
+      let remaining = [...menus];
+
+      while (remaining.length > 0) {
+        const best = findBestGrouping(remaining);
+
+        if (!best) {
+          // No valid 2-of-3 grouping possible, add as singles
+          remaining.forEach(menu => {
+            const client = findClientById(menu);
+            const protein = (menu.protein || '').trim();
+            const veg = (menu.veg || '').trim();
+            const starch = (menu.starch || '').trim();
+            const singleName = [protein, veg, starch].filter(Boolean).join(' + ') || '(Empty)';
+
+            result.push({
+              sharedName: singleName,
+              varies: null,
+              totalPortions: menu.portions || 1,
+              variations: [{
+                value: null,
+                totalPortions: menu.portions || 1,
+                clients: [{
+                  name: client?.displayName || client?.name || menu.clientName,
+                  portions: menu.portions || 1,
+                  dietaryRestrictions: client?.dietaryRestrictions || null,
+                  extras: menu.extras || []
+                }],
+                extrasSummary: (menu.extras || []).reduce((acc, e) => {
+                  acc[e] = (acc[e] || 0) + (menu.portions || 1);
+                  return acc;
+                }, {})
+              }]
+            });
+          });
+          break;
         }
-        groups[key].variations[variationKey].extrasSummary[extra] += portions;
-      });
-    });
 
-    // Step 3: Sort and prepare data
-    const sortedGroups = Object.entries(groups)
-      .map(([key, data]) => {
-        // Convert variations to sorted array (by totalPortions descending)
-        const variationList = Object.values(data.variations)
+        // Find all menus that match the best grouping key
+        const [comp1, comp2] = best.key.split('|||');
+        const matchingMenus = [];
+        const nonMatchingMenus = [];
+
+        remaining.forEach(menu => {
+          const keys = getGroupingKeys(menu);
+          let matches = false;
+
+          if (best.type === 'PV' && keys.protein === comp1 && keys.veg === comp2) {
+            matches = true;
+          } else if (best.type === 'PS' && keys.protein === comp1 && keys.starch === comp2) {
+            matches = true;
+          } else if (best.type === 'VS' && keys.veg === comp1 && keys.starch === comp2) {
+            matches = true;
+          }
+
+          if (matches) {
+            matchingMenus.push(menu);
+          } else {
+            nonMatchingMenus.push(menu);
+          }
+        });
+
+        // Build the group
+        const sharedName = `${comp1} + ${comp2}`;
+        const varies = best.type === 'PV' ? 'starch' : best.type === 'PS' ? 'veg' : 'protein';
+        const variations = {};
+        let totalPortions = 0;
+        const groupExtrasSummary = {};
+
+        matchingMenus.forEach(menu => {
+          const keys = getGroupingKeys(menu);
+          const varyingValue = varies === 'starch' ? (keys.starch || '(No starch)')
+            : varies === 'veg' ? (keys.veg || '(No veg)')
+            : (keys.protein || '(No protein)');
+
+          if (!variations[varyingValue]) {
+            variations[varyingValue] = {
+              value: varyingValue,
+              totalPortions: 0,
+              clients: [],
+              extrasSummary: {}
+            };
+          }
+
+          const client = findClientById(menu);
+          const portions = menu.portions || 1;
+          const extras = menu.extras || [];
+
+          totalPortions += portions;
+          variations[varyingValue].totalPortions += portions;
+          variations[varyingValue].clients.push({
+            name: client?.displayName || client?.name || menu.clientName,
+            portions,
+            dietaryRestrictions: client?.dietaryRestrictions || null,
+            extras
+          });
+
+          extras.forEach(extra => {
+            variations[varyingValue].extrasSummary[extra] = (variations[varyingValue].extrasSummary[extra] || 0) + portions;
+            groupExtrasSummary[extra] = (groupExtrasSummary[extra] || 0) + portions;
+          });
+        });
+
+        // Convert variations to sorted array
+        const variationList = Object.values(variations)
           .sort((a, b) => b.totalPortions - a.totalPortions);
 
-        // Sort clients within each variation by portions descending, then name
-        variationList.forEach(variation => {
-          variation.clients.sort((a, b) => {
+        // Sort clients within each variation
+        variationList.forEach(v => {
+          v.clients.sort((a, b) => {
             if (b.portions !== a.portions) return b.portions - a.portions;
             return a.name.localeCompare(b.name);
           });
         });
 
-        return { key, ...data, variationList };
-      })
-      .sort((a, b) => b.totalPortions - a.totalPortions);
+        result.push({
+          sharedName,
+          varies,
+          totalPortions,
+          variations: variationList,
+          extrasSummary: groupExtrasSummary
+        });
 
-    // Step 4: Render HTML
+        remaining = nonMatchingMenus;
+      }
+
+      // Sort groups by total portions descending
+      result.sort((a, b) => b.totalPortions - a.totalPortions);
+      return result;
+    };
+
+    // Step 1: Organize menus by meal slot
+    const mealSlots = ['meal1', 'meal2', 'meal3', 'meal4'];
+    const menusBySlot = {};
+
+    mealSlots.forEach(slot => {
+      menusBySlot[slot] = weekMenuItems.filter(m =>
+        m.mealSlot === slot && (m.protein || m.veg || m.starch)
+      );
+    });
+
+    // Step 2: Render HTML
     const printWindow = window.open('', '_blank');
 
     let content = `
@@ -1226,29 +1299,42 @@ export default function MenuTab({
             border-bottom: 2px solid #3d59ab;
           }
           .header p { margin: 0; color: #666; font-size: 11px; }
+          .meal-section {
+            margin-bottom: 30px;
+          }
+          .meal-header {
+            background: #1e3a5f;
+            color: white;
+            padding: 12px 16px;
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 16px;
+            border-left: 5px solid #ebb582;
+          }
           .group {
-            margin-bottom: 28px;
+            margin-bottom: 20px;
+            margin-left: 10px;
             break-inside: avoid;
           }
           .group-header {
             background: #3d59ab;
             color: white;
-            padding: 10px 14px;
-            font-size: 14px;
+            padding: 8px 12px;
+            font-size: 13px;
             font-weight: bold;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
           }
           .group-header .portions {
             font-weight: normal;
             opacity: 0.9;
           }
           .variation {
-            margin-bottom: 16px;
+            margin-bottom: 14px;
             padding-left: 14px;
             border-left: 3px solid #ebb582;
           }
           .variation-name {
-            font-size: 13px;
+            font-size: 12px;
             font-weight: bold;
             color: #333;
             margin-bottom: 4px;
@@ -1260,8 +1346,10 @@ export default function MenuTab({
           .extras-summary {
             font-size: 10px;
             color: #7c3aed;
-            margin-bottom: 6px;
-            padding-left: 4px;
+            margin-top: 8px;
+            padding: 4px 8px;
+            background: #f3f0ff;
+            border-radius: 3px;
           }
           .client-list {
             margin-left: 4px;
@@ -1289,6 +1377,7 @@ export default function MenuTab({
           }
           @media print {
             body { padding: 15px; }
+            .meal-section { break-inside: avoid-page; }
             .group { break-inside: avoid; }
           }
         </style>
@@ -1300,44 +1389,55 @@ export default function MenuTab({
         </div>
     `;
 
-    // Render each group
-    sortedGroups.forEach(group => {
-      content += `<div class="group">`;
-      content += `<div class="group-header">${group.sharedName} <span class="portions">— ${group.totalPortions} portions</span></div>`;
+    // Render each meal slot
+    mealSlots.forEach((slot, index) => {
+      const menus = menusBySlot[slot];
+      if (menus.length === 0) return;
 
-      // Render each variation within this group
-      group.variationList.forEach(variation => {
-        // For SINGLE type groups, don't show variation header
-        if (group.varies === null) {
-          content += `<div class="variation">`;
-        } else {
-          content += `<div class="variation">`;
-          content += `<div class="variation-name">${variation.value} <span class="portions">— ${variation.totalPortions}</span></div>`;
-        }
+      const mealNumber = index + 1;
+      content += `<div class="meal-section">`;
+      content += `<div class="meal-header">MEAL ${mealNumber}</div>`;
 
-        // Extras summary for this variation
-        const extrasSummaryItems = Object.entries(variation.extrasSummary);
-        if (extrasSummaryItems.length > 0) {
-          const summaryText = extrasSummaryItems
+      // Get grouped menus for this slot
+      const groups = groupMenusByBestStrategy(menus);
+
+      groups.forEach(group => {
+        content += `<div class="group">`;
+        content += `<div class="group-header">${group.sharedName} <span class="portions">— ${group.totalPortions} portions</span></div>`;
+
+        group.variations.forEach(variation => {
+          content += `<div class="variation">`;
+
+          // Show variation name if there's a varying component
+          if (group.varies && variation.value) {
+            content += `<div class="variation-name">${variation.value} <span class="portions">— ${variation.totalPortions} portions</span></div>`;
+          }
+
+          content += `<div class="client-list">`;
+          variation.clients.forEach(client => {
+            content += `<div class="client-line">${client.name} (${client.portions})</div>`;
+            if (client.dietaryRestrictions) {
+              content += `<div class="dietary">${client.dietaryRestrictions}</div>`;
+            }
+            if (client.extras && client.extras.length > 0) {
+              content += `<div class="client-extras">+ ${client.extras.join(', ')}</div>`;
+            }
+          });
+          content += `</div>`;
+
+          content += `</div>`;
+        });
+
+        // Group-level extras summary
+        if (group.extrasSummary && Object.keys(group.extrasSummary).length > 0) {
+          const summaryText = Object.entries(group.extrasSummary)
             .sort((a, b) => b[1] - a[1])
-            .map(([extra, count]) => `${extra} × ${count}`)
+            .map(([extra, count]) => `${extra}: ${count}`)
             .join(', ');
           content += `<div class="extras-summary">Extras: ${summaryText}</div>`;
         }
 
-        content += `<div class="client-list">`;
-
-        variation.clients.forEach(client => {
-          content += `<div class="client-line">${client.name} — ${client.portions}</div>`;
-          if (client.dietaryRestrictions) {
-            content += `<div class="dietary">${client.dietaryRestrictions}</div>`;
-          }
-          if (client.extras && client.extras.length > 0) {
-            content += `<div class="client-extras">+ ${client.extras.join(', ')}</div>`;
-          }
-        });
-
-        content += `</div></div>`;
+        content += `</div>`;
       });
 
       content += `</div>`;
