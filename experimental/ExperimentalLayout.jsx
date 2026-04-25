@@ -34,7 +34,15 @@ import {
   upsertClientWeekStatus,
   deleteClientWeekStatus,
   confirmClientWeek,
-  deleteMenusForClientWeek
+  deleteMenusForClientWeek,
+  // Base weekly menus (menu-first model)
+  fetchBaseWeeklyMenus,
+  saveAllBaseWeeklyMenus,
+  fetchAllClientMealAssignments,
+  saveClientMealAssignment,
+  deleteClientMealAssignment,
+  getDefaultMealAssignment,
+  applyBaseMenuToClients
 } from '../lib/database';
 import { isConfigured, checkConnection } from '../lib/supabase';
 
@@ -100,6 +108,10 @@ export default function ExperimentalLayout() {
 
   // Client week status state (planning intent: unconfirmed, skipped)
   const [clientWeekStatuses, setClientWeekStatuses] = useState([]);
+
+  // Base weekly menus state (menu-first model)
+  const [baseWeeklyMenus, setBaseWeeklyMenus] = useState([]);
+  const [clientMealAssignments, setClientMealAssignments] = useState([]);
 
   // File refs for CSV imports
   const clientsFileRef = useRef();
@@ -439,6 +451,152 @@ export default function ExperimentalLayout() {
       return { success: false, error: err.message };
     }
   }, []);
+
+  // ============ BASE WEEKLY MENUS (Menu-First Model) ============
+
+  // Load base menus and assignments for a week
+  const loadBaseMenuData = useCallback(async (weekId) => {
+    if (!isSupabaseMode() || !isConfigured() || !weekId) {
+      return;
+    }
+
+    try {
+      const [baseMenus, assignments] = await Promise.all([
+        fetchBaseWeeklyMenus(weekId),
+        fetchAllClientMealAssignments(weekId)
+      ]);
+      setBaseWeeklyMenus(baseMenus);
+      setClientMealAssignments(assignments);
+      console.log('[BaseMenus] Loaded', baseMenus.length, 'base meals,', assignments.length, 'assignments for', weekId);
+    } catch (err) {
+      console.error('[BaseMenus] Error loading:', err);
+    }
+  }, []);
+
+  // Save all 4 base menus for the selected week
+  const saveBaseMenus = useCallback(async (meals) => {
+    if (!isSupabaseMode() || !isConfigured()) {
+      return { success: false, error: 'Supabase not configured' };
+    }
+
+    try {
+      const saved = await saveAllBaseWeeklyMenus(selectedWeekId, meals);
+      setBaseWeeklyMenus(saved);
+      return { success: true, saved };
+    } catch (err) {
+      console.error('[BaseMenus] Error saving:', err);
+      return { success: false, error: err.message };
+    }
+  }, [selectedWeekId]);
+
+  // Save a client's meal assignment override
+  const saveMealAssignment = useCallback(async (clientId, assignedMeals) => {
+    if (!isSupabaseMode() || !isConfigured()) {
+      return { success: false, error: 'Supabase not configured' };
+    }
+
+    try {
+      const saved = await saveClientMealAssignment(clientId, selectedWeekId, assignedMeals);
+      setClientMealAssignments(prev => {
+        const filtered = prev.filter(a => !(a.client_id === clientId && a.week_id === selectedWeekId));
+        return [...filtered, saved];
+      });
+      return { success: true, saved };
+    } catch (err) {
+      console.error('[MealAssignment] Error saving:', err);
+      return { success: false, error: err.message };
+    }
+  }, [selectedWeekId]);
+
+  // Delete a client's meal assignment (revert to default)
+  const deleteMealAssignment = useCallback(async (clientId) => {
+    if (!isSupabaseMode() || !isConfigured()) {
+      return { success: false, error: 'Supabase not configured' };
+    }
+
+    try {
+      await deleteClientMealAssignment(clientId, selectedWeekId);
+      setClientMealAssignments(prev =>
+        prev.filter(a => !(a.client_id === clientId && a.week_id === selectedWeekId))
+      );
+      return { success: true };
+    } catch (err) {
+      console.error('[MealAssignment] Error deleting:', err);
+      return { success: false, error: err.message };
+    }
+  }, [selectedWeekId]);
+
+  // Get assigned meals for a client (override or default)
+  const getClientAssignedMeals = useCallback((clientId, mealsPerWeek) => {
+    const override = clientMealAssignments.find(
+      a => a.client_id === clientId && a.week_id === selectedWeekId
+    );
+    if (override) {
+      return override.assigned_meals;
+    }
+    return getDefaultMealAssignment(mealsPerWeek);
+  }, [clientMealAssignments, selectedWeekId]);
+
+  // Apply base menu to all confirmed clients
+  const applyBaseMenu = useCallback(async () => {
+    if (!isSupabaseMode() || !isConfigured()) {
+      return { success: false, error: 'Supabase not configured' };
+    }
+
+    if (baseWeeklyMenus.length === 0) {
+      return { success: false, error: 'No base menus defined for this week' };
+    }
+
+    // Get confirmed clients (those with menus for this week)
+    const confirmedClients = [];
+    const activeClients = clients.filter(c => c.status === 'active');
+
+    for (const client of activeClients) {
+      // Check if client has a confirmed date this week
+      const clientMenus = scheduleMenus.filter(
+        m => m.client_id === client.id && m.week_id === selectedWeekId
+      );
+
+      if (clientMenus.length > 0) {
+        // Already has menus - will be skipped by applyBaseMenuToClients
+        confirmedClients.push({ client, date: clientMenus[0].date });
+      } else {
+        // Check if client has a delivery date this week
+        const deliveryDates = client.deliveryDates || client.delivery_dates || [];
+        const weekStart = getWeekStartDate(selectedWeekId);
+        const weekEnd = getWeekEndDate(selectedWeekId);
+
+        const dateInWeek = deliveryDates.find(d => d && d >= weekStart && d <= weekEnd);
+        if (dateInWeek) {
+          confirmedClients.push({ client, date: dateInWeek });
+        }
+      }
+    }
+
+    if (confirmedClients.length === 0) {
+      return { success: false, error: 'No confirmed clients for this week' };
+    }
+
+    try {
+      const result = await applyBaseMenuToClients(
+        selectedWeekId,
+        baseWeeklyMenus,
+        confirmedClients,
+        clientMealAssignments
+      );
+
+      // Refresh schedule menus to show new rows
+      if (result.created > 0) {
+        const menus = await fetchMenusForWeekRange([selectedWeekId]);
+        setScheduleMenus(menus);
+      }
+
+      return { success: true, ...result };
+    } catch (err) {
+      console.error('[ApplyBaseMenu] Error:', err);
+      return { success: false, error: err.message };
+    }
+  }, [baseWeeklyMenus, clients, scheduleMenus, selectedWeekId, clientMealAssignments]);
 
   // Get menu state for a client + week cell
   // Display states: empty, unconfirmed, confirmed, skipped
@@ -1052,7 +1210,18 @@ export default function ExperimentalLayout() {
     transitionToPlanning,
     transitionToEmpty,
     setPlanningStatus,
-    getScheduleCellState
+    getScheduleCellState,
+
+    // Base weekly menus (menu-first model)
+    baseWeeklyMenus,
+    clientMealAssignments,
+    loadBaseMenuData,
+    saveBaseMenus,
+    saveMealAssignment,
+    deleteMealAssignment,
+    getClientAssignedMeals,
+    applyBaseMenu,
+    getDefaultMealAssignment
   };
 
   return (
