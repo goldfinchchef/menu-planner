@@ -1092,165 +1092,139 @@ export default function MenuTab({
       };
     };
 
-    // Helper: find best grouping strategy for a set of menus
-    const findBestGrouping = (menus, mealNum, iteration) => {
-      // Count how many menus share each possible 2-of-3 key
-      const pvGroups = {};  // key -> { portions, clients[] }
-      const psGroups = {};
-      const vsGroups = {};
+    // Helper: group all menus for a meal using ONE grouping type (no iteration)
+    // Algorithm:
+    // 1. Evaluate PV, PS, VS - find largest group size for each type
+    // 2. Select type with largest group (tiebreaker: PV > VS > PS)
+    // 3. Group ALL menus by that type
+    const groupMenusForMeal = (menus, mealNum) => {
+      if (menus.length === 0) return [];
 
-      menus.forEach(menu => {
-        const keys = getGroupingKeys(menu);
-        const clientName = menu.clientName;
-        const portions = menu.portions || 1;
-
-        if (keys.PV) {
-          if (!pvGroups[keys.PV]) pvGroups[keys.PV] = { portions: 0, clients: [] };
-          pvGroups[keys.PV].portions += portions;
-          pvGroups[keys.PV].clients.push({ name: clientName, portions });
-        }
-        if (keys.PS) {
-          if (!psGroups[keys.PS]) psGroups[keys.PS] = { portions: 0, clients: [] };
-          psGroups[keys.PS].portions += portions;
-          psGroups[keys.PS].clients.push({ name: clientName, portions });
-        }
-        if (keys.VS) {
-          if (!vsGroups[keys.VS]) vsGroups[keys.VS] = { portions: 0, clients: [] };
-          vsGroups[keys.VS].portions += portions;
-          vsGroups[keys.VS].clients.push({ name: clientName, portions });
-        }
-      });
-
-      // DEBUG: Log all candidate groups
-      console.log(`[DEBUG Meal ${mealNum} Iter ${iteration}] PV groups:`,
-        Object.entries(pvGroups).map(([key, data]) => ({
-          key: key.replace('|||', ' + '),
-          portions: data.portions,
-          clients: data.clients.map(c => `${c.name}(${c.portions})`).join(', ')
-        }))
-      );
-      console.log(`[DEBUG Meal ${mealNum} Iter ${iteration}] PS groups:`,
-        Object.entries(psGroups).map(([key, data]) => ({
-          key: key.replace('|||', ' + '),
-          portions: data.portions,
-          clients: data.clients.map(c => `${c.name}(${c.portions})`).join(', ')
-        }))
-      );
-      console.log(`[DEBUG Meal ${mealNum} Iter ${iteration}] VS groups:`,
-        Object.entries(vsGroups).map(([key, data]) => ({
-          key: key.replace('|||', ' + '),
-          portions: data.portions,
-          clients: data.clients.map(c => `${c.name}(${c.portions})`).join(', ')
-        }))
-      );
-
-      // Find the best key for each type (highest portion count)
-      const bestPV = Object.entries(pvGroups).sort((a, b) => b[1].portions - a[1].portions)[0];
-      const bestPS = Object.entries(psGroups).sort((a, b) => b[1].portions - a[1].portions)[0];
-      const bestVS = Object.entries(vsGroups).sort((a, b) => b[1].portions - a[1].portions)[0];
-
-      // Choose the grouping type with the highest portion count
-      // Priority order for ties: PV > PS > VS
-      const candidates = [
-        bestPV ? { type: 'PV', key: bestPV[0], portions: bestPV[1].portions } : null,
-        bestPS ? { type: 'PS', key: bestPS[0], portions: bestPS[1].portions } : null,
-        bestVS ? { type: 'VS', key: bestVS[0], portions: bestVS[1].portions } : null
-      ].filter(Boolean);
-
-      if (candidates.length === 0) return null;
-
-      // Sort by portions descending, then by priority (PV > PS > VS)
-      const priority = { PV: 0, PS: 1, VS: 2 };
-      candidates.sort((a, b) => {
-        if (b.portions !== a.portions) return b.portions - a.portions;
-        return priority[a.type] - priority[b.type];
-      });
-
-      // DEBUG: Log selection reasoning
-      console.log(`[DEBUG Meal ${mealNum} Iter ${iteration}] Best candidates:`, candidates.map(c => ({
-        type: c.type,
-        key: c.key.replace('|||', ' + '),
-        portions: c.portions
-      })));
-      console.log(`[DEBUG Meal ${mealNum} Iter ${iteration}] SELECTED: ${candidates[0].type} "${candidates[0].key.replace('|||', ' + ')}" (${candidates[0].portions}p)`);
-
-      return candidates[0];
-    };
-
-    // Helper: group menus by best 2-of-3 strategy
-    const groupMenusByBestStrategy = (menus, mealNum) => {
-      const result = [];
-      let remaining = [...menus];
-      let iteration = 1;
-
-      while (remaining.length > 0) {
-        const best = findBestGrouping(remaining, mealNum, iteration);
-        iteration++;
-
-        if (!best) {
-          // No valid 2-of-3 grouping possible, add as singles
-          remaining.forEach(menu => {
-            const client = findClientById(menu);
-            const protein = (menu.protein || '').trim();
-            const veg = (menu.veg || '').trim();
-            const starch = (menu.starch || '').trim();
-            const singleName = [protein, veg, starch].filter(Boolean).join(' + ') || '(Empty)';
-
-            result.push({
-              sharedName: singleName,
-              varies: null,
-              totalPortions: menu.portions || 1,
-              variations: [{
-                value: null,
-                totalPortions: menu.portions || 1,
-                clients: [{
-                  name: client?.displayName || client?.name || menu.clientName,
-                  portions: menu.portions || 1,
-                  dietaryRestrictions: client?.dietaryRestrictions || null,
-                  extras: menu.extras || []
-                }],
-                extrasSummary: (menu.extras || []).reduce((acc, e) => {
-                  acc[e] = (acc[e] || 0) + (menu.portions || 1);
-                  return acc;
-                }, {})
-              }]
-            });
-          });
-          break;
-        }
-
-        // Find all menus that match the best grouping key
-        const [comp1, comp2] = best.key.split('|||');
-        const matchingMenus = [];
-        const nonMatchingMenus = [];
-
-        remaining.forEach(menu => {
+      // Build all possible groups for each type
+      const buildGroups = (type) => {
+        const groups = {};
+        menus.forEach(menu => {
           const keys = getGroupingKeys(menu);
-          let matches = false;
+          let groupKey = null;
 
-          if (best.type === 'PV' && keys.protein === comp1 && keys.veg === comp2) {
-            matches = true;
-          } else if (best.type === 'PS' && keys.protein === comp1 && keys.starch === comp2) {
-            matches = true;
-          } else if (best.type === 'VS' && keys.veg === comp1 && keys.starch === comp2) {
-            matches = true;
+          if (type === 'PV' && keys.protein && keys.veg) {
+            groupKey = `${keys.protein}|||${keys.veg}`;
+          } else if (type === 'PS' && keys.protein && keys.starch) {
+            groupKey = `${keys.protein}|||${keys.starch}`;
+          } else if (type === 'VS' && keys.veg && keys.starch) {
+            groupKey = `${keys.veg}|||${keys.starch}`;
           }
 
-          if (matches) {
-            matchingMenus.push(menu);
-          } else {
-            nonMatchingMenus.push(menu);
+          if (groupKey) {
+            if (!groups[groupKey]) groups[groupKey] = { portions: 0, menus: [] };
+            groups[groupKey].portions += (menu.portions || 1);
+            groups[groupKey].menus.push(menu);
           }
         });
+        return groups;
+      };
 
-        // Build the group
+      const pvGroups = buildGroups('PV');
+      const psGroups = buildGroups('PS');
+      const vsGroups = buildGroups('VS');
+
+      // Find largest group size for each type
+      const largestPV = Math.max(0, ...Object.values(pvGroups).map(g => g.portions));
+      const largestPS = Math.max(0, ...Object.values(psGroups).map(g => g.portions));
+      const largestVS = Math.max(0, ...Object.values(vsGroups).map(g => g.portions));
+
+      // DEBUG: Log scores
+      console.log(`[Meal ${mealNum}] Grouping scores:`);
+      console.log(`  PV largest group: ${largestPV}p (${Object.keys(pvGroups).length} groups)`);
+      console.log(`  PS largest group: ${largestPS}p (${Object.keys(psGroups).length} groups)`);
+      console.log(`  VS largest group: ${largestVS}p (${Object.keys(vsGroups).length} groups)`);
+
+      // Select winning type: largest group wins, tiebreaker PV > VS > PS
+      let selectedType = 'PV';
+      let selectedGroups = pvGroups;
+      let largestSize = largestPV;
+
+      // Check VS (higher priority than PS in tiebreaker)
+      if (largestVS > largestSize || (largestVS === largestSize && largestVS > 0)) {
+        // VS wins if larger, or if tied with PV we keep PV (PV > VS)
+        if (largestVS > largestSize) {
+          selectedType = 'VS';
+          selectedGroups = vsGroups;
+          largestSize = largestVS;
+        }
+      }
+
+      // Check PS (lowest priority in tiebreaker)
+      if (largestPS > largestSize) {
+        selectedType = 'PS';
+        selectedGroups = psGroups;
+        largestSize = largestPS;
+      }
+
+      // Handle tie between PV and VS (PV wins)
+      if (largestPV === largestVS && largestPV >= largestPS && largestPV > 0) {
+        selectedType = 'PV';
+        selectedGroups = pvGroups;
+      }
+      // Handle tie between all three (PV wins)
+      if (largestPV === largestVS && largestVS === largestPS && largestPV > 0) {
+        selectedType = 'PV';
+        selectedGroups = pvGroups;
+      }
+      // Handle tie between VS and PS (VS wins)
+      if (largestVS === largestPS && largestVS > largestPV && largestVS > 0) {
+        selectedType = 'VS';
+        selectedGroups = vsGroups;
+      }
+
+      console.log(`[Meal ${mealNum}] SELECTED: ${selectedType} (largest group: ${largestSize}p)`);
+
+      // If no valid grouping possible, return menus as singles
+      if (Object.keys(selectedGroups).length === 0) {
+        console.log(`[Meal ${mealNum}] No valid grouping, returning as singles`);
+        return menus.map(menu => {
+          const client = findClientById(menu);
+          const protein = (menu.protein || '').trim();
+          const veg = (menu.veg || '').trim();
+          const starch = (menu.starch || '').trim();
+          const singleName = [protein, veg, starch].filter(Boolean).join(' + ') || '(Empty)';
+
+          return {
+            sharedName: singleName,
+            varies: null,
+            totalPortions: menu.portions || 1,
+            variations: [{
+              value: null,
+              totalPortions: menu.portions || 1,
+              clients: [{
+                name: client?.displayName || client?.name || menu.clientName,
+                portions: menu.portions || 1,
+                dietaryRestrictions: client?.dietaryRestrictions || null,
+                extras: menu.extras || []
+              }],
+              extrasSummary: (menu.extras || []).reduce((acc, e) => {
+                acc[e] = (acc[e] || 0) + (menu.portions || 1);
+                return acc;
+              }, {})
+            }]
+          };
+        });
+      }
+
+      // Determine what varies based on selected type
+      const varies = selectedType === 'PV' ? 'starch' : selectedType === 'PS' ? 'veg' : 'protein';
+
+      // Build result groups
+      const result = [];
+
+      Object.entries(selectedGroups).forEach(([groupKey, groupData]) => {
+        const [comp1, comp2] = groupKey.split('|||');
         const sharedName = `${comp1} + ${comp2}`;
-        const varies = best.type === 'PV' ? 'starch' : best.type === 'PS' ? 'veg' : 'protein';
         const variations = {};
         let totalPortions = 0;
         const groupExtrasSummary = {};
 
-        matchingMenus.forEach(menu => {
+        groupData.menus.forEach(menu => {
           const keys = getGroupingKeys(menu);
           const varyingValue = varies === 'starch' ? (keys.starch || '(No starch)')
             : varies === 'veg' ? (keys.veg || '(No veg)')
@@ -1303,9 +1277,7 @@ export default function MenuTab({
           variations: variationList,
           extrasSummary: groupExtrasSummary
         });
-
-        remaining = nonMatchingMenus;
-      }
+      });
 
       // Sort groups by total portions descending
       result.sort((a, b) => b.totalPortions - a.totalPortions);
@@ -1342,8 +1314,8 @@ export default function MenuTab({
         console.log(`  ${i + 1}. ${m.clientName} (${m.portions || 1}p): "${m.protein || '—'}" | "${m.veg || '—'}" | "${m.starch || '—'}"`);
       });
 
-      // Get grouped menus for this meal
-      const groups = groupMenusByBestStrategy(menus, mealNumber);
+      // Get grouped menus for this meal (single grouping type for entire meal)
+      const groups = groupMenusForMeal(menus, mealNumber);
       allGroupedData[mealNumber] = groups;
 
       // DEBUG: Log final grouped output
