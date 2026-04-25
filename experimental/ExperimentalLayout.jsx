@@ -42,7 +42,8 @@ import {
   saveClientMealAssignment,
   deleteClientMealAssignment,
   getDefaultMealAssignment,
-  applyBaseMenuToClients
+  applyBaseMenuToClients,
+  ensureWeeksExist
 } from '../lib/database';
 import { isConfigured, checkConnection } from '../lib/supabase';
 
@@ -578,6 +579,9 @@ export default function ExperimentalLayout() {
     }
 
     try {
+      // Ensure week exists in weeks table before inserting menus
+      await ensureWeeksExist([selectedWeekId]);
+
       const result = await applyBaseMenuToClients(
         selectedWeekId,
         baseWeeklyMenus,
