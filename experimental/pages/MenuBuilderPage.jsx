@@ -13,7 +13,6 @@ export default function MenuBuilderPage() {
     recipes,
     selectedWeekId,
     scheduleMenus,
-    setMenuItems,
     getRecipeCost,
     // Base menu functions
     baseWeeklyMenus,
@@ -24,7 +23,8 @@ export default function MenuBuilderPage() {
     deleteMealAssignment,
     getClientAssignedMeals,
     applyBaseMenu,
-    getDefaultMealAssignment
+    getDefaultMealAssignment,
+    updateClientMeal
   } = useExperimentalContext();
 
   // Local state for editing base menus
@@ -181,18 +181,16 @@ export default function MenuBuilderPage() {
     setEditForm({});
   };
 
-  const saveMeal = (menuId) => {
-    setMenuItems(prev => prev.map(item => {
-      if (item.id === menuId) {
-        return {
-          ...item,
-          protein: editForm.protein || null,
-          veg: editForm.veg || null,
-          starch: editForm.starch || null
-        };
-      }
-      return item;
-    }));
+  const saveMeal = async (menuId) => {
+    const result = await updateClientMeal(menuId, {
+      protein: editForm.protein || '',
+      veg: editForm.veg || '',
+      starch: editForm.starch || ''
+    });
+
+    if (!result.success) {
+      alert(`Failed to save: ${result.error}`);
+    }
     cancelEditing();
   };
 

@@ -43,7 +43,8 @@ import {
   deleteClientMealAssignment,
   getDefaultMealAssignment,
   applyBaseMenuToClients,
-  ensureWeeksExist
+  ensureWeeksExist,
+  saveClientMeal
 } from '../lib/database';
 import { isConfigured, checkConnection } from '../lib/supabase';
 
@@ -601,6 +602,23 @@ export default function ExperimentalLayout() {
       return { success: false, error: err.message };
     }
   }, [baseWeeklyMenus, clients, scheduleMenus, selectedWeekId, clientMealAssignments]);
+
+  // Save individual client menu edit (override from base)
+  const updateClientMeal = useCallback(async (menuId, updates) => {
+    try {
+      const updatedRow = await saveClientMeal(menuId, updates);
+
+      // Update scheduleMenus state with the new values
+      setScheduleMenus(prev => prev.map(menu =>
+        menu.id === menuId ? { ...menu, ...updatedRow } : menu
+      ));
+
+      return { success: true, data: updatedRow };
+    } catch (err) {
+      console.error('[updateClientMeal] Error:', err);
+      return { success: false, error: err.message };
+    }
+  }, []);
 
   // Get menu state for a client + week cell
   // Display states: empty, unconfirmed, confirmed, skipped
@@ -1225,7 +1243,8 @@ export default function ExperimentalLayout() {
     deleteMealAssignment,
     getClientAssignedMeals,
     applyBaseMenu,
-    getDefaultMealAssignment
+    getDefaultMealAssignment,
+    updateClientMeal
   };
 
   return (
