@@ -3,7 +3,7 @@ import { Plus, Trash2, Check, AlertTriangle, Circle, Eye, X, ChevronDown, Chevro
 import WeekSelector from '../components/WeekSelector';
 import { getWeekIdFromDate, getWeekStartDate, getWeekEndDate } from '../utils/weekUtils';
 import { isSupabaseMode, isLocalMode } from '../lib/dataMode';
-import { saveAllMenus, fetchMenus, ensureWeeksExist, syncDeliveryStopsForWeek, approveAllMenusForWeek, fetchMenusByWeek, deleteMenusForClientDate, createBlankMenusForClientDate, saveMenu, deleteMenuRow, fetchMenusForClientDate } from '../lib/database';
+import { saveAllMenus, fetchMenus, ensureWeeksExist, syncDeliveryStopsForWeek, approveAllMenusForWeek, fetchMenusByWeek, deleteMenusForClientDate, createBlankMenusForClientDate, saveMenu, deleteMenuRow, fetchMenusForClientDate, fetchBaseWeeklyMenus } from '../lib/database';
 import { checkConnection } from '../lib/supabase';
 
 // Styled Menu Card Component - matches client portal
@@ -1058,13 +1058,28 @@ export default function MenuTab({
   });
 
   // Production List print function - meal slot sections with adaptive 2-of-3 grouping
-  const printProductionList = () => {
+  // Uses base_meal_index when available (new workflow), falls back to inference for legacy menus
+  const printProductionList = async () => {
     // Block if unapproved menus exist
     if (unapprovedCount > 0) {
       const topClients = Object.entries(unapprovedByClientLocal).slice(0, 3).map(([name, count]) => `${name} (${count})`).join(', ');
       console.log('[PRINT BLOCKED]', { weekId: selectedWeekId, unapprovedMenuCount: unapprovedCount, unapprovedByClient: unapprovedByClientLocal });
       alert(`Cannot print yet: ${unapprovedCount} unapproved menu(s).\n\nClients: ${topClients}\n\nApprove all menus first.`);
       return;
+    }
+
+    // Check if menus use the new base menu workflow (have base_meal_index)
+    const hasBaseMenuData = weekMenuItems.some(m => m.baseMealIndex != null || m.base_meal_index != null);
+
+    // Fetch base weekly menus if using new workflow
+    let baseMenus = [];
+    if (hasBaseMenuData && isSupabaseMode()) {
+      try {
+        baseMenus = await fetchBaseWeeklyMenus(selectedWeekId);
+        console.log('[ProductionList] Using base menu workflow, found', baseMenus.length, 'base meals');
+      } catch (err) {
+        console.warn('[ProductionList] Failed to fetch base menus, falling back to inference:', err);
+      }
     }
 
     // Helper: find client by clientId (source of truth), fallback to name
@@ -1284,26 +1299,128 @@ export default function MenuTab({
       return result;
     };
 
-    // Step 1: Organize menus by meal index (1, 2, 3, 4)
+    // Step 1: Organize menus by meal
     const mealNumbers = [1, 2, 3, 4];
     const menusByMeal = {};
 
-    mealNumbers.forEach(mealNum => {
-      menusByMeal[mealNum] = weekMenuItems.filter(m =>
-        m.mealIndex === mealNum && (m.protein || m.veg || m.starch)
-      );
+    // Use base_meal_index for new workflow, mealIndex for legacy
+    const useBaseMenuWorkflow = hasBaseMenuData && baseMenus.length > 0;
+
+    if (useBaseMenuWorkflow) {
+      // Group by base_meal_index (which base meal they inherit from)
+      mealNumbers.forEach(mealNum => {
+        menusByMeal[mealNum] = weekMenuItems.filter(m => {
+          const baseMealIdx = m.baseMealIndex || m.base_meal_index;
+          return baseMealIdx === mealNum && (m.protein || m.veg || m.starch);
+        });
+      });
+    } else {
+      // Legacy: Group by client's sequential mealIndex
+      mealNumbers.forEach(mealNum => {
+        menusByMeal[mealNum] = weekMenuItems.filter(m =>
+          m.mealIndex === mealNum && (m.protein || m.veg || m.starch)
+        );
+      });
+    }
+
+    // Build base menu lookup
+    const baseMenuByIndex = {};
+    baseMenus.forEach(bm => {
+      baseMenuByIndex[bm.meal_index] = bm;
     });
+
+    // Helper: group menus for base menu workflow
+    const groupMenusForBaseMeal = (menus, baseMealIndex) => {
+      const baseMeal = baseMenuByIndex[baseMealIndex];
+      if (!baseMeal) return { baseMeal: null, standard: [], overrides: [] };
+
+      const standard = [];
+      const overrideGroups = {}; // Group by what differs
+
+      menus.forEach(menu => {
+        const client = findClientById(menu);
+        const clientName = client?.displayName || client?.name || menu.clientName;
+        const portions = menu.portions || 1;
+        const dietaryRestrictions = client?.dietaryRestrictions || null;
+        const extras = menu.extras || [];
+
+        // Check if this menu matches the base
+        const proteinMatch = (menu.protein || '') === (baseMeal.protein || '');
+        const vegMatch = (menu.veg || '') === (baseMeal.veg || '');
+        const starchMatch = (menu.starch || '') === (baseMeal.starch || '');
+        const isStandard = proteinMatch && vegMatch && starchMatch;
+
+        const clientData = {
+          name: clientName,
+          portions,
+          dietaryRestrictions,
+          extras,
+          menu // Keep full menu for override display
+        };
+
+        if (isStandard) {
+          standard.push(clientData);
+        } else {
+          // Build override key showing what differs
+          const diffs = [];
+          if (!proteinMatch) diffs.push(`Protein → ${menu.protein || '(none)'}`);
+          if (!vegMatch) diffs.push(`Veg → ${menu.veg || '(none)'}`);
+          if (!starchMatch) diffs.push(`Starch → ${menu.starch || '(none)'}`);
+          const overrideKey = diffs.join(', ');
+
+          if (!overrideGroups[overrideKey]) {
+            overrideGroups[overrideKey] = {
+              label: overrideKey,
+              clients: [],
+              totalPortions: 0
+            };
+          }
+          overrideGroups[overrideKey].clients.push(clientData);
+          overrideGroups[overrideKey].totalPortions += portions;
+        }
+      });
+
+      // Calculate totals
+      const standardPortions = standard.reduce((sum, c) => sum + c.portions, 0);
+
+      // Sort standard clients by portions desc, then name
+      standard.sort((a, b) => {
+        if (b.portions !== a.portions) return b.portions - a.portions;
+        return a.name.localeCompare(b.name);
+      });
+
+      // Convert overrides to array and sort by portions
+      const overrides = Object.values(overrideGroups).sort((a, b) => b.totalPortions - a.totalPortions);
+      overrides.forEach(og => {
+        og.clients.sort((a, b) => {
+          if (b.portions !== a.portions) return b.portions - a.portions;
+          return a.name.localeCompare(b.name);
+        });
+      });
+
+      return {
+        baseMeal,
+        standard,
+        standardPortions,
+        overrides,
+        totalPortions: menus.reduce((sum, m) => sum + (m.portions || 1), 0)
+      };
+    };
 
     // Step 2: Pre-compute all groupings and log debug info BEFORE opening print window
     console.log('\n\n==================================================');
     console.log('PRODUCTION LIST DEBUG - ' + selectedWeekId);
+    console.log('Using ' + (useBaseMenuWorkflow ? 'BASE MENU workflow' : 'LEGACY inference'));
     console.log('==================================================\n');
 
     const allGroupedData = {};
+    const allBaseMenuData = {}; // For base menu workflow
+
     mealNumbers.forEach(mealNumber => {
       const menus = menusByMeal[mealNumber];
       if (menus.length === 0) {
         allGroupedData[mealNumber] = [];
+        allBaseMenuData[mealNumber] = null;
         return;
       }
 
@@ -1311,22 +1428,40 @@ export default function MenuTab({
       console.log(`\n========== MEAL ${mealNumber} (${menus.length} rows) ==========`);
       console.log(`All menu rows:`);
       menus.forEach((m, i) => {
-        console.log(`  ${i + 1}. ${m.clientName} (${m.portions || 1}p): "${m.protein || '—'}" | "${m.veg || '—'}" | "${m.starch || '—'}"`);
+        const baseMealIdx = m.baseMealIndex || m.base_meal_index;
+        console.log(`  ${i + 1}. ${m.clientName} (${m.portions || 1}p): "${m.protein || '—'}" | "${m.veg || '—'}" | "${m.starch || '—'}" [base:${baseMealIdx || 'n/a'}]`);
       });
 
-      // Get grouped menus for this meal (single grouping type for entire meal)
-      const groups = groupMenusForMeal(menus, mealNumber);
-      allGroupedData[mealNumber] = groups;
+      if (useBaseMenuWorkflow) {
+        // Use base menu grouping
+        const baseData = groupMenusForBaseMeal(menus, mealNumber);
+        allBaseMenuData[mealNumber] = baseData;
+        allGroupedData[mealNumber] = []; // Won't use legacy format
 
-      // DEBUG: Log final grouped output
-      console.log(`\nFINAL GROUPS for Meal ${mealNumber} (${groups.length} groups):`);
-      groups.forEach((g, i) => {
-        console.log(`  Group ${i + 1}: "${g.sharedName}" (${g.totalPortions}p, varies: ${g.varies})`);
-        g.variations.forEach(v => {
-          const clientList = v.clients.map(c => `${c.name}(${c.portions})`).join(', ');
-          console.log(`    → ${v.value || '(no variation)'}: ${v.totalPortions}p — ${clientList}`);
+        // DEBUG: Log base menu grouping
+        if (baseData.baseMeal) {
+          console.log(`\nBASE MEAL ${mealNumber}: ${baseData.baseMeal.protein || '—'} | ${baseData.baseMeal.veg || '—'} | ${baseData.baseMeal.starch || '—'}`);
+          console.log(`  STANDARD (${baseData.standardPortions}p): ${baseData.standard.map(c => `${c.name}(${c.portions})`).join(', ')}`);
+          baseData.overrides.forEach(og => {
+            console.log(`  OVERRIDE "${og.label}" (${og.totalPortions}p): ${og.clients.map(c => `${c.name}(${c.portions})`).join(', ')}`);
+          });
+        }
+      } else {
+        // Use legacy inference grouping
+        const groups = groupMenusForMeal(menus, mealNumber);
+        allGroupedData[mealNumber] = groups;
+        allBaseMenuData[mealNumber] = null;
+
+        // DEBUG: Log final grouped output
+        console.log(`\nFINAL GROUPS for Meal ${mealNumber} (${groups.length} groups):`);
+        groups.forEach((g, i) => {
+          console.log(`  Group ${i + 1}: "${g.sharedName}" (${g.totalPortions}p, varies: ${g.varies})`);
+          g.variations.forEach(v => {
+            const clientList = v.clients.map(c => `${c.name}(${c.portions})`).join(', ');
+            console.log(`    → ${v.value || '(no variation)'}: ${v.totalPortions}p — ${clientList}`);
+          });
         });
-      });
+      }
     });
 
     console.log('\n==================================================');
@@ -1434,6 +1569,57 @@ export default function MenuTab({
             font-size: 10px;
             color: #7c3aed;
           }
+          /* Base menu workflow styles */
+          .base-meal-header {
+            background: #1e3a5f;
+            color: white;
+            padding: 10px 14px;
+            font-size: 13px;
+            margin-bottom: 12px;
+          }
+          .base-meal-header .base-label {
+            font-weight: bold;
+          }
+          .base-meal-header .base-components {
+            font-weight: normal;
+            opacity: 0.9;
+          }
+          .base-meal-header .total {
+            float: right;
+            font-weight: bold;
+          }
+          .standard-section {
+            margin-bottom: 16px;
+            margin-left: 10px;
+          }
+          .standard-header {
+            background: #22c55e;
+            color: white;
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 8px;
+          }
+          .override-section {
+            margin-bottom: 16px;
+            margin-left: 10px;
+            border-left: 3px solid #f59e0b;
+            padding-left: 10px;
+          }
+          .override-header {
+            background: #f59e0b;
+            color: white;
+            padding: 6px 12px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-bottom: 8px;
+          }
+          .override-menu {
+            font-size: 10px;
+            color: #92400e;
+            margin-left: 18px;
+            margin-top: 2px;
+          }
           @media print {
             body { padding: 15px; }
             .meal-section { break-inside: avoid-page; }
@@ -1450,26 +1636,36 @@ export default function MenuTab({
 
     // Render each meal section
     mealNumbers.forEach(mealNumber => {
+      const baseData = allBaseMenuData[mealNumber];
       const groups = allGroupedData[mealNumber];
-      if (!groups || groups.length === 0) return;
+
+      // Skip if no data for this meal
+      if (useBaseMenuWorkflow) {
+        if (!baseData || !baseData.baseMeal) return;
+        if (baseData.standard.length === 0 && baseData.overrides.length === 0) return;
+      } else {
+        if (!groups || groups.length === 0) return;
+      }
 
       content += `<div class="meal-section">`;
       content += `<div class="meal-header">MEAL ${mealNumber}</div>`;
 
-      groups.forEach(group => {
-        content += `<div class="group">`;
-        content += `<div class="group-header">${group.sharedName} <span class="portions">— ${group.totalPortions} portions</span></div>`;
+      if (useBaseMenuWorkflow && baseData && baseData.baseMeal) {
+        // ====== BASE MENU WORKFLOW ======
+        const bm = baseData.baseMeal;
+        const baseComponents = [bm.protein, bm.veg, bm.starch].filter(Boolean).join(' + ');
 
-        group.variations.forEach(variation => {
-          content += `<div class="variation">`;
+        content += `<div class="base-meal-header">`;
+        content += `<span class="base-label">Base:</span> <span class="base-components">${baseComponents || '(empty)'}</span>`;
+        content += `<span class="total">${baseData.totalPortions}p total</span>`;
+        content += `</div>`;
 
-          // Show variation name if there's a varying component
-          if (group.varies && variation.value) {
-            content += `<div class="variation-name">${variation.value} <span class="portions">— ${variation.totalPortions} portions</span></div>`;
-          }
-
+        // Standard clients (match base)
+        if (baseData.standard.length > 0) {
+          content += `<div class="standard-section">`;
+          content += `<div class="standard-header">STANDARD — ${baseData.standardPortions} portions</div>`;
           content += `<div class="client-list">`;
-          variation.clients.forEach(client => {
+          baseData.standard.forEach(client => {
             content += `<div class="client-line">${client.name} (${client.portions})</div>`;
             if (client.dietaryRestrictions) {
               content += `<div class="dietary">${client.dietaryRestrictions}</div>`;
@@ -1479,21 +1675,86 @@ export default function MenuTab({
             }
           });
           content += `</div>`;
+          content += `</div>`;
+        }
 
+        // Override clients (differ from base)
+        baseData.overrides.forEach(og => {
+          content += `<div class="override-section">`;
+          content += `<div class="override-header">OVERRIDE: ${og.label} — ${og.totalPortions}p</div>`;
+          content += `<div class="client-list">`;
+          og.clients.forEach(client => {
+            content += `<div class="client-line">${client.name} (${client.portions})</div>`;
+            if (client.dietaryRestrictions) {
+              content += `<div class="dietary">${client.dietaryRestrictions}</div>`;
+            }
+            // Show full menu for override
+            const m = client.menu;
+            content += `<div class="override-menu">[${m.protein || '—'} | ${m.veg || '—'} | ${m.starch || '—'}]</div>`;
+            if (client.extras && client.extras.length > 0) {
+              content += `<div class="client-extras">+ ${client.extras.join(', ')}</div>`;
+            }
+          });
+          content += `</div>`;
           content += `</div>`;
         });
 
-        // Group-level extras summary
-        if (group.extrasSummary && Object.keys(group.extrasSummary).length > 0) {
-          const summaryText = Object.entries(group.extrasSummary)
+        // Extras summary for base meal
+        const allExtras = {};
+        [...baseData.standard, ...baseData.overrides.flatMap(og => og.clients)].forEach(c => {
+          (c.extras || []).forEach(e => {
+            allExtras[e] = (allExtras[e] || 0) + c.portions;
+          });
+        });
+        if (Object.keys(allExtras).length > 0) {
+          const summaryText = Object.entries(allExtras)
             .sort((a, b) => b[1] - a[1])
             .map(([extra, count]) => `${extra}: ${count}`)
             .join(', ');
           content += `<div class="extras-summary">Extras: ${summaryText}</div>`;
         }
 
-        content += `</div>`;
-      });
+      } else {
+        // ====== LEGACY INFERENCE WORKFLOW ======
+        groups.forEach(group => {
+          content += `<div class="group">`;
+          content += `<div class="group-header">${group.sharedName} <span class="portions">— ${group.totalPortions} portions</span></div>`;
+
+          group.variations.forEach(variation => {
+            content += `<div class="variation">`;
+
+            // Show variation name if there's a varying component
+            if (group.varies && variation.value) {
+              content += `<div class="variation-name">${variation.value} <span class="portions">— ${variation.totalPortions} portions</span></div>`;
+            }
+
+            content += `<div class="client-list">`;
+            variation.clients.forEach(client => {
+              content += `<div class="client-line">${client.name} (${client.portions})</div>`;
+              if (client.dietaryRestrictions) {
+                content += `<div class="dietary">${client.dietaryRestrictions}</div>`;
+              }
+              if (client.extras && client.extras.length > 0) {
+                content += `<div class="client-extras">+ ${client.extras.join(', ')}</div>`;
+              }
+            });
+            content += `</div>`;
+
+            content += `</div>`;
+          });
+
+          // Group-level extras summary
+          if (group.extrasSummary && Object.keys(group.extrasSummary).length > 0) {
+            const summaryText = Object.entries(group.extrasSummary)
+              .sort((a, b) => b[1] - a[1])
+              .map(([extra, count]) => `${extra}: ${count}`)
+              .join(', ');
+            content += `<div class="extras-summary">Extras: ${summaryText}</div>`;
+          }
+
+          content += `</div>`;
+        });
+      }
 
       content += `</div>`;
     });

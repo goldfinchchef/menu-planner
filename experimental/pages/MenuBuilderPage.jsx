@@ -139,11 +139,7 @@ export default function MenuBuilderPage() {
     setApplyResult(result);
     setApplying(false);
 
-    if (result.success) {
-      alert(`Applied base menu: ${result.created} menus created, ${result.skipped} clients skipped`);
-    } else {
-      alert(`Failed: ${result.error}`);
-    }
+    // Don't show alert - the inline result display is clearer
   };
 
   // Handle assignment change
@@ -364,19 +360,59 @@ export default function MenuBuilderPage() {
             </div>
 
             {applyResult && (
-              <div className={`mt-3 p-2 rounded text-sm ${
-                applyResult.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+              <div className={`mt-3 p-3 rounded text-sm ${
+                applyResult.success ? 'bg-blue-50 border border-blue-200' : 'bg-red-50 text-red-700'
               }`}>
-                {applyResult.success
-                  ? `Created ${applyResult.created} menus, skipped ${applyResult.skipped} clients`
-                  : applyResult.error
-                }
-                {applyResult.errors?.length > 0 && (
-                  <ul className="mt-1 ml-4 list-disc">
-                    {applyResult.errors.map((e, i) => (
-                      <li key={i}>{e.client}: {e.error}</li>
-                    ))}
-                  </ul>
+                {applyResult.success ? (
+                  <div className="space-y-2">
+                    {/* Created menus */}
+                    {applyResult.created > 0 && (
+                      <div className="flex items-center gap-2 text-green-700">
+                        <span className="font-medium">✓ Created {applyResult.created} menu{applyResult.created !== 1 ? 's' : ''}</span>
+                      </div>
+                    )}
+
+                    {/* Skipped - already have menus */}
+                    {applyResult.skippedWithMenus > 0 && (
+                      <div className="text-gray-600">
+                        <span className="font-medium">↷ {applyResult.skippedWithMenus} already have menus:</span>
+                        <span className="ml-1 text-gray-500">
+                          {applyResult.clientsWithMenus?.slice(0, 3).join(', ')}
+                          {applyResult.clientsWithMenus?.length > 3 && ` +${applyResult.clientsWithMenus.length - 3} more`}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Skipped - no confirmed date */}
+                    {applyResult.skippedNoDate > 0 && (
+                      <div className="text-amber-600">
+                        <span className="font-medium">○ {applyResult.skippedNoDate} have no confirmed date:</span>
+                        <span className="ml-1 text-amber-500">
+                          {applyResult.clientsNoDate?.slice(0, 3).join(', ')}
+                          {applyResult.clientsNoDate?.length > 3 && ` +${applyResult.clientsNoDate.length - 3} more`}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Message if no clients eligible */}
+                    {applyResult.created === 0 && applyResult.message && (
+                      <div className="text-gray-600 italic">{applyResult.message}</div>
+                    )}
+
+                    {/* Errors */}
+                    {applyResult.errors?.length > 0 && (
+                      <div className="text-red-600">
+                        <span className="font-medium">Errors:</span>
+                        <ul className="mt-1 ml-4 list-disc">
+                          {applyResult.errors.map((e, i) => (
+                            <li key={i}>{e.client}: {e.error}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <span>{applyResult.error}</span>
                 )}
               </div>
             )}

@@ -549,54 +549,73 @@ export default function ExperimentalLayout() {
       return { success: false, error: 'No base menus defined for this week' };
     }
 
-    // Get confirmed clients (those with menus for this week)
-    const confirmedClients = [];
+    // Categorize active clients
+    const confirmedClients = [];      // Have confirmed date, will attempt to create menus
+    const clientsWithMenus = [];      // Already have menus (will be skipped)
+    const clientsNoDate = [];         // No confirmed date for this week
+
     const activeClients = clients.filter(c => c.status === 'active');
+    const weekStart = getWeekStartDate(selectedWeekId);
+    const weekEnd = getWeekEndDate(selectedWeekId);
 
     for (const client of activeClients) {
-      // Check if client has a confirmed date this week
+      // Check if client already has menus this week
       const clientMenus = scheduleMenus.filter(
         m => m.client_id === client.id && m.week_id === selectedWeekId
       );
 
       if (clientMenus.length > 0) {
-        // Already has menus - will be skipped by applyBaseMenuToClients
+        // Already has menus - will be skipped
+        clientsWithMenus.push(client.name);
         confirmedClients.push({ client, date: clientMenus[0].date });
       } else {
         // Check if client has a delivery date this week
         const deliveryDates = client.deliveryDates || client.delivery_dates || [];
-        const weekStart = getWeekStartDate(selectedWeekId);
-        const weekEnd = getWeekEndDate(selectedWeekId);
-
         const dateInWeek = deliveryDates.find(d => d && d >= weekStart && d <= weekEnd);
+
         if (dateInWeek) {
           confirmedClients.push({ client, date: dateInWeek });
+        } else {
+          // No confirmed date for this week
+          clientsNoDate.push(client.name);
         }
       }
     }
 
+    // Build detailed result
+    const result = {
+      success: true,
+      created: 0,
+      skippedWithMenus: clientsWithMenus.length,
+      skippedNoDate: clientsNoDate.length,
+      clientsWithMenus,
+      clientsNoDate
+    };
+
     if (confirmedClients.length === 0) {
-      return { success: false, error: 'No confirmed clients for this week' };
+      result.message = 'No clients with confirmed dates for this week';
+      return result;
     }
 
     try {
       // Ensure week exists in weeks table before inserting menus
       await ensureWeeksExist([selectedWeekId]);
 
-      const result = await applyBaseMenuToClients(
+      const applyResult = await applyBaseMenuToClients(
         selectedWeekId,
         baseWeeklyMenus,
         confirmedClients,
         clientMealAssignments
       );
 
-      // Refresh schedule menus to show new rows
-      if (result.created > 0) {
-        const menus = await fetchMenusForWeekRange([selectedWeekId]);
-        setScheduleMenus(menus);
-      }
+      result.created = applyResult.created;
+      result.errors = applyResult.errors;
 
-      return { success: true, ...result };
+      // Always refresh schedule menus to show current state
+      const menus = await fetchMenusForWeekRange([selectedWeekId]);
+      setScheduleMenus(menus);
+
+      return result;
     } catch (err) {
       console.error('[ApplyBaseMenu] Error:', err);
       return { success: false, error: err.message };
