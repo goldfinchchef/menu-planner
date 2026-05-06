@@ -365,20 +365,14 @@ export default function MenuBuilderPage() {
               }`}>
                 {applyResult.success ? (
                   <div className="space-y-2">
-                    {/* Created menus */}
-                    {applyResult.created > 0 && (
+                    {/* Regenerated clients */}
+                    {applyResult.regenerated > 0 && (
                       <div className="flex items-center gap-2 text-green-700">
-                        <span className="font-medium">✓ Created {applyResult.created} menu{applyResult.created !== 1 ? 's' : ''}</span>
-                      </div>
-                    )}
-
-                    {/* Skipped - already have menus */}
-                    {applyResult.skippedWithMenus > 0 && (
-                      <div className="text-gray-600">
-                        <span className="font-medium">↷ {applyResult.skippedWithMenus} already have menus:</span>
-                        <span className="ml-1 text-gray-500">
-                          {applyResult.clientsWithMenus?.slice(0, 3).join(', ')}
-                          {applyResult.clientsWithMenus?.length > 3 && ` +${applyResult.clientsWithMenus.length - 3} more`}
+                        <span className="font-medium">
+                          ✓ Regenerated {applyResult.regenerated} client{applyResult.regenerated !== 1 ? 's' : ''}
+                        </span>
+                        <span className="text-gray-500 text-xs">
+                          ({applyResult.deleted} deleted, {applyResult.created} created)
                         </span>
                       </div>
                     )}
@@ -395,7 +389,7 @@ export default function MenuBuilderPage() {
                     )}
 
                     {/* Message if no clients eligible */}
-                    {applyResult.created === 0 && applyResult.message && (
+                    {applyResult.regenerated === 0 && applyResult.message && (
                       <div className="text-gray-600 italic">{applyResult.message}</div>
                     )}
 

@@ -540,7 +540,11 @@ export default function ExperimentalLayout() {
   }, [clientMealAssignments, selectedWeekId]);
 
   // Apply base menu to all confirmed clients
+  // Apply base menu to all confirmed clients (clean regenerate)
   const applyBaseMenu = useCallback(async () => {
+    console.log('[applyBaseMenu] === Apply Base Menu ===');
+    console.log('[applyBaseMenu] weekId:', selectedWeekId);
+
     if (!isSupabaseMode() || !isConfigured()) {
       return { success: false, error: 'Supabase not configured' };
     }
@@ -549,56 +553,55 @@ export default function ExperimentalLayout() {
       return { success: false, error: 'No base menus defined for this week' };
     }
 
-    // Categorize active clients
-    const confirmedClients = [];      // Have confirmed date, will attempt to create menus
-    const clientsWithMenus = [];      // Already have menus (will be skipped)
-    const clientsNoDate = [];         // No confirmed date for this week
+    // Find confirmed clients for this week
+    // A client is "confirmed" if:
+    //   1. They have menu rows for this week (from Schedule tab), OR
+    //   2. They have a delivery date within this week's range
+    const confirmedClients = [];
+    const clientsNoDate = [];
 
     const activeClients = clients.filter(c => c.status === 'active');
     const weekStart = getWeekStartDate(selectedWeekId);
     const weekEnd = getWeekEndDate(selectedWeekId);
 
     for (const client of activeClients) {
-      // Check if client already has menus this week
+      // Check if client has menu rows this week (from Schedule tab confirmation)
       const clientMenus = scheduleMenus.filter(
         m => m.client_id === client.id && m.week_id === selectedWeekId
       );
 
       if (clientMenus.length > 0) {
-        // Already has menus - will be skipped
-        clientsWithMenus.push(client.name);
+        // Has menu rows - use the date from those rows
         confirmedClients.push({ client, date: clientMenus[0].date });
       } else {
-        // Check if client has a delivery date this week
+        // Check delivery dates
         const deliveryDates = client.deliveryDates || client.delivery_dates || [];
         const dateInWeek = deliveryDates.find(d => d && d >= weekStart && d <= weekEnd);
 
         if (dateInWeek) {
           confirmedClients.push({ client, date: dateInWeek });
         } else {
-          // No confirmed date for this week
           clientsNoDate.push(client.name);
         }
       }
     }
 
-    // Build detailed result
-    const result = {
-      success: true,
-      created: 0,
-      skippedWithMenus: clientsWithMenus.length,
-      skippedNoDate: clientsNoDate.length,
-      clientsWithMenus,
-      clientsNoDate
-    };
+    console.log('[applyBaseMenu] Confirmed clients:', confirmedClients.map(c => c.client.name));
+    console.log('[applyBaseMenu] Clients with no date:', clientsNoDate);
 
     if (confirmedClients.length === 0) {
-      result.message = 'No clients with confirmed dates for this week';
-      return result;
+      return {
+        success: true,
+        message: 'No clients with confirmed dates for this week',
+        regenerated: 0,
+        deleted: 0,
+        created: 0,
+        skippedNoDate: clientsNoDate.length,
+        clientsNoDate
+      };
     }
 
     try {
-      // Ensure week exists in weeks table before inserting menus
       await ensureWeeksExist([selectedWeekId]);
 
       const applyResult = await applyBaseMenuToClients(
@@ -608,16 +611,22 @@ export default function ExperimentalLayout() {
         clientMealAssignments
       );
 
-      result.created = applyResult.created;
-      result.errors = applyResult.errors;
-
-      // Always refresh schedule menus to show current state
+      // Refresh scheduleMenus to show updated data
       const menus = await fetchMenusForWeekRange([selectedWeekId]);
+      console.log('[applyBaseMenu] Refreshed menus:', menus?.length, 'rows');
       setScheduleMenus(menus);
 
-      return result;
+      return {
+        success: true,
+        regenerated: applyResult.regenerated,
+        deleted: applyResult.deleted,
+        created: applyResult.created,
+        skippedNoDate: clientsNoDate.length,
+        clientsNoDate,
+        errors: applyResult.errors
+      };
     } catch (err) {
-      console.error('[ApplyBaseMenu] Error:', err);
+      console.error('[applyBaseMenu] Error:', err);
       return { success: false, error: err.message };
     }
   }, [baseWeeklyMenus, clients, scheduleMenus, selectedWeekId, clientMealAssignments]);
