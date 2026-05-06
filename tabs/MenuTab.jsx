@@ -462,6 +462,20 @@ export default function MenuTab({
       computedWeekId: item.date ? getWeekIdFromDate(item.date) : null,
       clientName: item.clientName
     })));
+
+    // DEBUG: Check if baseMealIndex exists in menuItems
+    const hasBaseMealIndex = menuItems.some(item => item.baseMealIndex != null);
+    const hasBase_meal_index = menuItems.some(item => item.base_meal_index != null);
+    console.log('[StyledMenus] baseMealIndex check:', {
+      hasBaseMealIndex,
+      hasBase_meal_index,
+      sampleItem: menuItems[0] ? {
+        baseMealIndex: menuItems[0].baseMealIndex,
+        base_meal_index: menuItems[0].base_meal_index,
+        inheritedFromBase: menuItems[0].inheritedFromBase,
+        inherited_from_base: menuItems[0].inherited_from_base
+      } : 'no items'
+    });
   }
 
   // Get week start date (Monday)
@@ -1068,8 +1082,25 @@ export default function MenuTab({
       return;
     }
 
+    // DEBUG: Log first 10 weekMenuItems with key fields
+    console.log('[ProductionList] ========== DEBUG START ==========');
+    console.log('[ProductionList] weekMenuItems.length:', weekMenuItems.length);
+    console.log('[ProductionList] First 10 weekMenuItems:');
+    weekMenuItems.slice(0, 10).forEach((m, i) => {
+      console.log(`[ProductionList] [${i}]`, {
+        clientName: m.clientName,
+        mealIndex: m.mealIndex,
+        baseMealIndex: m.baseMealIndex,
+        base_meal_index: m.base_meal_index,
+        protein: m.protein,
+        veg: m.veg,
+        starch: m.starch
+      });
+    });
+
     // Check if menus use the new base menu workflow (have base_meal_index)
     const hasBaseMenuData = weekMenuItems.some(m => m.baseMealIndex != null || m.base_meal_index != null);
+    console.log('[ProductionList] hasBaseMenuData:', hasBaseMenuData);
 
     // Fetch base weekly menus if using new workflow
     let baseMenus = [];
@@ -1081,6 +1112,7 @@ export default function MenuTab({
         console.warn('[ProductionList] Failed to fetch base menus, falling back to inference:', err);
       }
     }
+    console.log('[ProductionList] baseMenus.length:', baseMenus.length);
 
     // Helper: find client by clientId (source of truth), fallback to name
     const findClientById = (menu) => {
@@ -1306,22 +1338,39 @@ export default function MenuTab({
     // Use base_meal_index for new workflow, mealIndex for legacy
     const useBaseMenuWorkflow = hasBaseMenuData && baseMenus.length > 0;
 
+    // DEBUG: Log workflow decision
+    console.log('[ProductionList] useBaseMenuWorkflow:', useBaseMenuWorkflow);
+    console.log('[ProductionList]   hasBaseMenuData:', hasBaseMenuData);
+    console.log('[ProductionList]   baseMenus.length:', baseMenus.length);
+    console.log('[ProductionList] ========== BRANCH DECISION ==========');
+
     if (useBaseMenuWorkflow) {
+      console.log('[ProductionList] >>> USING BASE MENU WORKFLOW (grouping by baseMealIndex)');
       // Group by base_meal_index (which base meal they inherit from)
       mealNumbers.forEach(mealNum => {
         menusByMeal[mealNum] = weekMenuItems.filter(m => {
           const baseMealIdx = m.baseMealIndex || m.base_meal_index;
           return baseMealIdx === mealNum && (m.protein || m.veg || m.starch);
         });
+        console.log(`[ProductionList] Meal ${mealNum}: ${menusByMeal[mealNum].length} items`);
       });
     } else {
+      console.log('[ProductionList] >>> USING LEGACY FALLBACK (grouping by mealIndex)');
+      if (!hasBaseMenuData) {
+        console.log('[ProductionList]   Reason: hasBaseMenuData is false (no baseMealIndex in data)');
+      }
+      if (baseMenus.length === 0) {
+        console.log('[ProductionList]   Reason: baseMenus.length is 0');
+      }
       // Legacy: Group by client's sequential mealIndex
       mealNumbers.forEach(mealNum => {
         menusByMeal[mealNum] = weekMenuItems.filter(m =>
           m.mealIndex === mealNum && (m.protein || m.veg || m.starch)
         );
+        console.log(`[ProductionList] Meal ${mealNum}: ${menusByMeal[mealNum].length} items`);
       });
     }
+    console.log('[ProductionList] ========== DEBUG END ==========');
 
     // Build base menu lookup
     const baseMenuByIndex = {};
