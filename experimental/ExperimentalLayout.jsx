@@ -44,7 +44,8 @@ import {
   getDefaultMealAssignment,
   applyBaseMenuToClients,
   ensureWeeksExist,
-  saveClientMeal
+  saveClientMeal,
+  confirmClientMenusForWeek
 } from '../lib/database';
 import { isConfigured, checkConnection } from '../lib/supabase';
 
@@ -644,6 +645,25 @@ export default function ExperimentalLayout() {
       return { success: true, data: updatedRow };
     } catch (err) {
       console.error('[updateClientMeal] Error:', err);
+      return { success: false, error: err.message };
+    }
+  }, []);
+
+  // Confirm/approve all menus for a client + week
+  const confirmClientMenus = useCallback(async (clientId, weekId) => {
+    try {
+      const result = await confirmClientMenusForWeek(clientId, weekId);
+
+      // Update local state to reflect approved status
+      setScheduleMenus(prev => prev.map(menu =>
+        menu.client_id === clientId && menu.week_id === weekId
+          ? { ...menu, approved: true }
+          : menu
+      ));
+
+      return { success: true, updated: result.updated };
+    } catch (err) {
+      console.error('[confirmClientMenus] Error:', err);
       return { success: false, error: err.message };
     }
   }, []);
@@ -1272,7 +1292,8 @@ export default function ExperimentalLayout() {
     getClientAssignedMeals,
     applyBaseMenu,
     getDefaultMealAssignment,
-    updateClientMeal
+    updateClientMeal,
+    confirmClientMenus
   };
 
   return (

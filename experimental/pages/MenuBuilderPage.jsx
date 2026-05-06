@@ -5,7 +5,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { useExperimentalContext } from '../ExperimentalContext';
-import { Check, Edit2, X, ChevronDown, ChevronUp, Wand2, Save, Users } from 'lucide-react';
+import { Check, Edit2, X, ChevronDown, ChevronUp, Wand2, Save, Users, Loader2 } from 'lucide-react';
 
 export default function MenuBuilderPage() {
   const {
@@ -18,13 +18,15 @@ export default function MenuBuilderPage() {
     baseWeeklyMenus,
     clientMealAssignments,
     loadBaseMenuData,
+    loadScheduleData,
     saveBaseMenus,
     saveMealAssignment,
     deleteMealAssignment,
     getClientAssignedMeals,
     applyBaseMenu,
     getDefaultMealAssignment,
-    updateClientMeal
+    updateClientMeal,
+    confirmClientMenus
   } = useExperimentalContext();
 
   // Local state for editing base menus
@@ -50,10 +52,14 @@ export default function MenuBuilderPage() {
   const [editingMealIdx, setEditingMealIdx] = useState(null);
   const [editForm, setEditForm] = useState({});
 
-  // Load base menu data on mount and when week changes
+  // Confirming state (tracks which client is being confirmed)
+  const [confirmingClient, setConfirmingClient] = useState(null);
+
+  // Load base menu data AND schedule menus on mount and when week changes
   useEffect(() => {
     loadBaseMenuData(selectedWeekId);
-  }, [selectedWeekId, loadBaseMenuData]);
+    loadScheduleData([selectedWeekId]);
+  }, [selectedWeekId, loadBaseMenuData, loadScheduleData]);
 
   // Populate form when base menus load
   useEffect(() => {
@@ -188,6 +194,19 @@ export default function MenuBuilderPage() {
       alert(`Failed to save: ${result.error}`);
     }
     cancelEditing();
+  };
+
+  // Handle confirm menu for a client
+  const handleConfirmMenu = async (clientId) => {
+    setConfirmingClient(clientId);
+    try {
+      const result = await confirmClientMenus(clientId, selectedWeekId);
+      if (!result.success) {
+        alert(`Failed to confirm: ${result.error}`);
+      }
+    } finally {
+      setConfirmingClient(null);
+    }
   };
 
   // Truncate text
@@ -542,12 +561,14 @@ export default function MenuBuilderPage() {
                 {clientCards.map(({ clientId, client, meals }) => {
                   const mealsPerWeek = client.meals_per_week || client.mealsPerWeek || 4;
                   const allComplete = meals.every(m => m.protein && m.veg && m.starch);
+                  const allApproved = meals.every(m => m.approved);
+                  const isConfirming = confirmingClient === clientId;
 
                   return (
                     <div
                       key={clientId}
                       className="border rounded overflow-hidden"
-                      style={{ borderColor: allComplete ? '#3d59ab' : '#d1d5db' }}
+                      style={{ borderColor: allApproved ? '#22c55e' : allComplete ? '#3d59ab' : '#d1d5db' }}
                     >
                       {/* Client header */}
                       <div className="px-3 py-2 bg-gray-50 border-b flex items-center justify-between">
@@ -563,11 +584,28 @@ export default function MenuBuilderPage() {
                           <span className="text-gray-500 text-sm">
                             {mealsPerWeek} × {client.portions || 1}
                           </span>
-                          <span className={`px-2 py-0.5 rounded text-xs ${
-                            allComplete ? 'bg-blue-600 text-white' : 'bg-yellow-100 text-yellow-700'
-                          }`}>
-                            {allComplete ? 'Complete' : 'Incomplete'}
-                          </span>
+                          {allApproved ? (
+                            <span className="px-2 py-0.5 rounded text-xs bg-green-600 text-white">
+                              Confirmed
+                            </span>
+                          ) : allComplete ? (
+                            <button
+                              onClick={() => handleConfirmMenu(clientId)}
+                              disabled={isConfirming}
+                              className="flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+                            >
+                              {isConfirming ? (
+                                <Loader2 size={10} className="animate-spin" />
+                              ) : (
+                                <Check size={10} />
+                              )}
+                              Confirm
+                            </button>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-xs bg-yellow-100 text-yellow-700">
+                              Incomplete
+                            </span>
+                          )}
                         </div>
                       </div>
 
