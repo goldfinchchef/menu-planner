@@ -1095,7 +1095,13 @@ export default function ExperimentalLayout() {
 
   const duplicateRecipe = (category, index) => {
     const recipe = recipes[category][index];
-    const duplicated = { ...recipe, name: `${recipe.name} (Copy)`, ingredients: recipe.ingredients.map(ing => ({ ...ing })) };
+    // IMPORTANT: Do NOT spread ...recipe as it includes the id
+    // Create a new object without id so saving will INSERT a new record
+    const duplicated = {
+      name: `${recipe.name} (Copy)`,
+      instructions: recipe.instructions || '',
+      ingredients: (recipe.ingredients || []).map(ing => ({ ...ing }))
+    };
     setRecipes({ ...recipes, [category]: [...recipes[category], duplicated] });
   };
 
