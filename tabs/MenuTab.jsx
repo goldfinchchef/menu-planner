@@ -1531,28 +1531,28 @@ export default function MenuTab({
             font-size: 12px;
             line-height: 1.4;
           }
+          /* Print-friendly black & white styles */
           h1 {
-            color: #3d59ab;
+            color: #000;
             margin-bottom: 5px;
             font-size: 20px;
           }
           .header {
             margin-bottom: 20px;
             padding-bottom: 10px;
-            border-bottom: 2px solid #3d59ab;
+            border-bottom: 2px solid #000;
           }
-          .header p { margin: 0; color: #666; font-size: 11px; }
+          .header p { margin: 0; color: #333; font-size: 11px; }
           .meal-section {
             margin-bottom: 30px;
           }
           .meal-header {
-            background: #1e3a5f;
+            background: #000;
             color: white;
             padding: 12px 16px;
             font-size: 16px;
             font-weight: bold;
             margin-bottom: 16px;
-            border-left: 5px solid #ebb582;
           }
           .group {
             margin-bottom: 20px;
@@ -1560,7 +1560,7 @@ export default function MenuTab({
             break-inside: avoid;
           }
           .group-header {
-            background: #3d59ab;
+            background: #333;
             color: white;
             padding: 8px 12px;
             font-size: 13px;
@@ -1569,29 +1569,28 @@ export default function MenuTab({
           }
           .group-header .portions {
             font-weight: normal;
-            opacity: 0.9;
           }
           .variation {
             margin-bottom: 14px;
             padding-left: 14px;
-            border-left: 3px solid #ebb582;
+            border-left: 3px solid #000;
           }
           .variation-name {
             font-size: 12px;
             font-weight: bold;
-            color: #333;
+            color: #000;
             margin-bottom: 4px;
           }
           .variation-name .portions {
-            color: #666;
+            color: #333;
             font-weight: normal;
           }
           .extras-summary {
             font-size: 10px;
-            color: #7c3aed;
+            color: #000;
             margin-top: 8px;
             padding: 4px 8px;
-            background: #f3f0ff;
+            background: #eee;
             border-radius: 3px;
           }
           .client-list {
@@ -1599,28 +1598,28 @@ export default function MenuTab({
           }
           .client-line {
             font-size: 11px;
-            color: #333;
+            color: #000;
             padding: 2px 0;
           }
           .client-line:before {
             content: "•";
             margin-right: 6px;
-            color: #3d59ab;
+            color: #000;
           }
           .dietary {
             margin-left: 18px;
             font-size: 10px;
-            color: #b45309;
+            color: #000;
             font-style: italic;
           }
           .client-extras {
             margin-left: 18px;
             font-size: 10px;
-            color: #7c3aed;
+            color: #333;
           }
           /* Base menu workflow styles */
           .base-meal-header {
-            background: #1e3a5f;
+            background: #000;
             color: white;
             padding: 10px 14px;
             font-size: 13px;
@@ -1631,7 +1630,6 @@ export default function MenuTab({
           }
           .base-meal-header .base-components {
             font-weight: normal;
-            opacity: 0.9;
           }
           .base-meal-header .total {
             float: right;
@@ -1642,7 +1640,7 @@ export default function MenuTab({
             margin-left: 10px;
           }
           .standard-header {
-            background: #22c55e;
+            background: #333;
             color: white;
             padding: 6px 12px;
             font-size: 12px;
@@ -1652,11 +1650,11 @@ export default function MenuTab({
           .override-section {
             margin-bottom: 16px;
             margin-left: 10px;
-            border-left: 3px solid #f59e0b;
+            border-left: 3px solid #000;
             padding-left: 10px;
           }
           .override-header {
-            background: #f59e0b;
+            background: #666;
             color: white;
             padding: 6px 12px;
             font-size: 11px;
@@ -1665,7 +1663,7 @@ export default function MenuTab({
           }
           .override-menu {
             font-size: 10px;
-            color: #92400e;
+            color: #000;
             margin-left: 18px;
             margin-top: 2px;
           }
