@@ -1547,12 +1547,13 @@ export default function MenuTab({
             margin-bottom: 30px;
           }
           .meal-header {
-            background: #000;
-            color: white;
-            padding: 12px 16px;
+            background: none;
+            color: #000;
+            padding: 12px 0;
             font-size: 16px;
             font-weight: bold;
             margin-bottom: 16px;
+            border-bottom: 3px solid #000;
           }
           .group {
             margin-bottom: 20px;
@@ -1560,15 +1561,16 @@ export default function MenuTab({
             break-inside: avoid;
           }
           .group-header {
-            background: #333;
-            color: white;
-            padding: 8px 12px;
+            background: none;
+            color: #000;
+            padding: 8px 0;
             font-size: 13px;
             font-weight: bold;
             margin-bottom: 10px;
+            border-bottom: 2px solid #000;
           }
           .group-header .portions {
-            font-weight: normal;
+            font-weight: bold;
           }
           .variation {
             margin-bottom: 14px;
@@ -1582,15 +1584,17 @@ export default function MenuTab({
             margin-bottom: 4px;
           }
           .variation-name .portions {
-            color: #333;
-            font-weight: normal;
+            color: #000;
+            font-weight: bold;
           }
           .extras-summary {
             font-size: 10px;
             color: #000;
+            font-weight: bold;
             margin-top: 8px;
             padding: 4px 8px;
-            background: #eee;
+            background: none;
+            border: 1px solid #000;
             border-radius: 3px;
           }
           .client-list {
@@ -1615,21 +1619,23 @@ export default function MenuTab({
           .client-extras {
             margin-left: 18px;
             font-size: 10px;
-            color: #333;
+            color: #000;
+            font-weight: bold;
           }
           /* Base menu workflow styles */
           .base-meal-header {
-            background: #000;
-            color: white;
-            padding: 10px 14px;
+            background: none;
+            color: #000;
+            padding: 10px 0;
             font-size: 13px;
             margin-bottom: 12px;
+            border-bottom: 2px solid #000;
           }
           .base-meal-header .base-label {
             font-weight: bold;
           }
           .base-meal-header .base-components {
-            font-weight: normal;
+            font-weight: bold;
           }
           .base-meal-header .total {
             float: right;
@@ -1640,12 +1646,13 @@ export default function MenuTab({
             margin-left: 10px;
           }
           .standard-header {
-            background: #333;
-            color: white;
-            padding: 6px 12px;
+            background: none;
+            color: #000;
+            padding: 6px 0;
             font-size: 12px;
             font-weight: bold;
             margin-bottom: 8px;
+            border-bottom: 1px solid #000;
           }
           .override-section {
             margin-bottom: 16px;
@@ -1654,12 +1661,13 @@ export default function MenuTab({
             padding-left: 10px;
           }
           .override-header {
-            background: #666;
-            color: white;
-            padding: 6px 12px;
+            background: none;
+            color: #000;
+            padding: 6px 0;
             font-size: 11px;
             font-weight: bold;
             margin-bottom: 8px;
+            border-bottom: 1px solid #000;
           }
           .override-menu {
             font-size: 10px;
