@@ -35,6 +35,7 @@ import {
   deleteClientWeekStatus,
   confirmClientWeek,
   deleteMenusForClientWeek,
+  clearWeekMenus,
   // Base weekly menus (menu-first model)
   fetchBaseWeeklyMenus,
   saveAllBaseWeeklyMenus,
@@ -668,6 +669,59 @@ export default function ExperimentalLayout() {
     }
   }, []);
 
+  // Clear all client menus for a week (Reset Week)
+  // Preserves base_weekly_menus and client_meal_assignments
+  const clearWeekMenusHandler = useCallback(async (weekId) => {
+    if (!isSupabaseMode() || !isConfigured()) {
+      return { success: false, error: 'Supabase not configured' };
+    }
+
+    try {
+      const result = await clearWeekMenus(weekId);
+
+      // Refresh scheduleMenus - remove all menus for this week from local state
+      setScheduleMenus(prev => prev.filter(m => m.week_id !== weekId));
+
+      return { success: true, deleted: result.deleted };
+    } catch (err) {
+      console.error('[clearWeekMenusHandler] Error:', err);
+      return { success: false, error: err.message };
+    }
+  }, []);
+
+  // Compute which clients are scheduled for the selected week
+  // A client is "scheduled" if:
+  //   1. They have menu rows in scheduleMenus for this week, OR
+  //   2. They have a deliveryDates entry within the week's range
+  const scheduledClientIds = useMemo(() => {
+    const scheduled = new Set();
+    const weekStart = getWeekStartDate(selectedWeekId);
+    const weekEnd = getWeekEndDate(selectedWeekId);
+
+    const activeClients = clients.filter(c => c.status === 'active');
+
+    for (const client of activeClients) {
+      // Check if client has menu rows this week
+      const clientMenus = scheduleMenus.filter(
+        m => m.client_id === client.id && m.week_id === selectedWeekId
+      );
+
+      if (clientMenus.length > 0) {
+        scheduled.add(client.id);
+      } else {
+        // Check delivery dates
+        const deliveryDates = client.deliveryDates || client.delivery_dates || [];
+        const dateInWeek = deliveryDates.find(d => d && d >= weekStart && d <= weekEnd);
+
+        if (dateInWeek) {
+          scheduled.add(client.id);
+        }
+      }
+    }
+
+    return scheduled;
+  }, [clients, scheduleMenus, selectedWeekId]);
+
   // Get menu state for a client + week cell
   // Display states: empty, unconfirmed, confirmed, skipped
   // Logic:
@@ -1299,7 +1353,9 @@ export default function ExperimentalLayout() {
     applyBaseMenu,
     getDefaultMealAssignment,
     updateClientMeal,
-    confirmClientMenus
+    confirmClientMenus,
+    clearWeekMenus: clearWeekMenusHandler,
+    scheduledClientIds
   };
 
   return (

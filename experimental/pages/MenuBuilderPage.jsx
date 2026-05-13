@@ -5,7 +5,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { useExperimentalContext } from '../ExperimentalContext';
-import { Check, Edit2, X, ChevronDown, ChevronUp, Wand2, Save, Users, Loader2 } from 'lucide-react';
+import { Check, Edit2, X, ChevronDown, ChevronUp, Wand2, Save, Users, Loader2, Trash2, AlertCircle } from 'lucide-react';
 
 export default function MenuBuilderPage() {
   const {
@@ -26,7 +26,9 @@ export default function MenuBuilderPage() {
     applyBaseMenu,
     getDefaultMealAssignment,
     updateClientMeal,
-    confirmClientMenus
+    confirmClientMenus,
+    clearWeekMenus,
+    scheduledClientIds
   } = useExperimentalContext();
 
   // Local state for editing base menus
@@ -54,6 +56,10 @@ export default function MenuBuilderPage() {
 
   // Confirming state (tracks which client is being confirmed)
   const [confirmingClient, setConfirmingClient] = useState(null);
+
+  // Clear week state
+  const [clearing, setClearing] = useState(false);
+  const [showNoDateClients, setShowNoDateClients] = useState(false);
 
   // Load base menu data AND schedule menus on mount and when week changes
   useEffect(() => {
@@ -209,6 +215,40 @@ export default function MenuBuilderPage() {
     }
   };
 
+  // Handle clear week menus (Reset Week)
+  const handleClearWeek = async () => {
+    const confirmed = window.confirm(
+      `This will delete all client menu rows for week ${selectedWeekId}.\n\n` +
+      `• Base Weekly Menu will remain intact\n` +
+      `• Client Meal Assignments will remain intact\n` +
+      `• ${clientCards.length} client menu(s) will be deleted\n\n` +
+      `Continue?`
+    );
+
+    if (!confirmed) return;
+
+    setClearing(true);
+    try {
+      const result = await clearWeekMenus(selectedWeekId);
+      if (result.success) {
+        setApplyResult(null); // Clear any previous apply result
+        alert(`Cleared ${result.deleted} menu rows for ${selectedWeekId}`);
+      } else {
+        alert(`Failed to clear: ${result.error}`);
+      }
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  // Get list of unscheduled client names for display
+  const unscheduledClients = useMemo(() => {
+    return clients
+      .filter(c => c.status === 'active' && !scheduledClientIds.has(c.id))
+      .map(c => c.name)
+      .sort();
+  }, [clients, scheduledClientIds]);
+
   // Truncate text
   const truncate = (str, len) => {
     if (!str) return '—';
@@ -227,6 +267,22 @@ export default function MenuBuilderPage() {
             {selectedWeekId} • {clientCards.length} client{clientCards.length !== 1 ? 's' : ''} with menus
           </span>
         </div>
+        <button
+          onClick={handleClearWeek}
+          disabled={clearing || clientCards.length === 0}
+          className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded border ${
+            clearing || clientCards.length === 0
+              ? 'text-gray-400 border-gray-300 cursor-not-allowed'
+              : 'text-red-600 border-red-300 hover:bg-red-50'
+          }`}
+        >
+          {clearing ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <Trash2 size={14} />
+          )}
+          Reset Week
+        </button>
       </div>
 
       {/* Section 1: Base Weekly Menu */}
@@ -399,10 +455,11 @@ export default function MenuBuilderPage() {
                     {/* Skipped - no confirmed date */}
                     {applyResult.skippedNoDate > 0 && (
                       <div className="text-amber-600">
-                        <span className="font-medium">○ {applyResult.skippedNoDate} have no confirmed date:</span>
-                        <span className="ml-1 text-amber-500">
-                          {applyResult.clientsNoDate?.slice(0, 3).join(', ')}
-                          {applyResult.clientsNoDate?.length > 3 && ` +${applyResult.clientsNoDate.length - 3} more`}
+                        <span className="font-medium">
+                          ○ {applyResult.skippedNoDate} skipped (not scheduled)
+                        </span>
+                        <span className="ml-1 text-amber-500 text-xs">
+                          — see grayed-out clients in Assignments section
                         </span>
                       </div>
                     )}
@@ -442,6 +499,9 @@ export default function MenuBuilderPage() {
           <div className="flex items-center gap-2">
             <Users size={16} style={{ color: '#3d59ab' }} />
             <span className="font-semibold" style={{ color: '#3d59ab' }}>Client Meal Assignments</span>
+            <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
+              {scheduledClientIds.size}/{activeClients.length} scheduled
+            </span>
             {clientMealAssignments.length > 0 && (
               <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded text-xs">
                 {clientMealAssignments.length} override{clientMealAssignments.length !== 1 ? 's' : ''}
@@ -457,23 +517,57 @@ export default function MenuBuilderPage() {
               By default, clients get sequential meals starting from Meal 1. Override here to assign different meals.
             </p>
 
+            {/* Unscheduled clients warning */}
+            {unscheduledClients.length > 0 && (
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded">
+                <button
+                  onClick={() => setShowNoDateClients(!showNoDateClients)}
+                  className="flex items-center gap-2 text-amber-700 text-sm font-medium w-full"
+                >
+                  <AlertCircle size={14} />
+                  <span>{unscheduledClients.length} client{unscheduledClients.length !== 1 ? 's' : ''} not scheduled for this week</span>
+                  {showNoDateClients ? <ChevronUp size={14} className="ml-auto" /> : <ChevronDown size={14} className="ml-auto" />}
+                </button>
+                {showNoDateClients && (
+                  <div className="mt-2 text-sm text-amber-600 pl-6">
+                    {unscheduledClients.map((name, i) => (
+                      <div key={i}>• {name}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
               {activeClients.slice(0, 12).map(client => {
                 const mealsPerWeek = client.meals_per_week || client.mealsPerWeek || 3;
                 const assignedMeals = getClientAssignedMeals(client.id, mealsPerWeek);
                 const defaultMeals = getDefaultMealAssignment(mealsPerWeek);
                 const isOverride = JSON.stringify(assignedMeals) !== JSON.stringify(defaultMeals);
+                const isScheduled = scheduledClientIds.has(client.id);
 
                 return (
                   <div
                     key={client.id}
-                    className={`p-2 rounded border ${isOverride ? 'border-yellow-400 bg-yellow-50' : 'border-gray-200'}`}
+                    className={`p-2 rounded border ${
+                      !isScheduled
+                        ? 'border-gray-200 bg-gray-100 opacity-50'
+                        : isOverride
+                          ? 'border-yellow-400 bg-yellow-50'
+                          : 'border-gray-200'
+                    }`}
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium text-sm truncate">{client.name}</span>
-                      <span className="text-xs text-gray-500">{mealsPerWeek} meals</span>
+                      <span className={`font-medium text-sm truncate ${!isScheduled ? 'text-gray-400' : ''}`}>
+                        {client.name}
+                      </span>
+                      {!isScheduled ? (
+                        <span className="text-xs text-gray-400 italic">Not Scheduled</span>
+                      ) : (
+                        <span className="text-xs text-gray-500">{mealsPerWeek} meals</span>
+                      )}
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className={`flex items-center gap-1 ${!isScheduled ? 'pointer-events-none' : ''}`}>
                       <span className="text-xs text-gray-500">Gets:</span>
                       <div className="flex gap-1">
                         {[1, 2, 3, 4].map(mealNum => {
@@ -481,7 +575,9 @@ export default function MenuBuilderPage() {
                           return (
                             <button
                               key={mealNum}
+                              disabled={!isScheduled}
                               onClick={() => {
+                                if (!isScheduled) return;
                                 let newAssignment;
                                 if (isAssigned) {
                                   // Remove if more than minimum
@@ -501,9 +597,11 @@ export default function MenuBuilderPage() {
                                 handleAssignmentChange(client.id, newAssignment);
                               }}
                               className={`w-6 h-6 rounded text-xs font-medium ${
-                                isAssigned
-                                  ? 'bg-blue-600 text-white'
-                                  : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                                !isScheduled
+                                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                  : isAssigned
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
                               }`}
                             >
                               {mealNum}
@@ -511,7 +609,7 @@ export default function MenuBuilderPage() {
                           );
                         })}
                       </div>
-                      {isOverride && (
+                      {isOverride && isScheduled && (
                         <button
                           onClick={() => deleteMealAssignment(client.id)}
                           className="ml-1 text-xs text-gray-400 hover:text-red-500"
