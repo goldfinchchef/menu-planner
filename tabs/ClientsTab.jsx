@@ -503,16 +503,6 @@ export default function ClientsTab({
               <option value="client">Client Picks (Client selects dishes)</option>
             </select>
           </FormField>
-          <FormField label="HoneyBook Invoice Link">
-            <input
-              type="url"
-              value={newClient.honeyBookLink || ''}
-              onChange={(e) => setNewClient({ ...newClient, honeyBookLink: e.target.value })}
-              className={inputStyle}
-              style={borderStyle}
-              placeholder="https://..."
-            />
-          </FormField>
         </div>
 
         {/* Contacts Section */}
@@ -589,19 +579,6 @@ export default function ClientsTab({
               </label>
             </div>
             <div className="flex items-center gap-2 pt-6">
-              <input
-                type="checkbox"
-                id="newClientFeePaid"
-                checked={newClient.newClientFeePaid || false}
-                onChange={(e) => setNewClient({ ...newClient, newClientFeePaid: e.target.checked })}
-                className="w-5 h-5 rounded border-2"
-                style={{ accentColor: '#3d59ab' }}
-              />
-              <label htmlFor="newClientFeePaid" className="text-sm font-medium" style={{ color: '#423d3c' }}>
-                New Client Fee Paid
-              </label>
-            </div>
-            <div className="flex items-center gap-2 pt-2">
               <input
                 type="checkbox"
                 id="paysOwnGroceries"
@@ -765,16 +742,6 @@ export default function ClientsTab({
                           <option value="client">Client Picks (Client selects dishes)</option>
                         </select>
                       </FormField>
-                      <FormField label="HoneyBook Invoice Link">
-                        <input
-                          type="url"
-                          value={editingClient.honeyBookLink || ''}
-                          onChange={(e) => setEditingClient({ ...editingClient, honeyBookLink: e.target.value })}
-                          className={inputStyle}
-                          style={borderStyle}
-                          placeholder="https://..."
-                        />
-                      </FormField>
                     </div>
 
                     {/* Contacts Section for Edit */}
@@ -846,19 +813,6 @@ export default function ClientsTab({
                           </label>
                         </div>
                         <div className="flex items-center gap-2 pt-6">
-                          <input
-                            type="checkbox"
-                            id={`newClientFeePaid-edit-${i}`}
-                            checked={editingClient.newClientFeePaid || false}
-                            onChange={(e) => setEditingClient({ ...editingClient, newClientFeePaid: e.target.checked })}
-                            className="w-5 h-5 rounded border-2"
-                            style={{ accentColor: '#3d59ab' }}
-                          />
-                          <label htmlFor={`newClientFeePaid-edit-${i}`} className="text-sm font-medium" style={{ color: '#423d3c' }}>
-                            New Client Fee Paid
-                          </label>
-                        </div>
-                        <div className="flex items-center gap-2">
                           <input
                             type="checkbox"
                             id={`paysOwnGroceries-edit-${i}`}

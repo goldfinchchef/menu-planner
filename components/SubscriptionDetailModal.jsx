@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, DollarSign, Plus, Trash2, RefreshCw } from 'lucide-react';
+import { X, Calendar, Plus, Trash2, RefreshCw } from 'lucide-react';
 
 export default function SubscriptionDetailModal({
   client,
@@ -8,7 +8,6 @@ export default function SubscriptionDetailModal({
   onClose
 }) {
   const [deliveryDates, setDeliveryDates] = useState(client?.deliveryDates || []);
-  const [billDueDate, setBillDueDate] = useState(client?.billDueDate || '');
   const [newDate, setNewDate] = useState('');
 
   // Get dates from client portal if available
@@ -22,7 +21,6 @@ export default function SubscriptionDetailModal({
     } else if (hasPortalDates) {
       setDeliveryDates(portalDates);
     }
-    setBillDueDate(client?.billDueDate || '');
   }, [client]);
 
   const addDate = () => {
@@ -53,8 +51,7 @@ export default function SubscriptionDetailModal({
   const handleSave = () => {
     onSave({
       ...client,
-      deliveryDates: deliveryDates.sort(),
-      billDueDate
+      deliveryDates: deliveryDates.sort()
     });
     onClose();
   };
@@ -155,29 +152,6 @@ export default function SubscriptionDetailModal({
                   <Plus size={20} />
                 </button>
               </div>
-            )}
-          </div>
-
-          {/* Bill Due Date Section */}
-          <div>
-            <h3 className="font-bold flex items-center gap-2 mb-3" style={{ color: '#3d59ab' }}>
-              <DollarSign size={20} />
-              Bill Due Date
-            </h3>
-            <input
-              type="date"
-              value={billDueDate}
-              onChange={(e) => setBillDueDate(e.target.value)}
-              className="w-full p-2 border-2 rounded-lg"
-              style={{ borderColor: '#ebb582' }}
-            />
-            {billDueDate && (
-              <p className="text-sm text-gray-500 mt-1">
-                Due: {formatDate(billDueDate)}
-                {new Date(billDueDate + 'T12:00:00') < new Date() && (
-                  <span className="text-red-600 ml-2 font-medium">OVERDUE</span>
-                )}
-              </p>
             )}
           </div>
 
