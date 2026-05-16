@@ -689,6 +689,28 @@ export default function ExperimentalLayout() {
     }
   }, []);
 
+  // Remove a single client's menus from a week (Remove From Week)
+  // Used when a client cancels after menus were already generated
+  const removeClientFromWeek = useCallback(async (clientId, weekId) => {
+    if (!isSupabaseMode() || !isConfigured()) {
+      return { success: false, error: 'Supabase not configured' };
+    }
+
+    try {
+      const result = await deleteMenusForClientWeek({ clientId, weekId });
+
+      // Update local scheduleMenus - remove this client's menus for this week
+      setScheduleMenus(prev => prev.filter(
+        m => !(m.client_id === clientId && m.week_id === weekId)
+      ));
+
+      return { success: true, deleted: result.deleted };
+    } catch (err) {
+      console.error('[removeClientFromWeek] Error:', err);
+      return { success: false, error: err.message };
+    }
+  }, []);
+
   // Compute which clients are scheduled for the selected week
   // A client is "scheduled" if:
   //   1. They have menu rows in scheduleMenus for this week, OR
@@ -1355,6 +1377,7 @@ export default function ExperimentalLayout() {
     updateClientMeal,
     confirmClientMenus,
     clearWeekMenus: clearWeekMenusHandler,
+    removeClientFromWeek,
     scheduledClientIds
   };
 

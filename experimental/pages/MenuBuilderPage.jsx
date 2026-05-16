@@ -28,6 +28,7 @@ export default function MenuBuilderPage() {
     updateClientMeal,
     confirmClientMenus,
     clearWeekMenus,
+    removeClientFromWeek,
     scheduledClientIds
   } = useExperimentalContext();
 
@@ -60,6 +61,9 @@ export default function MenuBuilderPage() {
   // Clear week state
   const [clearing, setClearing] = useState(false);
   const [showNoDateClients, setShowNoDateClients] = useState(false);
+
+  // Removing client from week state
+  const [removingClient, setRemovingClient] = useState(null);
 
   // Load base menu data AND schedule menus on mount and when week changes
   useEffect(() => {
@@ -238,6 +242,27 @@ export default function MenuBuilderPage() {
       }
     } finally {
       setClearing(false);
+    }
+  };
+
+  // Handle remove single client from week
+  const handleRemoveClientFromWeek = async (clientId, clientName) => {
+    const confirmed = window.confirm(
+      `Remove ${clientName}'s menus from ${selectedWeekId}?\n\n` +
+      `This will delete their menu rows for this week only.\n` +
+      `Other weeks and base menus are not affected.`
+    );
+
+    if (!confirmed) return;
+
+    setRemovingClient(clientId);
+    try {
+      const result = await removeClientFromWeek(clientId, selectedWeekId);
+      if (!result.success) {
+        alert(`Failed to remove: ${result.error}`);
+      }
+    } finally {
+      setRemovingClient(null);
     }
   };
 
@@ -661,20 +686,68 @@ export default function MenuBuilderPage() {
                   const allComplete = meals.every(m => m.protein && m.veg && m.starch);
                   const allApproved = meals.every(m => m.approved);
                   const isConfirming = confirmingClient === clientId;
+                  const isRemoving = removingClient === clientId;
+
+                  // Check for warning states
+                  const isPaused = client.status === 'paused';
+                  const hasNoDate = !scheduledClientIds.has(clientId);
+                  const hasWarning = isPaused || hasNoDate;
+
+                  // Determine border color based on state
+                  const getBorderColor = () => {
+                    if (hasWarning) return '#ef4444'; // red
+                    if (allApproved) return '#22c55e'; // green
+                    if (allComplete) return '#3d59ab'; // blue
+                    return '#d1d5db'; // gray
+                  };
 
                   return (
                     <div
                       key={clientId}
-                      className="border rounded overflow-hidden"
-                      style={{ borderColor: allApproved ? '#22c55e' : allComplete ? '#3d59ab' : '#d1d5db' }}
+                      className={`border-2 rounded overflow-hidden ${hasWarning ? 'bg-red-50' : ''}`}
+                      style={{ borderColor: getBorderColor() }}
                     >
+                      {/* Warning banner for paused/no-date clients */}
+                      {hasWarning && (
+                        <div className="px-3 py-1.5 bg-red-100 border-b border-red-200 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <AlertCircle size={14} className="text-red-600" />
+                            <span className="text-xs font-medium text-red-700">
+                              {isPaused ? 'Client Paused' : 'No Confirmed Date'}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => handleRemoveClientFromWeek(clientId, client.name)}
+                            disabled={isRemoving}
+                            className="flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                          >
+                            {isRemoving ? (
+                              <Loader2 size={10} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={10} />
+                            )}
+                            Remove From Week
+                          </button>
+                        </div>
+                      )}
+
                       {/* Client header */}
-                      <div className="px-3 py-2 bg-gray-50 border-b flex items-center justify-between">
+                      <div className={`px-3 py-2 border-b flex items-center justify-between ${hasWarning ? 'bg-red-50' : 'bg-gray-50'}`}>
                         <div className="flex items-center gap-2">
-                          <span className="font-semibold">{client.name}</span>
+                          <span className={`font-semibold ${hasWarning ? 'text-red-800' : ''}`}>{client.name}</span>
                           {client.zone && (
-                            <span className="px-1.5 py-0.5 bg-gray-200 rounded text-xs">
+                            <span className={`px-1.5 py-0.5 rounded text-xs ${hasWarning ? 'bg-red-200 text-red-700' : 'bg-gray-200'}`}>
                               {client.zone}
+                            </span>
+                          )}
+                          {isPaused && (
+                            <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-xs font-medium">
+                              Paused
+                            </span>
+                          )}
+                          {!isPaused && hasNoDate && (
+                            <span className="px-1.5 py-0.5 bg-amber-500 text-white rounded text-xs font-medium">
+                              No Date
                             </span>
                           )}
                         </div>
@@ -682,11 +755,11 @@ export default function MenuBuilderPage() {
                           <span className="text-gray-500 text-sm">
                             {mealsPerWeek} × {client.portions || 1}
                           </span>
-                          {allApproved ? (
+                          {!hasWarning && allApproved ? (
                             <span className="px-2 py-0.5 rounded text-xs bg-green-600 text-white">
                               Confirmed
                             </span>
-                          ) : allComplete ? (
+                          ) : !hasWarning && allComplete ? (
                             <button
                               onClick={() => handleConfirmMenu(clientId)}
                               disabled={isConfirming}
@@ -699,11 +772,11 @@ export default function MenuBuilderPage() {
                               )}
                               Confirm
                             </button>
-                          ) : (
+                          ) : !hasWarning ? (
                             <span className="px-2 py-0.5 rounded text-xs bg-yellow-100 text-yellow-700">
                               Incomplete
                             </span>
-                          )}
+                          ) : null}
                         </div>
                       </div>
 
