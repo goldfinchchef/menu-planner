@@ -327,13 +327,14 @@ function ScheduleModal({
 
   return (
     <div
-      className="fixed inset-0 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 z-50 overflow-y-auto"
       style={{
-        backgroundColor: 'rgba(0, 0, 0, 0.3)',
+        backgroundColor: 'rgba(0, 0, 0, 0.4)',
         backdropFilter: 'blur(4px)'
       }}
       onClick={handleBackdropClick}
     >
+      <div className="min-h-full flex items-center justify-center p-4">
       {/* Confirmation Dialog */}
       {showConfirmDialog && (
         <div
@@ -386,8 +387,14 @@ function ScheduleModal({
       {/* Main Modal */}
       {!showConfirmDialog && (
         <div
-          className="bg-white rounded-lg shadow-xl w-full max-h-[90vh] overflow-auto"
-          style={{ fontSize: '12px', maxWidth: '800px' }}
+          className="bg-white rounded-lg shadow-2xl overflow-hidden"
+          style={{
+            fontSize: '12px',
+            width: 'min(90vw, 800px)',
+            maxHeight: '85vh',
+            display: 'flex',
+            flexDirection: 'column'
+          }}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header - compact with actions */}
@@ -471,18 +478,20 @@ function ScheduleModal({
             </div>
           </div>
 
-          {/* Alert line - show first issue if any */}
-          {modalIssues.length > 0 && (
-            <div
-              className="px-3 py-1 text-xs flex items-center gap-1"
-              style={{ backgroundColor: '#fef9c3', borderBottom: '1px solid #fde047', color: '#854d0e' }}
-            >
-              <span>⚠</span>
-              <span>{modalIssues[0].message}</span>
-            </div>
-          )}
+          {/* Scrollable content area */}
+          <div className="flex-1 overflow-y-auto">
+            {/* Alert line - show first issue if any */}
+            {modalIssues.length > 0 && (
+              <div
+                className="px-3 py-1 text-xs flex items-center gap-1"
+                style={{ backgroundColor: '#fef9c3', borderBottom: '1px solid #fde047', color: '#854d0e' }}
+              >
+                <span>⚠</span>
+                <span>{modalIssues[0].message}</span>
+              </div>
+            )}
 
-          {/* Logistics rows */}
+            {/* Logistics rows */}
           <div style={{ fontSize: '11px', backgroundColor: '#fafafa', borderBottom: '1px solid #f3f4f6' }}>
             <div className="px-3 py-0.5 text-gray-500 truncate">
               {[
@@ -546,8 +555,10 @@ function ScheduleModal({
               {status === 'skipped' && 'Week marked as skipped'}
             </div>
           )}
+          </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
