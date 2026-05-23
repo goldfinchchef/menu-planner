@@ -1313,23 +1313,30 @@ function BillingDatesSection({ clients, updateClients, blockedDates, updateBlock
 
     console.log('[deliveryDates] client found', { id: client.id, name: client.name, hasSupabaseFn: !!saveDeliveryDatesToSupabase });
 
-    const dates = [...(client.deliveryDates || ['', '', '', ''])];
-    // Ensure we have 4 slots
+    // Get current future dates (filter out past dates)
+    const todayStr = today.toISOString().split('T')[0];
+    const currentFutureDates = (client.deliveryDates || []).filter(d => d && d >= todayStr);
+
+    // Build the new dates array
+    const dates = [...currentFutureDates];
     while (dates.length < 4) dates.push('');
     dates[index] = value;
-    // Sort non-empty dates and filter out empty ones, then pad back to 4
-    const sortedDates = dates.filter(d => d).sort();
-    while (sortedDates.length < 4) sortedDates.push('');
 
-    console.log('[deliveryDates] sorted dates', sortedDates);
+    // Filter to future dates only, sort, and dedupe
+    const futureDates = dates
+      .filter(d => d && d >= todayStr)
+      .sort()
+      .filter((d, i, arr) => arr.indexOf(d) === i); // dedupe
+
+    console.log('[deliveryDates] future dates (cleaned)', futureDates);
 
     // Update local state
-    updateClientField(clientName, 'deliveryDates', sortedDates);
+    updateClientField(clientName, 'deliveryDates', futureDates);
 
     // Save to Supabase if available
     if (saveDeliveryDatesToSupabase && client.id) {
       console.log('[deliveryDates] calling saveDeliveryDatesToSupabase...');
-      await saveDeliveryDatesToSupabase(client.id, clientName, sortedDates);
+      await saveDeliveryDatesToSupabase(client.id, clientName, futureDates);
     } else {
       console.log('[deliveryDates] skip Supabase save', { hasFn: !!saveDeliveryDatesToSupabase, hasId: !!client.id });
     }
@@ -1391,195 +1398,57 @@ function BillingDatesSection({ clients, updateClients, blockedDates, updateBlock
     <div className="space-y-6">
       {/* All Clients - Billing & Dates */}
       <div className="bg-white rounded-lg shadow-lg p-6">
-        <h2 className="text-2xl font-bold mb-2" style={{ color: '#3d59ab' }}>
-          <Calendar className="inline mr-2" size={28} />
-          Client Billing & Dates
+        <h2 className="text-xl font-bold mb-1" style={{ color: '#3d59ab' }}>
+          <Calendar className="inline mr-2" size={24} />
+          Delivery Scheduling
         </h2>
-        <p className="text-gray-600 mb-4">
-          Set delivery dates, bill due dates, and invoice links for each client
+        <p className="text-gray-500 text-sm mb-3">
+          Set the next 4 upcoming delivery dates for each client
         </p>
 
-        {/* Cycle color legend */}
-        <div className="mb-4 p-3 rounded-lg bg-gray-50 border">
-          <p className="text-sm font-medium text-gray-700 mb-2">Billing Cycle Colors</p>
-          <div className="flex flex-wrap gap-3 text-xs">
-            <span className="flex items-center gap-1">
-              <span className="w-4 h-4 rounded" style={{ backgroundColor: '#dcfce7', border: '2px solid #22c55e' }}></span>
-              Cycle 1
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-4 h-4 rounded" style={{ backgroundColor: '#dbeafe', border: '2px solid #3b82f6' }}></span>
-              Cycle 2
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-4 h-4 rounded" style={{ backgroundColor: '#f3e8ff', border: '2px solid #a855f7' }}></span>
-              Cycle 3
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-4 h-4 rounded" style={{ backgroundColor: '#fef3c7', border: '2px solid #f59e0b' }}></span>
-              Cycle 4
-            </span>
-            <span className="text-gray-500 ml-2">Due date starts new cycle → 4 deliveries per cycle</span>
-          </div>
-        </div>
-
-        <div className="space-y-4">
+        <div className="space-y-2">
           {activeClients.map((client, idx) => {
-            const deliveryDates = client.deliveryDates || ['', '', '', ''];
+            const deliveryDates = client.deliveryDates || [];
+            // Filter out past dates and keep only future/today dates
+            const todayStr = today.toISOString().split('T')[0];
+            const futureDates = deliveryDates.filter(d => d && d >= todayStr);
             // Ensure we have exactly 4 slots for display
-            const displayDates = [...deliveryDates];
+            const displayDates = [...futureDates];
             while (displayDates.length < 4) displayDates.push('');
-
-            // Calculate billing cycles for delivery dates
-            // Cycle colors: green, blue, purple, amber (repeating)
-            const cycleColors = [
-              { bg: '#dcfce7', border: '#22c55e', text: '#166534' }, // Green - Cycle 1
-              { bg: '#dbeafe', border: '#3b82f6', text: '#1e40af' }, // Blue - Cycle 2
-              { bg: '#f3e8ff', border: '#a855f7', text: '#6b21a8' }, // Purple - Cycle 3
-              { bg: '#fef3c7', border: '#f59e0b', text: '#92400e' }, // Amber - Cycle 4
-            ];
-
-            // Get cycle for a delivery date based on billDueDate
-            const getDateCycle = (dateStr) => {
-              if (!dateStr || !client.billDueDate) return null;
-              const deliveryDate = new Date(dateStr + 'T12:00:00');
-              const dueDate = new Date(client.billDueDate + 'T12:00:00');
-
-              // If delivery is before due date, it's from a previous cycle
-              if (deliveryDate < dueDate) {
-                // Calculate how many 4-week cycles back
-                const daysDiff = Math.floor((dueDate - deliveryDate) / (1000 * 60 * 60 * 24));
-                const weeksBack = Math.ceil(daysDiff / 7);
-                const cyclesBack = Math.ceil(weeksBack / 4);
-                return ((4 - (cyclesBack % 4)) % 4); // Previous cycle
-              }
-
-              // Days since due date
-              const daysSinceDue = Math.floor((deliveryDate - dueDate) / (1000 * 60 * 60 * 24));
-              // Roughly 4 deliveries per cycle (weekly = 4 weeks = 28 days)
-              const cycleNum = Math.floor(daysSinceDue / 28);
-              return cycleNum % 4;
-            };
 
             return (
               <div
                 key={idx}
-                className="p-4 rounded-lg border-2"
+                className="px-3 py-2 rounded-lg border"
                 style={{ borderColor: '#ebb582', backgroundColor: '#f9f9ed' }}
               >
-                {/* Client Name Row */}
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-bold text-lg" style={{ color: '#3d59ab' }}>
-                    {client.displayName || client.name}
-                  </h3>
-                  <span className="text-sm text-gray-500">
-                    {client.mealsPerWeek} meals/week • {client.portions || 1} portions
-                  </span>
-                </div>
-
-                {/* Delivery Dates Row */}
-                <div className="mb-3">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Next 4 Delivery Dates
-                    {client.billDueDate && (
-                      <span className="text-xs text-gray-500 ml-2">
-                        (Cycle starts from due date: {new Date(client.billDueDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})
-                      </span>
-                    )}
-                  </label>
-                  <div className="grid grid-cols-4 gap-2">
-                    {displayDates.slice(0, 4).map((date, i) => {
-                      const cycleIdx = getDateCycle(date);
-                      const cycleStyle = cycleIdx !== null ? cycleColors[cycleIdx] : null;
-
-                      return (
-                        <div key={i} className="relative">
-                          <input
-                            type="date"
-                            value={date || ''}
-                            onChange={(e) => updateDeliveryDate(client.name, i, e.target.value)}
-                            className="w-full px-3 py-2 border-2 rounded-lg text-sm"
-                            style={{
-                              borderColor: cycleStyle ? cycleStyle.border : '#ebb582',
-                              backgroundColor: cycleStyle ? cycleStyle.bg : 'white',
-                              color: cycleStyle ? cycleStyle.text : 'inherit'
-                            }}
-                          />
-                          {cycleStyle && (
-                            <span
-                              className="absolute -top-2 -right-2 text-xs px-1.5 py-0.5 rounded-full font-medium"
-                              style={{ backgroundColor: cycleStyle.border, color: 'white' }}
-                            >
-                              C{cycleIdx + 1}
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Bill Due Date & Invoice Row */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {/* Bill Due Date */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Bill Due Date
-                    </label>
-                    <input
-                      type="date"
-                      value={client.billDueDate || ''}
-                      onChange={(e) => updateClientField(client.name, 'billDueDate', e.target.value)}
-                      className="w-full px-3 py-2 border-2 rounded-lg text-sm"
-                      style={{ borderColor: '#ebb582' }}
-                    />
+                {/* Compact client row with dates inline */}
+                <div className="flex items-center gap-4">
+                  {/* Client name */}
+                  <div className="min-w-[140px]">
+                    <span className="font-semibold text-sm" style={{ color: '#3d59ab' }}>
+                      {client.displayName || client.name}
+                    </span>
+                    <span className="text-xs text-gray-400 ml-2">
+                      {client.mealsPerWeek}×{client.portions || 1}
+                    </span>
                   </div>
 
-                  {/* Honeybook Link */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Invoice Link (Honeybook)
-                    </label>
-                    <input
-                      type="url"
-                      value={client.honeyBookLink || ''}
-                      onChange={(e) => updateClientField(client.name, 'honeyBookLink', e.target.value)}
-                      placeholder="Paste invoice link..."
-                      className="w-full px-3 py-2 border-2 rounded-lg text-sm"
-                      style={{ borderColor: '#ebb582' }}
-                    />
-                  </div>
-
-                  {/* Invoice Paid Checkbox */}
-                  <div className="flex items-end">
-                    <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-white">
+                  {/* Delivery date inputs */}
+                  <div className="flex-1 grid grid-cols-4 gap-2">
+                    {displayDates.slice(0, 4).map((date, i) => (
                       <input
-                        type="checkbox"
-                        checked={client.invoicePaid || false}
-                        onChange={(e) => handleInvoicePaid(client.name, e.target.checked)}
-                        className="w-5 h-5 rounded border-2"
-                        style={{ accentColor: '#22c55e' }}
+                        key={i}
+                        type="date"
+                        value={date || ''}
+                        onChange={(e) => updateDeliveryDate(client.name, i, e.target.value)}
+                        min={todayStr}
+                        className="w-full px-2 py-1.5 border rounded text-sm"
+                        style={{ borderColor: '#ebb582', backgroundColor: 'white' }}
                       />
-                      <span className="text-sm font-medium">
-                        {client.invoicePaid ? (
-                          <span className="text-green-600 flex items-center gap-1">
-                            <Check size={16} /> Invoice Paid
-                          </span>
-                        ) : (
-                          <span className="text-gray-600">Mark as Paid</span>
-                        )}
-                      </span>
-                    </label>
+                    ))}
                   </div>
                 </div>
-
-                {/* Status indicators */}
-                {client.billDueDate && new Date(client.billDueDate + 'T12:00:00') < today && !client.invoicePaid && (
-                  <div className="mt-2 p-2 rounded bg-red-100 text-red-700 text-sm flex items-center gap-2">
-                    <AlertTriangle size={16} />
-                    Invoice overdue!
-                  </div>
-                )}
               </div>
             );
           })}
