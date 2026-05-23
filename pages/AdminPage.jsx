@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { DayPicker } from 'react-day-picker';
+import 'react-day-picker/dist/style.css';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   ChefHat, Home, Calendar, Truck, AlertTriangle, RefreshCw,
@@ -1286,6 +1288,120 @@ function DashboardSection({
   );
 }
 
+// Local date formatter - avoids timezone issues with toISOString()
+const formatLocalDate = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+// Format date for display (e.g., "May 26")
+const formatDisplayDate = (dateStr) => {
+  if (!dateStr) return null;
+  const date = new Date(dateStr + 'T12:00:00');
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
+// Date Slot Picker Component
+function DateSlotPicker({ value, onChange, minDate, slotIndex }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const popoverRef = useRef(null);
+  const buttonRef = useRef(null);
+
+  // Close on click outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target) &&
+          buttonRef.current && !buttonRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  // Close on Escape
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') setIsOpen(false);
+    };
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen]);
+
+  const handleSelect = (date) => {
+    if (date) {
+      const dateStr = formatLocalDate(date);
+      onChange(dateStr);
+    }
+    setIsOpen(false);
+  };
+
+  const handleClear = () => {
+    onChange('');
+    setIsOpen(false);
+  };
+
+  const selectedDate = value ? new Date(value + 'T12:00:00') : undefined;
+
+  return (
+    <div className="relative">
+      {/* Date slot button */}
+      <button
+        ref={buttonRef}
+        onClick={() => setIsOpen(!isOpen)}
+        className={`w-full px-3 py-2 text-left rounded-lg border-2 text-sm font-medium transition-colors ${
+          value
+            ? 'bg-white text-gray-800 hover:border-blue-400'
+            : 'bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-600'
+        }`}
+        style={{ borderColor: value ? '#ebb582' : '#e5e7eb' }}
+      >
+        {value ? formatDisplayDate(value) : '+ Add'}
+      </button>
+
+      {/* Calendar popover */}
+      {isOpen && (
+        <div
+          ref={popoverRef}
+          className="date-picker-popover absolute top-full left-0 mt-2"
+          style={{ minWidth: '300px' }}
+        >
+          <DayPicker
+            mode="single"
+            selected={selectedDate}
+            onSelect={handleSelect}
+            disabled={{ before: minDate }}
+            defaultMonth={selectedDate || minDate}
+            showOutsideDays
+            fixedWeeks
+          />
+          <div className="flex justify-between pt-2 mt-2 border-t" style={{ borderColor: '#ebb582' }}>
+            <button
+              onClick={handleClear}
+              className="px-3 py-1.5 text-sm text-gray-500 hover:text-red-600 hover:bg-red-50 rounded"
+            >
+              Clear
+            </button>
+            <button
+              onClick={() => handleSelect(new Date())}
+              className="px-3 py-1.5 text-sm rounded"
+              style={{ backgroundColor: '#f9f9ed', color: '#3d59ab' }}
+            >
+              Today
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Billing & Dates Section Component
 function BillingDatesSection({ clients, updateClients, blockedDates, updateBlockedDates, saveDeliveryDatesToSupabase }) {
   const [calendarMonth, setCalendarMonth] = useState(new Date());
@@ -1314,7 +1430,7 @@ function BillingDatesSection({ clients, updateClients, blockedDates, updateBlock
     console.log('[deliveryDates] client found', { id: client.id, name: client.name, hasSupabaseFn: !!saveDeliveryDatesToSupabase });
 
     // Get current future dates (filter out past dates)
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = formatLocalDate(today);
     const currentFutureDates = (client.deliveryDates || []).filter(d => d && d >= todayStr);
 
     // Build the new dates array
@@ -1410,7 +1526,7 @@ function BillingDatesSection({ clients, updateClients, blockedDates, updateBlock
           {activeClients.map((client, idx) => {
             const deliveryDates = client.deliveryDates || [];
             // Filter out past dates and keep only future/today dates
-            const todayStr = today.toISOString().split('T')[0];
+            const todayStr = formatLocalDate(today);
             const futureDates = deliveryDates.filter(d => d && d >= todayStr);
             // Ensure we have exactly 4 slots for display
             const displayDates = [...futureDates];
@@ -1419,35 +1535,30 @@ function BillingDatesSection({ clients, updateClients, blockedDates, updateBlock
             return (
               <div
                 key={idx}
-                className="px-3 py-2 rounded-lg border"
+                className="px-4 py-3 rounded-lg border"
                 style={{ borderColor: '#ebb582', backgroundColor: '#f9f9ed' }}
               >
-                {/* Compact client row with dates inline */}
-                <div className="flex items-center gap-4">
-                  {/* Client name */}
-                  <div className="min-w-[140px]">
-                    <span className="font-semibold text-sm" style={{ color: '#3d59ab' }}>
-                      {client.displayName || client.name}
-                    </span>
-                    <span className="text-xs text-gray-400 ml-2">
-                      {client.mealsPerWeek}×{client.portions || 1}
-                    </span>
-                  </div>
+                {/* Client name row */}
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-semibold" style={{ color: '#3d59ab' }}>
+                    {client.displayName || client.name}
+                  </span>
+                  <span className="text-sm text-gray-500">
+                    {client.mealsPerWeek} meals × {client.portions || 1} portions
+                  </span>
+                </div>
 
-                  {/* Delivery date inputs */}
-                  <div className="flex-1 grid grid-cols-4 gap-2">
-                    {displayDates.slice(0, 4).map((date, i) => (
-                      <input
-                        key={i}
-                        type="date"
-                        value={date || ''}
-                        onChange={(e) => updateDeliveryDate(client.name, i, e.target.value)}
-                        min={todayStr}
-                        className="w-full px-2 py-1.5 border rounded text-sm"
-                        style={{ borderColor: '#ebb582', backgroundColor: 'white' }}
-                      />
-                    ))}
-                  </div>
+                {/* Date slot pickers */}
+                <div className="grid grid-cols-4 gap-3">
+                  {displayDates.slice(0, 4).map((date, i) => (
+                    <DateSlotPicker
+                      key={i}
+                      value={date}
+                      onChange={(newDate) => updateDeliveryDate(client.name, i, newDate)}
+                      minDate={today}
+                      slotIndex={i}
+                    />
+                  ))}
                 </div>
               </div>
             );

@@ -1,3 +1,102 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Custom Date Picker Styling */
+.date-picker-popover {
+  background: white;
+  border: 2px solid #ebb582;
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  z-index: 50;
+}
+
+.date-picker-popover .rdp {
+  --rdp-cell-size: 40px;
+  --rdp-accent-color: #3d59ab;
+  --rdp-background-color: #e8ecf7;
+  margin: 0;
+}
+
+.date-picker-popover .rdp-caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px 8px;
+}
+
+.date-picker-popover .rdp-caption_label {
+  font-size: 16px;
+  font-weight: 600;
+  color: #3d59ab;
+}
+
+.date-picker-popover .rdp-nav {
+  display: flex;
+  gap: 4px;
+}
+
+.date-picker-popover .rdp-nav_button {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #3d59ab;
+  background: #f9f9ed;
+  border: 1px solid #ebb582;
+}
+
+.date-picker-popover .rdp-nav_button:hover {
+  background: #ebb582;
+  color: white;
+}
+
+.date-picker-popover .rdp-head_cell {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  padding-bottom: 8px;
+}
+
+.date-picker-popover .rdp-cell {
+  padding: 2px;
+}
+
+.date-picker-popover .rdp-day {
+  width: 40px;
+  height: 40px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 8px;
+  color: #374151;
+}
+
+.date-picker-popover .rdp-day:hover:not(.rdp-day_selected):not(.rdp-day_disabled) {
+  background: #f9f9ed;
+  border: 1px solid #ebb582;
+}
+
+.date-picker-popover .rdp-day_selected {
+  background: #3d59ab !important;
+  color: white !important;
+  font-weight: 600;
+}
+
+.date-picker-popover .rdp-day_today:not(.rdp-day_selected) {
+  border: 2px solid #3d59ab;
+  font-weight: 700;
+}
+
+.date-picker-popover .rdp-day_disabled {
+  color: #d1d5db;
+  cursor: not-allowed;
+}
+
+.date-picker-popover .rdp-day_outside {
+  color: #9ca3af;
+  opacity: 0.5;
+}
