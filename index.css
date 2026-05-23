@@ -1,36 +1,3 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* Larger date picker inputs for scheduling UI */
-.date-input-lg {
-  height: 38px;
-  padding: 6px 8px;
-  font-size: 14px;
-  font-weight: 500;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-/* Scale the calendar icon (webkit browsers) */
-.date-input-lg::-webkit-calendar-picker-indicator {
-  width: 18px;
-  height: 18px;
-  padding: 2px;
-  cursor: pointer;
-  opacity: 0.6;
-}
-
-.date-input-lg::-webkit-calendar-picker-indicator:hover {
-  opacity: 1;
-}
-
-/* Placeholder/empty state styling */
-.date-input-lg:not(:valid) {
-  color: #9ca3af;
-}
-
-.date-input-lg:focus {
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(61, 89, 171, 0.3);
-}

@@ -1419,32 +1419,35 @@ function BillingDatesSection({ clients, updateClients, blockedDates, updateBlock
             return (
               <div
                 key={idx}
-                className="px-4 py-3 rounded-lg border"
+                className="px-3 py-2 rounded-lg border"
                 style={{ borderColor: '#ebb582', backgroundColor: '#f9f9ed' }}
               >
-                {/* Client name row */}
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-semibold" style={{ color: '#3d59ab' }}>
-                    {client.displayName || client.name}
-                  </span>
-                  <span className="text-sm text-gray-500">
-                    {client.mealsPerWeek} meals × {client.portions || 1} portions
-                  </span>
-                </div>
+                {/* Compact client row with dates inline */}
+                <div className="flex items-center gap-4">
+                  {/* Client name */}
+                  <div className="min-w-[140px]">
+                    <span className="font-semibold text-sm" style={{ color: '#3d59ab' }}>
+                      {client.displayName || client.name}
+                    </span>
+                    <span className="text-xs text-gray-400 ml-2">
+                      {client.mealsPerWeek}×{client.portions || 1}
+                    </span>
+                  </div>
 
-                {/* Large delivery date inputs */}
-                <div className="grid grid-cols-4 gap-3">
-                  {displayDates.slice(0, 4).map((date, i) => (
-                    <input
-                      key={i}
-                      type="date"
-                      value={date || ''}
-                      onChange={(e) => updateDeliveryDate(client.name, i, e.target.value)}
-                      min={todayStr}
-                      className="date-input-lg w-full border-2"
-                      style={{ borderColor: '#ebb582', backgroundColor: 'white' }}
-                    />
-                  ))}
+                  {/* Delivery date inputs */}
+                  <div className="flex-1 grid grid-cols-4 gap-2">
+                    {displayDates.slice(0, 4).map((date, i) => (
+                      <input
+                        key={i}
+                        type="date"
+                        value={date || ''}
+                        onChange={(e) => updateDeliveryDate(client.name, i, e.target.value)}
+                        min={todayStr}
+                        className="w-full px-2 py-1.5 border rounded text-sm"
+                        style={{ borderColor: '#ebb582', backgroundColor: 'white' }}
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
             );
