@@ -478,7 +478,7 @@ export default function RecipesTab(props) {
                 const cost = getRecipeCost(recipe);
                 return (
                   <div key={index}>
-                    {editingRecipe?.category === category && editingRecipe?.index === index ? (
+                    {editingRecipe?.originalCategory === category && editingRecipe?.originalIndex === index ? (
                       <div className="p-4 rounded-lg border-2" style={{ borderColor: '#3d59ab', backgroundColor: '#f9f9ed' }}>
                         <input
                           type="text"
@@ -493,10 +493,10 @@ export default function RecipesTab(props) {
                         <div className="flex items-center gap-2 mb-2">
                           <label className="text-sm font-medium" style={{ color: '#423d3c' }}>Category:</label>
                           <select
-                            value={editingRecipe.category}
+                            value={editingRecipe.targetCategory}
                             onChange={(e) => setEditingRecipe({
                               ...editingRecipe,
-                              category: e.target.value
+                              targetCategory: e.target.value
                             })}
                             className="p-2 border-2 rounded-lg text-sm"
                             style={{ borderColor: '#ebb582' }}

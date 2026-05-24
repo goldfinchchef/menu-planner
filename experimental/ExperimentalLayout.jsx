@@ -1184,8 +1184,9 @@ export default function ExperimentalLayout() {
   const startEditingRecipe = (category, index) => {
     const recipe = recipes[category][index];
     setEditingRecipe({
-      category,
-      index,
+      originalCategory: category,  // Where recipe currently exists (for edit form visibility)
+      originalIndex: index,        // Index in original category (for edit form visibility)
+      targetCategory: category,    // Where user wants to move it (dropdown controls this)
       recipe: {
         ...recipe,
         ingredients: recipe.ingredients.map(ing => ({
@@ -1239,15 +1240,24 @@ export default function ExperimentalLayout() {
   };
 
   const saveEditingRecipe = async () => {
-    const { category, index, recipe } = editingRecipe;
+    const { originalCategory, originalIndex, targetCategory, recipe } = editingRecipe;
     const validIngredients = recipe.ingredients.filter(ing => ing.name && ing.quantity);
     validIngredients.forEach(ing => addToMasterIngredients(ing));
     const recipeToSave = { ...recipe, ingredients: validIngredients };
 
     if (isSupabaseMode()) {
-      const result = await saveRecipeToSupabase(recipeToSave, category);
+      // If category changed, delete from old and add to new
+      const categoryChanged = originalCategory !== targetCategory;
+      const result = await saveRecipeToSupabase(recipeToSave, targetCategory);
       if (result.success) {
-        setRecipes(result.recipes);
+        if (categoryChanged) {
+          // Remove from original category in the returned recipes
+          const updatedRecipes = { ...result.recipes };
+          updatedRecipes[originalCategory] = updatedRecipes[originalCategory].filter((_, i) => i !== originalIndex);
+          setRecipes(updatedRecipes);
+        } else {
+          setRecipes(result.recipes);
+        }
         setEditingRecipe(null);
         alert('Recipe updated!');
       } else {
@@ -1255,7 +1265,15 @@ export default function ExperimentalLayout() {
       }
     } else {
       const updatedRecipes = { ...recipes };
-      updatedRecipes[category][index] = recipeToSave;
+      if (originalCategory !== targetCategory) {
+        // Remove from original category
+        updatedRecipes[originalCategory] = updatedRecipes[originalCategory].filter((_, i) => i !== originalIndex);
+        // Add to target category
+        updatedRecipes[targetCategory] = [...updatedRecipes[targetCategory], recipeToSave];
+      } else {
+        // Same category, just update in place
+        updatedRecipes[originalCategory][originalIndex] = recipeToSave;
+      }
       setRecipes(updatedRecipes);
       setEditingRecipe(null);
       alert('Recipe updated (local)!');

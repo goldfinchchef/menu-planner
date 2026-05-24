@@ -3419,8 +3419,9 @@ export default function AdminPage() {
     });
 
     setEditingRecipe({
-      category,
-      index,
+      originalCategory: category,  // Where recipe currently exists (for edit form visibility)
+      originalIndex: index,        // Index in original category (for edit form visibility)
+      targetCategory: category,    // Where user wants to move it (dropdown controls this)
       recipe: {
         ...recipe,
         ingredients: ingredientsWithIds
@@ -3480,7 +3481,7 @@ export default function AdminPage() {
     console.log('[AdminPage.saveEditingRecipe] START');
     console.log('[AdminPage.saveEditingRecipe] dataMode:', getDataMode(), 'isSupabaseMode:', isSupabaseMode());
 
-    const { category, index, recipe } = editingRecipe;
+    const { originalCategory, originalIndex, targetCategory, recipe } = editingRecipe;
     const validIngredients = recipe.ingredients.filter(ing => ing.name && ing.quantity);
 
     // Check for duplicate ingredients
@@ -3494,16 +3495,23 @@ export default function AdminPage() {
     await Promise.all(validIngredients.map(ing => addToMasterIngredients(ing)));
 
     const recipeToSave = { ...recipe, ingredients: validIngredients };
-    console.log('[AdminPage.saveEditingRecipe] recipe:', recipeToSave.name, 'category:', category);
+    const categoryChanged = originalCategory !== targetCategory;
+    console.log('[AdminPage.saveEditingRecipe] recipe:', recipeToSave.name, 'category:', targetCategory, 'moved:', categoryChanged);
 
     if (isConfigured()) {
       console.log('[AdminPage.saveEditingRecipe] calling saveRecipeToSupabase...');
-      const result = await saveRecipeToSupabase(recipeToSave, category);
+      const result = await saveRecipeToSupabase(recipeToSave, targetCategory);
       console.log('[AdminPage.saveEditingRecipe] result:', result.success, result.error || '');
       if (result.success) {
+        let finalRecipes = result.recipes;
+        if (categoryChanged) {
+          // Remove from original category
+          finalRecipes = { ...finalRecipes };
+          finalRecipes[originalCategory] = finalRecipes[originalCategory].filter((_, i) => i !== originalIndex);
+        }
         // Update both React state AND localStorage for persistence on refresh
-        setRecipes(result.recipes);
-        saveData({ recipes: result.recipes });
+        setRecipes(finalRecipes);
+        saveData({ recipes: finalRecipes });
         setEditingRecipe(null);
         alert('Recipe updated!');
       } else {
@@ -3512,7 +3520,15 @@ export default function AdminPage() {
     } else {
       console.log('[AdminPage.saveEditingRecipe] LOCAL MODE - not calling Supabase');
       const updatedRecipes = { ...recipes };
-      updatedRecipes[category][index] = recipeToSave;
+      if (categoryChanged) {
+        // Remove from original category
+        updatedRecipes[originalCategory] = updatedRecipes[originalCategory].filter((_, i) => i !== originalIndex);
+        // Add to target category
+        updatedRecipes[targetCategory] = [...updatedRecipes[targetCategory], recipeToSave];
+      } else {
+        // Same category, just update in place
+        updatedRecipes[originalCategory][originalIndex] = recipeToSave;
+      }
       updateRecipes(updatedRecipes);
       setEditingRecipe(null);
       alert('Recipe updated (local only)!');
