@@ -3,9 +3,90 @@
  * Menu-first workflow: Build base weekly menu, then apply to clients
  */
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useExperimentalContext } from '../ExperimentalContext';
-import { Check, Edit2, X, ChevronDown, ChevronUp, Wand2, Save, Users, Loader2, Trash2, AlertCircle } from 'lucide-react';
+import { Check, Edit2, X, ChevronDown, ChevronUp, Wand2, Save, Users, Loader2, Trash2, AlertCircle, Plus } from 'lucide-react';
+
+// Compact multi-select dropdown for extras
+function ExtrasDropdown({ options, selected, onChange, compact = false }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  // Close on click outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isOpen]);
+
+  const toggleExtra = (name) => {
+    if (selected.includes(name)) {
+      onChange(selected.filter(e => e !== name));
+    } else {
+      onChange([...selected, name]);
+    }
+  };
+
+  if (options.length === 0) {
+    return <span className="text-gray-400 text-xs">—</span>;
+  }
+
+  return (
+    <div ref={dropdownRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className={`flex items-center gap-1 px-2 py-1 rounded border text-xs ${
+          selected.length > 0
+            ? 'bg-purple-50 border-purple-300 text-purple-700'
+            : 'bg-gray-50 border-gray-300 text-gray-600 hover:bg-gray-100'
+        }`}
+      >
+        {selected.length > 0 ? (
+          <span className="truncate max-w-[120px]">
+            {compact ? `+${selected.length}` : selected.join(', ')}
+          </span>
+        ) : (
+          <>
+            <Plus size={12} />
+            <span>Extras</span>
+          </>
+        )}
+        <ChevronDown size={12} className={isOpen ? 'rotate-180' : ''} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-50 mt-1 left-0 bg-white border rounded-lg shadow-lg py-1 min-w-[160px] max-h-48 overflow-y-auto">
+          {options.map((recipe, i) => {
+            const isSelected = selected.includes(recipe.name);
+            return (
+              <label
+                key={i}
+                className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 cursor-pointer text-sm"
+              >
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => toggleExtra(recipe.name)}
+                  className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                />
+                <span className={isSelected ? 'text-purple-700 font-medium' : 'text-gray-700'}>
+                  {recipe.name}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function MenuBuilderPage() {
   const {
@@ -143,15 +224,6 @@ export default function MenuBuilderPage() {
       ...(recipes.soups || [])
     ];
   }, [recipes]);
-
-  // Toggle extra in an array
-  const toggleExtra = (currentExtras, extraName) => {
-    if (currentExtras.includes(extraName)) {
-      return currentExtras.filter(e => e !== extraName);
-    } else {
-      return [...currentExtras, extraName];
-    }
-  };
 
   // Handle save base menus
   const handleSaveBaseMenus = async () => {
@@ -434,40 +506,19 @@ export default function MenuBuilderPage() {
                     </td>
                     <td className="py-2">
                       {editingBase ? (
-                        <div className="flex flex-wrap gap-1">
-                          {extraCategories.length > 0 ? (
-                            extraCategories.map((recipe, i) => {
-                              const isSelected = (baseMenuForm[idx].extras || []).includes(recipe.name);
-                              return (
-                                <button
-                                  key={i}
-                                  type="button"
-                                  onClick={() => {
-                                    const newForm = [...baseMenuForm];
-                                    newForm[idx] = {
-                                      ...newForm[idx],
-                                      extras: toggleExtra(newForm[idx].extras || [], recipe.name)
-                                    };
-                                    setBaseMenuForm(newForm);
-                                  }}
-                                  className={`px-1.5 py-0.5 rounded text-xs ${
-                                    isSelected
-                                      ? 'bg-purple-600 text-white'
-                                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                  }`}
-                                >
-                                  {recipe.name}
-                                </button>
-                              );
-                            })
-                          ) : (
-                            <span className="text-gray-400 text-xs">No extras defined</span>
-                          )}
-                        </div>
+                        <ExtrasDropdown
+                          options={extraCategories}
+                          selected={baseMenuForm[idx].extras || []}
+                          onChange={(newExtras) => {
+                            const newForm = [...baseMenuForm];
+                            newForm[idx] = { ...newForm[idx], extras: newExtras };
+                            setBaseMenuForm(newForm);
+                          }}
+                        />
                       ) : (
-                        <span className={(baseMenuForm[idx].extras || []).length > 0 ? 'text-gray-800' : 'text-gray-400'}>
+                        <span className={(baseMenuForm[idx].extras || []).length > 0 ? 'text-purple-600 text-sm' : 'text-gray-400'}>
                           {(baseMenuForm[idx].extras || []).length > 0
-                            ? baseMenuForm[idx].extras.map(e => `+${e}`).join(', ')
+                            ? `+${baseMenuForm[idx].extras.join(', +')}`
                             : '—'}
                         </span>
                       )}
@@ -903,32 +954,12 @@ export default function MenuBuilderPage() {
                                       </select>
                                     </td>
                                     <td className="py-1 pr-1">
-                                      <div className="flex flex-wrap gap-0.5">
-                                        {extraCategories.length > 0 ? (
-                                          extraCategories.map((recipe, i) => {
-                                            const isSelected = (editForm.extras || []).includes(recipe.name);
-                                            return (
-                                              <button
-                                                key={i}
-                                                type="button"
-                                                onClick={() => setEditForm(p => ({
-                                                  ...p,
-                                                  extras: toggleExtra(p.extras || [], recipe.name)
-                                                }))}
-                                                className={`px-1 py-0.5 rounded text-xs ${
-                                                  isSelected
-                                                    ? 'bg-purple-600 text-white'
-                                                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                                                }`}
-                                              >
-                                                {recipe.name.length > 8 ? recipe.name.slice(0, 8) + '…' : recipe.name}
-                                              </button>
-                                            );
-                                          })
-                                        ) : (
-                                          <span className="text-gray-400 text-xs">—</span>
-                                        )}
-                                      </div>
+                                      <ExtrasDropdown
+                                        options={extraCategories}
+                                        selected={editForm.extras || []}
+                                        onChange={(newExtras) => setEditForm(p => ({ ...p, extras: newExtras }))}
+                                        compact
+                                      />
                                     </td>
                                     <td className="py-1">
                                       <div className="flex gap-0.5">
