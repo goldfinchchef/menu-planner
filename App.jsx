@@ -413,8 +413,9 @@ export default function App() {
     });
 
     setEditingRecipe({
-      category,
-      index,
+      originalCategory: category,  // Where recipe currently exists (for edit form visibility)
+      originalIndex: index,        // Index in original category (for edit form visibility)
+      targetCategory: category,    // Where user wants to move it (dropdown controls this)
       recipe: {
         ...recipe,
         ingredients: ingredientsWithIds
@@ -471,8 +472,10 @@ export default function App() {
     console.log('[App.saveEditingRecipe] START');
     console.log('[App.saveEditingRecipe] dataMode:', getDataMode(), 'isSupabaseMode:', isSupabaseMode());
 
-    const { category, index, recipe } = editingRecipe;
-    console.log('[App.saveEditingRecipe] recipe:', recipe?.name, 'category:', category);
+    const { originalCategory, originalIndex, targetCategory, recipe } = editingRecipe;
+    const categoryChanged = originalCategory !== targetCategory;
+    const isNewRecipe = !recipe.id;
+    console.log('[App.saveEditingRecipe] recipe:', recipe?.name, 'category:', targetCategory, 'moved:', categoryChanged);
 
     const validIngredients = recipe.ingredients.filter(ing => ing.name && ing.quantity);
 
@@ -489,9 +492,18 @@ export default function App() {
 
     if (isSupabaseMode()) {
       console.log('[App.saveEditingRecipe] calling saveRecipeToSupabase...');
-      const result = await saveRecipeToSupabase(recipeToSave, category);
+      const result = await saveRecipeToSupabase(recipeToSave, targetCategory);
       if (result.success) {
-        setRecipes(result.recipes);
+        // Use fetched DB data as source of truth
+        let finalRecipes = result.recipes;
+
+        // Only need to clean up if an EXISTING recipe (has id) moved categories
+        if (categoryChanged && !isNewRecipe) {
+          finalRecipes = { ...finalRecipes };
+          finalRecipes[originalCategory] = finalRecipes[originalCategory].filter(r => r.id !== recipe.id);
+        }
+
+        setRecipes(finalRecipes);
         setEditingRecipe(null);
         alert('Recipe updated!');
       } else {
@@ -501,7 +513,12 @@ export default function App() {
       // Local mode - just update local state
       console.log('[App.saveEditingRecipe] LOCAL MODE - not calling Supabase');
       const updatedRecipes = { ...recipes };
-      updatedRecipes[category][index] = recipeToSave;
+      if (categoryChanged) {
+        updatedRecipes[originalCategory] = updatedRecipes[originalCategory].filter((_, i) => i !== originalIndex);
+        updatedRecipes[targetCategory] = [...updatedRecipes[targetCategory], recipeToSave];
+      } else {
+        updatedRecipes[originalCategory][originalIndex] = recipeToSave;
+      }
       setRecipes(updatedRecipes);
       setEditingRecipe(null);
       alert('Recipe updated (local only)!');

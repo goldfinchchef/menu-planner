@@ -3498,17 +3498,24 @@ export default function AdminPage() {
     const categoryChanged = originalCategory !== targetCategory;
     console.log('[AdminPage.saveEditingRecipe] recipe:', recipeToSave.name, 'category:', targetCategory, 'moved:', categoryChanged);
 
+    const isNewRecipe = !recipe.id;  // Copied/new recipes have no id
+
     if (isConfigured()) {
       console.log('[AdminPage.saveEditingRecipe] calling saveRecipeToSupabase...');
       const result = await saveRecipeToSupabase(recipeToSave, targetCategory);
       console.log('[AdminPage.saveEditingRecipe] result:', result.success, result.error || '');
       if (result.success) {
+        // Use fetched DB data as source of truth
         let finalRecipes = result.recipes;
-        if (categoryChanged) {
-          // Remove from original category
+
+        // Only need to clean up if an EXISTING recipe (has id) moved categories
+        // For new recipes, the INSERT already put it in the right category in DB
+        if (categoryChanged && !isNewRecipe) {
+          // Remove the old entry from original category by id (not index)
           finalRecipes = { ...finalRecipes };
-          finalRecipes[originalCategory] = finalRecipes[originalCategory].filter((_, i) => i !== originalIndex);
+          finalRecipes[originalCategory] = finalRecipes[originalCategory].filter(r => r.id !== recipe.id);
         }
+
         // Update both React state AND localStorage for persistence on refresh
         setRecipes(finalRecipes);
         saveData({ recipes: finalRecipes });
@@ -3521,12 +3528,12 @@ export default function AdminPage() {
       console.log('[AdminPage.saveEditingRecipe] LOCAL MODE - not calling Supabase');
       const updatedRecipes = { ...recipes };
       if (categoryChanged) {
-        // Remove from original category
+        // Remove from original category by index (valid for local state)
         updatedRecipes[originalCategory] = updatedRecipes[originalCategory].filter((_, i) => i !== originalIndex);
         // Add to target category
         updatedRecipes[targetCategory] = [...updatedRecipes[targetCategory], recipeToSave];
       } else {
-        // Same category, just update in place
+        // Same category - update in place
         updatedRecipes[originalCategory][originalIndex] = recipeToSave;
       }
       updateRecipes(updatedRecipes);

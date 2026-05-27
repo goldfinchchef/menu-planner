@@ -135,6 +135,24 @@ export default function MenuBuilderPage() {
   // Get recipe options
   const getRecipeOptions = (category) => recipes[category] || [];
 
+  // Get extras options (sauces, breakfast, soups - matching production MenuTab)
+  const extraCategories = useMemo(() => {
+    return [
+      ...(recipes.sauces || []),
+      ...(recipes.breakfast || []),
+      ...(recipes.soups || [])
+    ];
+  }, [recipes]);
+
+  // Toggle extra in an array
+  const toggleExtra = (currentExtras, extraName) => {
+    if (currentExtras.includes(extraName)) {
+      return currentExtras.filter(e => e !== extraName);
+    } else {
+      return [...currentExtras, extraName];
+    }
+  };
+
   // Handle save base menus
   const handleSaveBaseMenus = async () => {
     const result = await saveBaseMenus(baseMenuForm);
@@ -183,7 +201,8 @@ export default function MenuBuilderPage() {
     setEditForm({
       protein: meal.protein || '',
       veg: meal.veg || '',
-      starch: meal.starch || ''
+      starch: meal.starch || '',
+      extras: meal.extras || []
     });
   };
 
@@ -197,7 +216,8 @@ export default function MenuBuilderPage() {
     const result = await updateClientMeal(menuId, {
       protein: editForm.protein || '',
       veg: editForm.veg || '',
-      starch: editForm.starch || ''
+      starch: editForm.starch || '',
+      extras: editForm.extras || []
     });
 
     if (!result.success) {
@@ -339,6 +359,7 @@ export default function MenuBuilderPage() {
                   <th className="py-2">Protein</th>
                   <th className="py-2">Veg</th>
                   <th className="py-2">Starch</th>
+                  <th className="py-2">Extras</th>
                 </tr>
               </thead>
               <tbody>
@@ -408,6 +429,46 @@ export default function MenuBuilderPage() {
                       ) : (
                         <span className={baseMenuForm[idx].starch ? 'text-gray-800' : 'text-gray-400'}>
                           {baseMenuForm[idx].starch || '—'}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2">
+                      {editingBase ? (
+                        <div className="flex flex-wrap gap-1">
+                          {extraCategories.length > 0 ? (
+                            extraCategories.map((recipe, i) => {
+                              const isSelected = (baseMenuForm[idx].extras || []).includes(recipe.name);
+                              return (
+                                <button
+                                  key={i}
+                                  type="button"
+                                  onClick={() => {
+                                    const newForm = [...baseMenuForm];
+                                    newForm[idx] = {
+                                      ...newForm[idx],
+                                      extras: toggleExtra(newForm[idx].extras || [], recipe.name)
+                                    };
+                                    setBaseMenuForm(newForm);
+                                  }}
+                                  className={`px-1.5 py-0.5 rounded text-xs ${
+                                    isSelected
+                                      ? 'bg-purple-600 text-white'
+                                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                  }`}
+                                >
+                                  {recipe.name}
+                                </button>
+                              );
+                            })
+                          ) : (
+                            <span className="text-gray-400 text-xs">No extras defined</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className={(baseMenuForm[idx].extras || []).length > 0 ? 'text-gray-800' : 'text-gray-400'}>
+                          {(baseMenuForm[idx].extras || []).length > 0
+                            ? baseMenuForm[idx].extras.map(e => `+${e}`).join(', ')
+                            : '—'}
                         </span>
                       )}
                     </td>
@@ -789,6 +850,7 @@ export default function MenuBuilderPage() {
                               <th className="font-normal">Protein</th>
                               <th className="font-normal">Veg</th>
                               <th className="font-normal">Starch</th>
+                              <th className="font-normal">Extras</th>
                               <th className="w-8"></th>
                             </tr>
                           </thead>
@@ -840,6 +902,34 @@ export default function MenuBuilderPage() {
                                         ))}
                                       </select>
                                     </td>
+                                    <td className="py-1 pr-1">
+                                      <div className="flex flex-wrap gap-0.5">
+                                        {extraCategories.length > 0 ? (
+                                          extraCategories.map((recipe, i) => {
+                                            const isSelected = (editForm.extras || []).includes(recipe.name);
+                                            return (
+                                              <button
+                                                key={i}
+                                                type="button"
+                                                onClick={() => setEditForm(p => ({
+                                                  ...p,
+                                                  extras: toggleExtra(p.extras || [], recipe.name)
+                                                }))}
+                                                className={`px-1 py-0.5 rounded text-xs ${
+                                                  isSelected
+                                                    ? 'bg-purple-600 text-white'
+                                                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                                }`}
+                                              >
+                                                {recipe.name.length > 8 ? recipe.name.slice(0, 8) + '…' : recipe.name}
+                                              </button>
+                                            );
+                                          })
+                                        ) : (
+                                          <span className="text-gray-400 text-xs">—</span>
+                                        )}
+                                      </div>
+                                    </td>
                                     <td className="py-1">
                                       <div className="flex gap-0.5">
                                         <button
@@ -879,6 +969,15 @@ export default function MenuBuilderPage() {
                                   </td>
                                   <td className="py-1 truncate max-w-[100px]">
                                     {truncate(meal.starch, 15)}
+                                  </td>
+                                  <td className="py-1 truncate max-w-[100px]">
+                                    {(meal.extras || []).length > 0 ? (
+                                      <span className="text-purple-600 text-xs">
+                                        +{meal.extras.length}
+                                      </span>
+                                    ) : (
+                                      <span className="text-gray-400">—</span>
+                                    )}
                                   </td>
                                   <td className="py-1">
                                     <button

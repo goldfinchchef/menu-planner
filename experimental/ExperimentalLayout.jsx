@@ -1183,20 +1183,38 @@ export default function ExperimentalLayout() {
 
   const startEditingRecipe = (category, index) => {
     const recipe = recipes[category][index];
+
+    // Preserve ingredient_id, backfill from master list if missing but name matches
+    const ingredientsWithIds = recipe.ingredients.map(ing => {
+      let ingredientId = ing.ingredient_id || ing.id || null;
+
+      // If no valid ingredient_id but name exists, try to find in master list
+      if (!ingredientId && ing.name) {
+        const masterMatch = findExactMatch(ing.name);
+        if (masterMatch && masterMatch.id) {
+          ingredientId = masterMatch.id;
+          console.log('[ExperimentalLayout.startEditingRecipe] Backfilled ingredient_id for:', ing.name, '->', ingredientId);
+        }
+      }
+
+      return {
+        ingredient_id: ingredientId,
+        name: ing.name || '',
+        quantity: ing.quantity || '',
+        unit: ing.unit || 'oz',
+        cost: ing.cost || '',
+        source: ing.source || '',
+        section: ing.section || 'Other'
+      };
+    });
+
     setEditingRecipe({
       originalCategory: category,  // Where recipe currently exists (for edit form visibility)
       originalIndex: index,        // Index in original category (for edit form visibility)
       targetCategory: category,    // Where user wants to move it (dropdown controls this)
       recipe: {
         ...recipe,
-        ingredients: recipe.ingredients.map(ing => ({
-          name: ing.name || '',
-          quantity: ing.quantity || '',
-          unit: ing.unit || 'oz',
-          cost: ing.cost || '',
-          source: ing.source || '',
-          section: ing.section || 'Other'
-        }))
+        ingredients: ingredientsWithIds
       }
     });
   };
@@ -1244,34 +1262,42 @@ export default function ExperimentalLayout() {
     const validIngredients = recipe.ingredients.filter(ing => ing.name && ing.quantity);
     validIngredients.forEach(ing => addToMasterIngredients(ing));
     const recipeToSave = { ...recipe, ingredients: validIngredients };
+    const categoryChanged = originalCategory !== targetCategory;
+    const isNewRecipe = !recipe.id;  // Copied/new recipes have no id
 
     if (isSupabaseMode()) {
-      // If category changed, delete from old and add to new
-      const categoryChanged = originalCategory !== targetCategory;
       const result = await saveRecipeToSupabase(recipeToSave, targetCategory);
       if (result.success) {
-        if (categoryChanged) {
-          // Remove from original category in the returned recipes
-          const updatedRecipes = { ...result.recipes };
-          updatedRecipes[originalCategory] = updatedRecipes[originalCategory].filter((_, i) => i !== originalIndex);
-          setRecipes(updatedRecipes);
-        } else {
-          setRecipes(result.recipes);
+        // Use fetched DB data as source of truth
+        let finalRecipes = result.recipes;
+
+        // Only need to clean up if an EXISTING recipe (has id) moved categories
+        // For new recipes, the INSERT already put it in the right category in DB
+        if (categoryChanged && !isNewRecipe) {
+          // Remove the old entry from original category by id (not index)
+          finalRecipes = { ...result.recipes };
+          finalRecipes[originalCategory] = finalRecipes[originalCategory].filter(r => r.id !== recipe.id);
         }
+
+        setRecipes(finalRecipes);
         setEditingRecipe(null);
         alert('Recipe updated!');
       } else {
         alert(`Failed to update recipe: ${result.error}`);
       }
     } else {
+      // Local mode - work with local state directly
       const updatedRecipes = { ...recipes };
-      if (originalCategory !== targetCategory) {
-        // Remove from original category
+      if (categoryChanged) {
+        // Remove from original category by index (valid for local state)
         updatedRecipes[originalCategory] = updatedRecipes[originalCategory].filter((_, i) => i !== originalIndex);
         // Add to target category
         updatedRecipes[targetCategory] = [...updatedRecipes[targetCategory], recipeToSave];
+      } else if (isNewRecipe) {
+        // New recipe, same category - replace at index
+        updatedRecipes[originalCategory][originalIndex] = recipeToSave;
       } else {
-        // Same category, just update in place
+        // Existing recipe, same category - update in place
         updatedRecipes[originalCategory][originalIndex] = recipeToSave;
       }
       setRecipes(updatedRecipes);
