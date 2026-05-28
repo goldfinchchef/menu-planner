@@ -182,12 +182,51 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex bg-black/60">
+    <div className="fixed inset-0 z-50 bg-black/60" style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gridTemplateRows: '50px 1fr' }}>
+      {/* Header - spans full width */}
+      <div className="bg-white border-b px-4 flex items-center justify-between" style={{ gridColumn: '1 / -1' }}>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => switchClient(Math.max(0, currentIndex - 1))}
+            disabled={currentIndex === 0}
+            className="p-1 rounded hover:bg-gray-100 disabled:opacity-30"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          <span className="font-medium text-sm">
+            {currentIndex + 1} / {clientMenus.length}
+          </span>
+          <button
+            onClick={() => switchClient(Math.min(clientMenus.length - 1, currentIndex + 1))}
+            disabled={currentIndex === clientMenus.length - 1}
+            className="p-1 rounded hover:bg-gray-100 disabled:opacity-30"
+          >
+            <ChevronRight size={20} />
+          </button>
+          <span className="text-gray-500 text-sm ml-2">{editState.clientName}</span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={downloadJPG}
+            className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700"
+          >
+            <Download size={14} />
+            Download JPG
+          </button>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded"
+          >
+            <X size={18} />
+          </button>
+        </div>
+      </div>
+
       {/* Left sidebar - client list */}
-      <div className="w-56 bg-white border-r overflow-y-auto flex-shrink-0">
+      <div className="bg-white border-r overflow-y-auto">
         <div className="p-3 border-b sticky top-0 bg-white z-10">
-          <h3 className="font-semibold text-sm" style={{ color: '#3d59ab' }}>Client Menus</h3>
-          <p className="text-xs text-gray-500">{clientMenus.length} client{clientMenus.length !== 1 ? 's' : ''}</p>
+          <h3 className="font-semibold text-sm" style={{ color: '#3d59ab' }}>Clients</h3>
         </div>
         <div className="p-2">
           {clientMenus.map((cm, idx) => (
@@ -206,51 +245,9 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
         </div>
       </div>
 
-      {/* Main area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
-        <div className="bg-white border-b px-4 py-3 flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => switchClient(Math.max(0, currentIndex - 1))}
-              disabled={currentIndex === 0}
-              className="p-1 rounded hover:bg-gray-100 disabled:opacity-30"
-            >
-              <ChevronLeft size={20} />
-            </button>
-            <span className="font-medium text-sm">
-              {currentIndex + 1} / {clientMenus.length}
-            </span>
-            <button
-              onClick={() => switchClient(Math.min(clientMenus.length - 1, currentIndex + 1))}
-              disabled={currentIndex === clientMenus.length - 1}
-              className="p-1 rounded hover:bg-gray-100 disabled:opacity-30"
-            >
-              <ChevronRight size={20} />
-            </button>
-            <span className="text-gray-500 text-sm ml-2">{editState.clientName}</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={downloadJPG}
-              className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700"
-            >
-              <Download size={14} />
-              Download JPG
-            </button>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-gray-100 rounded"
-            >
-              <X size={18} />
-            </button>
-          </div>
-        </div>
-
-        {/* Content area - side by side */}
-        <div className="flex-1 overflow-auto bg-gray-100 p-4">
-          <div className="flex gap-4 items-start">
+      {/* Content area - card and edit panel */}
+      <div className="overflow-auto bg-gray-100 p-4">
+        <div className="flex gap-4 items-start">
             {/* Card preview */}
             <div className="flex-shrink-0">
               <div
@@ -495,6 +492,5 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
           </div>
         </div>
       </div>
-    </div>
   );
 }
