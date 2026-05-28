@@ -13,6 +13,10 @@ import KDSTab from './tabs/KDSTab';
 import PrepTab from './tabs/PrepTab';
 import DeliveriesTab from './tabs/DeliveriesTab';
 import MenuBuilderTab from './tabs/MenuBuilderTab';
+import DashboardTab from './tabs/DashboardTab';
+import BillingTab from './tabs/BillingTab';
+import ClientsTab from './tabs/ClientsTab';
+import IngredientsTab from './tabs/IngredientsTab';
 import { getWeekId, getWeekIdFromDate } from './utils/weekUtils';
 import {
   categorizeIngredient,
@@ -25,13 +29,13 @@ import {
   downloadCSV
 } from './utils';
 import { DEFAULT_NEW_CLIENT, DEFAULT_NEW_RECIPE, DEFAULT_NEW_MENU_ITEM, DEFAULT_NEW_INGREDIENT } from './constants';
-import { fetchKdsDishStatuses, setKdsDishDone, saveRecipeToSupabase, deleteRecipeFromSupabase, getUnapprovedMenuCountForWeek, approveAllMenusForWeek, fetchMenusByWeek } from './lib/database';
+import { fetchKdsDishStatuses, setKdsDishDone, saveRecipeToSupabase, deleteRecipeFromSupabase, getUnapprovedMenuCountForWeek, approveAllMenusForWeek, fetchMenusByWeek, updateClientDeliveryDates } from './lib/database';
 import { isSupabaseMode, getDataMode } from './lib/dataMode';
 import { checkConnection, isConfigured } from './lib/supabase';
 
 export default function App() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('kds');
+  const [activeTab, setActiveTab] = useState('dashboard');
   const {
     recipes, setRecipes,
     menuItems, setMenuItems,
@@ -56,6 +60,8 @@ export default function App() {
     bagReminders, setBagReminders,
     readyForDelivery, setReadyForDelivery,
     clientPortalData, setClientPortalData,
+    blockedDates, setBlockedDates,
+    groceryBills, setGroceryBills,
     weeks, setWeeks,
     selectedWeekId, setSelectedWeekId,
     findSimilarIngredients,
@@ -1106,7 +1112,7 @@ export default function App() {
       </nav>
 
       <div className="max-w-6xl mx-auto p-4 space-y-6">
-        {['kds', 'menuBuilder', 'deliveries'].includes(activeTab) && (
+        {['kds', 'menuBuilder', 'deliveries', 'dashboard'].includes(activeTab) && (
           <WeekSelector
             selectedWeekId={selectedWeekId}
             setSelectedWeekId={setSelectedWeekId}
@@ -1226,6 +1232,69 @@ export default function App() {
             unapprovedMenuCount={unapprovedMenuCount}
             unapprovedByClient={unapprovedByClient}
             onApproveAll={handleApproveAllFromWarning}
+          />
+        )}
+
+        {activeTab === 'dashboard' && (
+          <DashboardTab
+            weekStart={selectedWeekId}
+            weekEnd={selectedWeekId ? new Date(new Date(selectedWeekId + 'T12:00:00').getTime() + 6 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : null}
+            menuItems={getWeekMenuItems()}
+            recipes={recipes}
+            clients={clients}
+            groceryBills={groceryBills}
+            newGroceryBill={{ date: '', amount: '', store: '' }}
+            setNewGroceryBill={() => {}}
+            addGroceryBill={(bill) => setGroceryBills(prev => [...prev, { ...bill, id: Date.now() }])}
+            deleteGroceryBill={(id) => setGroceryBills(prev => prev.filter(b => b.id !== id))}
+            getRecipeCost={getRecipeCost}
+          />
+        )}
+
+        {activeTab === 'scheduling' && (
+          <BillingTab
+            clients={clients}
+            updateClients={setClients}
+            blockedDates={blockedDates}
+            updateBlockedDates={setBlockedDates}
+            saveDeliveryDatesToSupabase={updateClientDeliveryDates}
+          />
+        )}
+
+        {activeTab === 'clients' && (
+          <ClientsTab
+            clients={clients}
+            newClient={newClient}
+            setNewClient={setNewClient}
+            addClient={addClient}
+            deleteClient={deleteClient}
+            clientsFileRef={clientsFileRef}
+            exportClientsCSV={() => downloadCSV(exportClientsCSV(clients), 'clients.csv')}
+            setClients={setClients}
+            deliveryLog={deliveryLog}
+            orderHistory={orderHistory}
+          />
+        )}
+
+        {activeTab === 'ingredients' && (
+          <IngredientsTab
+            masterIngredients={masterIngredients}
+            newIngredient={newIngredient}
+            setNewIngredient={setNewIngredient}
+            editingIngredientId={editingIngredientId}
+            editingIngredientData={editingIngredientData}
+            setEditingIngredientData={setEditingIngredientData}
+            duplicateWarnings={duplicateWarnings}
+            setDuplicateWarnings={setDuplicateWarnings}
+            scanForDuplicates={scanForDuplicates}
+            mergeIngredients={mergeIngredients}
+            addMasterIngredient={addMasterIngredient}
+            deleteMasterIngredient={deleteMasterIngredient}
+            startEditingMasterIngredient={startEditingMasterIngredient}
+            saveEditingMasterIngredient={saveEditingMasterIngredient}
+            cancelEditingMasterIngredient={cancelEditingMasterIngredient}
+            ingredientsFileRef={ingredientsFileRef}
+            exportIngredientsCSV={() => downloadCSV(exportIngredientsCSV(masterIngredients), 'ingredients.csv')}
           />
         )}
 

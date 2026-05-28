@@ -1,4 +1,4 @@
-import { Plus, Trash2, List, Book, ChefHat, Users, Clock, DollarSign, Monitor, RefreshCw, Truck, Car, Utensils, ShoppingCart, CalendarDays } from 'lucide-react';
+import { Plus, Trash2, List, Book, ChefHat, Users, Clock, DollarSign, Monitor, RefreshCw, Truck, Car, Utensils, ShoppingCart, CalendarDays, LayoutDashboard, Calendar } from 'lucide-react';
 
 export const STORE_SECTIONS = [
   'Produce',
@@ -23,10 +23,14 @@ export const DAYS = ['Monday', 'Tuesday', 'Thursday'];
 export const RECIPE_CATEGORIES = ['protein', 'veg', 'starch', 'sauces', 'breakfast', 'soups'];
 
 export const TABS = [
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'kds', label: 'KDS', icon: Monitor },
   { id: 'menuBuilder', label: 'Menu', icon: CalendarDays },
   { id: 'recipes', label: 'Recipes', icon: Book },
-  { id: 'deliveries', label: 'Deliveries', icon: Truck }
+  { id: 'deliveries', label: 'Deliveries', icon: Truck },
+  { id: 'scheduling', label: 'Scheduling', icon: Calendar },
+  { id: 'clients', label: 'Clients', icon: Users },
+  { id: 'ingredients', label: 'Ingredients', icon: ShoppingCart }
 ];
 
 export const DEFAULT_RECIPES = {
