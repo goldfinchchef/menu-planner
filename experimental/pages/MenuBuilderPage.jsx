@@ -7,6 +7,38 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useExperimentalContext } from '../ExperimentalContext';
 import { Check, Edit2, X, ChevronDown, ChevronUp, Wand2, Save, Users, Loader2, Trash2, AlertCircle, Plus, Image } from 'lucide-react';
 import EditableMenuPreview from '../components/EditableMenuPreview';
+import { fetchComponentUsageHistory } from '../../lib/database';
+
+// Rotation warning dot with tooltip
+function RotationWarning({ componentName, usageHistory }) {
+  const [showTooltip, setShowTooltip] = useState(false);
+
+  if (!componentName || !usageHistory || !usageHistory[componentName]) {
+    return null;
+  }
+
+  const usage = usageHistory[componentName];
+  const { count, lastWeekId } = usage;
+
+  return (
+    <span
+      className="relative inline-flex ml-1"
+      onMouseEnter={() => setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
+    >
+      <span
+        className="w-2 h-2 rounded-full bg-yellow-400 cursor-help"
+        title={`Used ${count} time${count !== 1 ? 's' : ''} in last 5 weeks`}
+      />
+      {showTooltip && (
+        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap shadow-lg">
+          Used {count} time{count !== 1 ? 's' : ''} in last 5 weeks.
+          {lastWeekId && <span className="block text-gray-300">Last used: {lastWeekId}</span>}
+        </div>
+      )}
+    </span>
+  );
+}
 
 // Compact multi-select dropdown for extras
 function ExtrasDropdown({ options, selected, onChange, compact = false }) {
@@ -149,6 +181,18 @@ export default function MenuBuilderPage() {
 
   // Styled menu preview state
   const [showPreview, setShowPreview] = useState(false);
+
+  // Component rotation history
+  const [usageHistory, setUsageHistory] = useState({});
+
+  // Load component usage history on mount
+  useEffect(() => {
+    fetchComponentUsageHistory(5).then(history => {
+      setUsageHistory(history);
+    }).catch(err => {
+      console.error('Failed to load usage history:', err);
+    });
+  }, []);
 
   // Load base menu data AND schedule menus on mount and when week changes
   useEffect(() => {
@@ -475,6 +519,7 @@ export default function MenuBuilderPage() {
                       ) : (
                         <span className={baseMenuForm[idx].protein ? 'text-gray-800' : 'text-gray-400'}>
                           {baseMenuForm[idx].protein || '—'}
+                          <RotationWarning componentName={baseMenuForm[idx].protein} usageHistory={usageHistory} />
                         </span>
                       )}
                     </td>
@@ -497,6 +542,7 @@ export default function MenuBuilderPage() {
                       ) : (
                         <span className={baseMenuForm[idx].veg ? 'text-gray-800' : 'text-gray-400'}>
                           {baseMenuForm[idx].veg || '—'}
+                          <RotationWarning componentName={baseMenuForm[idx].veg} usageHistory={usageHistory} />
                         </span>
                       )}
                     </td>
@@ -519,6 +565,7 @@ export default function MenuBuilderPage() {
                       ) : (
                         <span className={baseMenuForm[idx].starch ? 'text-gray-800' : 'text-gray-400'}>
                           {baseMenuForm[idx].starch || '—'}
+                          <RotationWarning componentName={baseMenuForm[idx].starch} usageHistory={usageHistory} />
                         </span>
                       )}
                     </td>
@@ -1010,14 +1057,23 @@ export default function MenuBuilderPage() {
                                       <span className="text-xs text-blue-500 ml-1">{baseMealLabel}</span>
                                     )}
                                   </td>
-                                  <td className="py-1 truncate max-w-[100px]">
-                                    {truncate(meal.protein, 15)}
+                                  <td className="py-1 max-w-[100px]">
+                                    <span className="truncate inline-block max-w-[85px] align-middle">
+                                      {truncate(meal.protein, 15)}
+                                    </span>
+                                    <RotationWarning componentName={meal.protein} usageHistory={usageHistory} />
                                   </td>
-                                  <td className="py-1 truncate max-w-[100px]">
-                                    {truncate(meal.veg, 15)}
+                                  <td className="py-1 max-w-[100px]">
+                                    <span className="truncate inline-block max-w-[85px] align-middle">
+                                      {truncate(meal.veg, 15)}
+                                    </span>
+                                    <RotationWarning componentName={meal.veg} usageHistory={usageHistory} />
                                   </td>
-                                  <td className="py-1 truncate max-w-[100px]">
-                                    {truncate(meal.starch, 15)}
+                                  <td className="py-1 max-w-[100px]">
+                                    <span className="truncate inline-block max-w-[85px] align-middle">
+                                      {truncate(meal.starch, 15)}
+                                    </span>
+                                    <RotationWarning componentName={meal.starch} usageHistory={usageHistory} />
                                   </td>
                                   <td className="py-1 truncate max-w-[100px]">
                                     {(meal.extras || []).length > 0 ? (
