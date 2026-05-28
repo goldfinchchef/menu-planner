@@ -12,6 +12,7 @@ import RecipesTab from './tabs/RecipesTab';
 import KDSTab from './tabs/KDSTab';
 import PrepTab from './tabs/PrepTab';
 import DeliveriesTab from './tabs/DeliveriesTab';
+import MenuBuilderTab from './tabs/MenuBuilderTab';
 import { getWeekId, getWeekIdFromDate } from './utils/weekUtils';
 import {
   categorizeIngredient,
@@ -1105,7 +1106,7 @@ export default function App() {
       </nav>
 
       <div className="max-w-6xl mx-auto p-4 space-y-6">
-        {['kds', 'deliveries'].includes(activeTab) && (
+        {['kds', 'menuBuilder', 'deliveries'].includes(activeTab) && (
           <WeekSelector
             selectedWeekId={selectedWeekId}
             setSelectedWeekId={setSelectedWeekId}
@@ -1124,6 +1125,14 @@ export default function App() {
             orderHistory={orderHistory}
             selectedDate={menuDate}
             onNavigate={setActiveTab}
+          />
+        )}
+
+        {activeTab === 'menuBuilder' && (
+          <MenuBuilderTab
+            clients={clients}
+            recipes={recipes}
+            selectedWeekId={selectedWeekId}
           />
         )}
 

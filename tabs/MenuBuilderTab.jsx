@@ -1,13 +1,16 @@
 /**
- * MenuBuilderPage - /test/menu/builder
+ * MenuBuilderTab - Production Menu Builder
  * Menu-first workflow: Build base weekly menu, then apply to clients
+ *
+ * Uses the shared useMenuBuilder hook and EditableMenuPreview component.
  */
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { useExperimentalContext } from '../ExperimentalContext';
 import { Check, Edit2, X, ChevronDown, ChevronUp, Wand2, Save, Users, Loader2, Trash2, AlertCircle, Plus, Image } from 'lucide-react';
-import EditableMenuPreview from '../../components/EditableMenuPreview';
-import { fetchComponentUsageHistory } from '../../lib/database';
+import EditableMenuPreview from '../components/EditableMenuPreview';
+import { useMenuBuilder } from '../hooks/useMenuBuilder';
+import { fetchComponentUsageHistory } from '../lib/database';
+import { getDefaultMealAssignment } from '../lib/database';
 
 // Rotation warning dot with tooltip
 function RotationWarning({ componentName, usageHistory }) {
@@ -121,16 +124,13 @@ function ExtrasDropdown({ options, selected, onChange, compact = false }) {
   );
 }
 
-export default function MenuBuilderPage() {
+export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
+  // Use the Menu Builder hook
   const {
-    clients,
-    recipes,
-    selectedWeekId,
-    scheduleMenus,
-    getRecipeCost,
-    // Base menu functions
     baseWeeklyMenus,
     clientMealAssignments,
+    scheduleMenus,
+    scheduledClientIds,
     loadBaseMenuData,
     loadScheduleData,
     saveBaseMenus,
@@ -138,13 +138,11 @@ export default function MenuBuilderPage() {
     deleteMealAssignment,
     getClientAssignedMeals,
     applyBaseMenu,
-    getDefaultMealAssignment,
     updateClientMeal,
     confirmClientMenus,
     clearWeekMenus,
-    removeClientFromWeek,
-    scheduledClientIds
-  } = useExperimentalContext();
+    removeClientFromWeek
+  } = useMenuBuilder({ selectedWeekId, clients });
 
   // Local state for editing base menus
   const [editingBase, setEditingBase] = useState(false);
@@ -280,7 +278,6 @@ export default function MenuBuilderPage() {
     const result = await saveBaseMenus(baseMenuForm);
     if (result.success) {
       setEditingBase(false);
-      alert('Base menus saved!');
     } else {
       alert(`Failed to save: ${result.error}`);
     }
@@ -294,8 +291,6 @@ export default function MenuBuilderPage() {
     const result = await applyBaseMenu();
     setApplyResult(result);
     setApplying(false);
-
-    // Don't show alert - the inline result display is clearer
   };
 
   // Handle assignment change
@@ -648,7 +643,7 @@ export default function MenuBuilderPage() {
                     {applyResult.regenerated > 0 && (
                       <div className="flex items-center gap-2 text-green-700">
                         <span className="font-medium">
-                          ✓ Regenerated {applyResult.regenerated} client{applyResult.regenerated !== 1 ? 's' : ''}
+                          Regenerated {applyResult.regenerated} client{applyResult.regenerated !== 1 ? 's' : ''}
                         </span>
                         <span className="text-gray-500 text-xs">
                           ({applyResult.deleted} deleted, {applyResult.created} created)
@@ -660,7 +655,7 @@ export default function MenuBuilderPage() {
                     {applyResult.skippedNoDate > 0 && (
                       <div className="text-amber-600">
                         <span className="font-medium">
-                          ○ {applyResult.skippedNoDate} skipped (not scheduled)
+                          {applyResult.skippedNoDate} skipped (not scheduled)
                         </span>
                         <span className="ml-1 text-amber-500 text-xs">
                           — see grayed-out clients in Assignments section

@@ -1,4 +1,4 @@
-import { Plus, Trash2, List, Book, ChefHat, Users, Clock, DollarSign, Monitor, RefreshCw, Truck, Car, Utensils, ShoppingCart } from 'lucide-react';
+import { Plus, Trash2, List, Book, ChefHat, Users, Clock, DollarSign, Monitor, RefreshCw, Truck, Car, Utensils, ShoppingCart, CalendarDays } from 'lucide-react';
 
 export const STORE_SECTIONS = [
   'Produce',
@@ -24,6 +24,7 @@ export const RECIPE_CATEGORIES = ['protein', 'veg', 'starch', 'sauces', 'breakfa
 
 export const TABS = [
   { id: 'kds', label: 'KDS', icon: Monitor },
+  { id: 'menuBuilder', label: 'Menu', icon: CalendarDays },
   { id: 'recipes', label: 'Recipes', icon: Book },
   { id: 'deliveries', label: 'Deliveries', icon: Truck },
   { id: 'prep', label: 'Shop', icon: ShoppingCart }
