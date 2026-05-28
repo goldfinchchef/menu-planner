@@ -251,7 +251,7 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
                 <div
                   ref={cardRef}
                   className="shadow-xl rounded-lg overflow-hidden"
-                  style={{ backgroundColor: '#fff', fontSize: '14px', width: '384px' }}
+                  style={{ backgroundColor: '#fff', fontSize: '14px', width: '420px' }}
                 >
                 {/* Header section */}
                 <div
@@ -334,7 +334,7 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
                             style={{
                               color: '#ffffff',
                               fontFamily: '"Glacial Indifference", sans-serif',
-                              fontSize: meal.isExtra ? '0.9rem' : '1rem',
+                              fontSize: meal.isExtra ? '0.85rem' : '0.9rem',
                               fontWeight: 'bold',
                               letterSpacing: '0.12em',
                               textTransform: 'uppercase',
@@ -350,7 +350,7 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
                             style={{
                               color: '#f5e6d3',
                               fontFamily: '"Glacial Indifference", sans-serif',
-                              fontSize: '0.8rem',
+                              fontSize: '0.75rem',
                               letterSpacing: '0.08em',
                               textTransform: 'uppercase'
                             }}
