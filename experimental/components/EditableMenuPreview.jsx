@@ -250,8 +250,8 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
               <div className="flex-shrink-0">
                 <div
                   ref={cardRef}
-                  className="w-80 shadow-xl rounded-lg overflow-hidden"
-                  style={{ backgroundColor: '#fff', fontSize: '14px' }}
+                  className="shadow-xl rounded-lg overflow-hidden"
+                  style={{ backgroundColor: '#fff', fontSize: '14px', width: '384px' }}
                 >
                 {/* Header section */}
                 <div
