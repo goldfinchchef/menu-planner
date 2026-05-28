@@ -249,23 +249,14 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
         </div>
 
         {/* Content area - side by side */}
-        <div className="flex-1 overflow-hidden bg-gray-100 p-4">
-          <div className="flex gap-4 items-start h-full">
-            {/* Card preview - scaled down for display, full size for export */}
-            <div
-              className="flex-shrink-0"
-              style={{
-                width: '255px',  /* 340 * 0.75 */
-                height: 'fit-content'
-              }}
-            >
+        <div className="flex-1 overflow-auto bg-gray-100 p-4">
+          <div className="flex gap-4 items-start">
+            {/* Card preview */}
+            <div className="flex-shrink-0">
               <div
                 ref={cardRef}
-                className="w-[340px] shadow-2xl rounded-lg overflow-hidden origin-top-left"
-                style={{
-                  backgroundColor: '#fff',
-                  transform: 'scale(0.75)',
-                }}
+                className="w-[320px] shadow-2xl rounded-lg overflow-hidden"
+                style={{ backgroundColor: '#fff' }}
               >
                 {/* Header section */}
                 <div
@@ -438,45 +429,45 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
             </div>
 
             {/* Edit panel */}
-            <div className="w-56 bg-white rounded-lg shadow-lg p-3 flex-shrink-0 max-h-[calc(100vh-140px)] overflow-y-auto">
-              <h4 className="font-semibold mb-2 text-sm" style={{ color: '#3d59ab' }}>Edit Preview</h4>
+            <div className="w-64 bg-white rounded-lg shadow-lg p-4 flex-shrink-0 max-h-[calc(100vh-120px)] overflow-y-auto">
+              <h4 className="font-semibold mb-3 text-sm" style={{ color: '#3d59ab' }}>Edit Preview</h4>
 
               {/* Subscription ends */}
-              <div className="mb-3">
+              <div className="mb-4">
                 <label className="block text-xs text-gray-500 mb-1">Subscription Ends</label>
                 <input
                   type="text"
                   value={editState.subscriptionEnds}
                   onChange={(e) => setEditState(prev => ({ ...prev, subscriptionEnds: e.target.value }))}
                   placeholder="e.g., June 30, 2024"
-                  className="w-full px-2 py-1 border rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-2 py-1.5 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               {/* Meals */}
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Meals & Extras</label>
-                <div className="space-y-2">
+                <label className="block text-xs text-gray-500 mb-2">Meals & Extras</label>
+                <div className="space-y-3">
                   {editState.meals.map((meal) => (
                     <div
                       key={meal.id}
-                      className={`p-1.5 rounded border ${meal.visible ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-100'}`}
+                      className={`p-2 rounded border ${meal.visible ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-100'}`}
                     >
-                      <div className="flex items-center gap-1 mb-1">
+                      <div className="flex items-center gap-2 mb-1">
                         <button
                           onClick={() => toggleMealVisibility(meal.id)}
-                          className={`p-0.5 rounded hover:bg-gray-100 ${meal.visible ? 'text-green-600' : 'text-gray-400'}`}
-                          title={meal.visible ? 'Hide' : 'Show'}
+                          className={`p-1 rounded hover:bg-gray-100 ${meal.visible ? 'text-green-600' : 'text-gray-400'}`}
+                          title={meal.visible ? 'Click to hide' : 'Click to show'}
                         >
-                          {meal.visible ? <Eye size={12} /> : <EyeOff size={12} />}
+                          {meal.visible ? <Eye size={14} /> : <EyeOff size={14} />}
                         </button>
-                        <span className="text-[10px] text-gray-400">{meal.isExtra ? 'Extra' : 'Meal'}</span>
+                        <span className="text-xs text-gray-400">{meal.isExtra ? 'Extra' : 'Meal'}</span>
                       </div>
                       <input
                         type="text"
                         value={meal.title}
                         onChange={(e) => updateMealTitle(meal.id, e.target.value)}
-                        className={`w-full px-1.5 py-0.5 border rounded text-xs font-medium mb-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+                        className={`w-full px-2 py-1 border rounded text-sm font-medium mb-1 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                           !meal.visible ? 'bg-gray-100 text-gray-400' : ''
                         }`}
                         placeholder="Meal title"
@@ -486,10 +477,10 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
                           type="text"
                           value={meal.subtitle}
                           onChange={(e) => updateMealSubtitle(meal.id, e.target.value)}
-                          className={`w-full px-1.5 py-0.5 border rounded text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+                          className={`w-full px-2 py-1 border rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                             !meal.visible ? 'bg-gray-100 text-gray-400' : ''
                           }`}
-                          placeholder="Sides"
+                          placeholder="Sides (e.g., Broccoli, Rice)"
                         />
                       )}
                     </div>
@@ -497,8 +488,8 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
                 </div>
               </div>
 
-              <p className="text-[10px] text-gray-400 mt-2 italic">
-                Preview-only, won't be saved.
+              <p className="text-xs text-gray-400 mt-4 italic">
+                Changes are preview-only and won't be saved.
               </p>
             </div>
           </div>
