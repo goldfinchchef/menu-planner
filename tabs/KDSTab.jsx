@@ -26,17 +26,17 @@ function DishTile({ dishName, data, recipe, isComplete, isExpanded, onToggleExpa
     >
       {/* Tile Header */}
       <div
-        className="p-3 cursor-pointer select-none"
+        className="p-4 cursor-pointer select-none"
         style={{ backgroundColor: isComplete ? '#dcfce7' : '#f9f9ed' }}
         onClick={onToggleExpand}
       >
         <div className="flex justify-between items-start">
           <div className="flex-1 min-w-0">
-            <h4 className="font-bold truncate" style={{ color: '#3d59ab' }}>
+            <h4 className="font-bold text-base truncate" style={{ color: '#3d59ab' }}>
               {dishName}
             </h4>
-            <p className="text-xl font-bold" style={{ color: isComplete ? '#22c55e' : '#3d59ab' }}>
-              {data.totalPortions} <span className="text-xs font-normal text-gray-500">portions</span>
+            <p className="text-2xl font-bold mt-1" style={{ color: isComplete ? '#22c55e' : '#3d59ab' }}>
+              {data.totalPortions} <span className="text-sm font-normal text-gray-500">portions</span>
             </p>
           </div>
           <div className="flex items-center gap-1 ml-2">
@@ -165,7 +165,7 @@ function ProductionDaySection({
       </div>
 
       {/* Category Columns */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {['protein', 'veg', 'starch', 'extras'].map(category => {
           const categoryDishes = Object.entries(data[category] || {})
             .sort((a, b) => b[1].totalPortions - a[1].totalPortions); // Sort high to low by quantity
@@ -177,14 +177,14 @@ function ProductionDaySection({
             <div key={category}>
               {/* Column Header */}
               <div
-                className="text-center py-2 px-3 rounded-t-lg mb-2 font-bold text-white text-sm"
+                className="text-center py-3 px-4 rounded-lg mb-3 font-bold text-white"
                 style={{ backgroundColor: catConfig.color }}
               >
                 {catConfig.label}
               </div>
 
               {/* Dishes in this category */}
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {categoryDishes.map(([dishName, dishData]) => {
                   // Find recipe - check all recipe categories
                   let recipe = null;

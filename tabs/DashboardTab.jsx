@@ -262,19 +262,26 @@ export default function DashboardTab({
     return { entries, projectedTotal };
   };
 
-  // Get this week's grocery spending
+  // Get this week's grocery spending (using Saturday-Friday week)
   const getThisWeekGrocerySpending = () => {
-    if (!weekStart || !weekEnd) return 0;
-    const weekStartDate = new Date(weekStart + 'T00:00:00');
-    const weekEndDate = new Date(weekEnd + 'T23:59:59');
-    if (isNaN(weekStartDate.getTime()) || isNaN(weekEndDate.getTime())) return 0;
+    if (!weekStart) return 0;
+    // Calculate Saturday-Friday week containing the selected Monday
+    const monday = new Date(weekStart + 'T12:00:00');
+    if (isNaN(monday.getTime())) return 0;
+    const day = monday.getDay();
+    const daysSinceSaturday = (day + 1) % 7;
+    const saturday = new Date(monday);
+    saturday.setDate(monday.getDate() - daysSinceSaturday);
+    const friday = new Date(saturday);
+    friday.setDate(saturday.getDate() + 6);
+
+    const saturdayStr = saturday.toISOString().split('T')[0];
+    const fridayStr = friday.toISOString().split('T')[0];
 
     return groceryBills
       .filter(bill => {
         if (!bill.date) return false;
-        const billDate = new Date(bill.date + 'T12:00:00');
-        if (isNaN(billDate.getTime())) return false;
-        return billDate >= weekStartDate && billDate <= weekEndDate;
+        return bill.date >= saturdayStr && bill.date <= fridayStr;
       })
       .reduce((sum, bill) => sum + (bill.amount || 0), 0);
   };
@@ -295,25 +302,41 @@ export default function DashboardTab({
     return months;
   };
 
-  // Helper to get week info from a date
+  // Helper to get week info from a date (Saturday-Friday week for grocery tracking)
   const getWeekInfo = (dateStr) => {
-    if (!dateStr) return { weekId: '', label: '', monday: null, sunday: null };
+    if (!dateStr) return { weekId: '', label: '', weekStart: null, weekEnd: null };
     const date = new Date(dateStr + 'T12:00:00');
-    if (isNaN(date.getTime())) return { weekId: '', label: '', monday: null, sunday: null };
-    const day = date.getDay();
-    const diffToMonday = date.getDate() - day + (day === 0 ? -6 : 1);
-    const monday = new Date(date);
-    monday.setDate(diffToMonday);
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    const weekId = monday.toISOString().split('T')[0];
+    if (isNaN(date.getTime())) return { weekId: '', label: '', weekStart: null, weekEnd: null };
+    const day = date.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    // Calculate days since Saturday (Sat=0, Sun=1, Mon=2, ..., Fri=6)
+    const daysSinceSaturday = (day + 1) % 7;
+    const saturday = new Date(date);
+    saturday.setDate(date.getDate() - daysSinceSaturday);
+    const friday = new Date(saturday);
+    friday.setDate(saturday.getDate() + 6);
+    const weekId = saturday.toISOString().split('T')[0];
     return {
       weekId,
-      weekStart: monday,
-      weekEnd: sunday,
-      label: `${monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${sunday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+      weekStart: saturday,
+      weekEnd: friday,
+      label: `${saturday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${friday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
     };
   };
+
+  // Get Saturday-Friday week range that contains the app's selected week (Monday-based)
+  const getGroceryWeekRange = () => {
+    if (!weekStart) return { start: '', end: '' };
+    // Use the Monday (weekStart) to find the containing Saturday-Friday week
+    const weekInfo = getWeekInfo(weekStart);
+    if (!weekInfo.weekStart || !weekInfo.weekEnd) return { start: '', end: '' };
+    return {
+      start: weekInfo.weekStart.toISOString().split('T')[0],
+      end: weekInfo.weekEnd.toISOString().split('T')[0],
+      label: weekInfo.label
+    };
+  };
+
+  const groceryWeek = getGroceryWeekRange();
 
   // Build per-client breakdown grouped by week
   // Build client breakdown from ALL menu items (not just selected week)
@@ -523,7 +546,7 @@ export default function DashboardTab({
             <div className="mt-4 pt-4 border-t">
               <div className="flex justify-between items-center mb-2">
                 <p className="text-sm font-medium text-gray-600">
-                  {showAllBills ? `All Bills (${groceryBills.length})` : 'This Week\'s Bills'}
+                  {showAllBills ? `All Bills (${groceryBills.length})` : `This Week (${groceryWeek.label || 'Sat-Fri'})`}
                 </p>
                 <button
                   onClick={() => setShowAllBills(!showAllBills)}
@@ -554,8 +577,8 @@ export default function DashboardTab({
                   return sortedWeeks.length > 0 ? (
                     <div className="space-y-3 max-h-64 overflow-y-auto">
                       {sortedWeeks.map(([weekId, weekData]) => (
-                        <div key={weekId} className="border rounded-lg overflow-hidden" style={{ borderColor: weekId === weekStart ? '#3d59ab' : '#e5e7eb' }}>
-                          <div className="flex justify-between items-center px-3 py-2 text-sm font-medium" style={{ backgroundColor: weekId === weekStart ? '#dbeafe' : '#f9fafb' }}>
+                        <div key={weekId} className="border rounded-lg overflow-hidden" style={{ borderColor: weekId === groceryWeek.start ? '#3d59ab' : '#e5e7eb' }}>
+                          <div className="flex justify-between items-center px-3 py-2 text-sm font-medium" style={{ backgroundColor: weekId === groceryWeek.start ? '#dbeafe' : '#f9fafb' }}>
                             <span>{weekData.label}</span>
                             <span style={{ color: '#3d59ab' }}>${weekData.total.toFixed(2)}</span>
                           </div>
@@ -582,10 +605,10 @@ export default function DashboardTab({
                     <p className="text-sm text-gray-400 text-center py-2">No bills entered yet</p>
                   );
                 } else {
-                  // Show only this week's bills
+                  // Show only this week's bills (Saturday-Friday)
                   const thisWeekBills = groceryBills.filter(bill => {
-                    if (!bill.date || !weekStart || !weekEnd) return false;
-                    return bill.date >= weekStart && bill.date <= weekEnd;
+                    if (!bill.date || !groceryWeek.start || !groceryWeek.end) return false;
+                    return bill.date >= groceryWeek.start && bill.date <= groceryWeek.end;
                   });
 
                   return thisWeekBills.length > 0 ? (

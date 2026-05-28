@@ -1085,7 +1085,7 @@ export default function App() {
       <input type="file" ref={ingredientsFileRef} onChange={importIngredientsCSV} accept=".csv" className="hidden" />
 
       <header className="text-white px-4 py-2" style={{ backgroundColor: '#3d59ab' }}>
-        <div className="flex items-center justify-between max-w-6xl mx-auto">
+        <div className="flex items-center justify-between max-w-7xl mx-auto">
           <div className="flex items-center gap-3">
             <ChefHat size={28} style={{ color: '#ffd700' }} />
             <h1 className="text-xl font-bold">Goldfinch Chef</h1>
@@ -1123,12 +1123,12 @@ export default function App() {
       </header>
 
       <nav className="bg-white shadow-md sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto flex overflow-x-auto">
+        <div className="max-w-7xl mx-auto px-4 flex overflow-x-auto">
           <Tabs activeTab={activeTab} setActiveTab={setActiveTab} />
         </div>
       </nav>
 
-      <div className="max-w-6xl mx-auto p-4 space-y-6">
+      <main className="max-w-7xl mx-auto p-4 space-y-6 min-h-[calc(100vh-120px)]">
 
         {activeTab === 'deliveries' && (
           <WorkflowStatus
@@ -1327,7 +1327,7 @@ export default function App() {
           />
         )}
 
-      </div>
+      </main>
     </div>
   );
 }
