@@ -34,6 +34,7 @@ export default function DashboardTab({
 }) {
   const groceryFileRef = useRef();
   const [showGroceryAnalysis, setShowGroceryAnalysis] = useState(false);
+  const [showAllBills, setShowAllBills] = useState(false);
   const [showRecipeBreakdown, setShowRecipeBreakdown] = useState(() => {
     const saved = localStorage.getItem('groceryAnalysis_showRecipeBreakdown');
     return saved === 'true';
@@ -462,45 +463,106 @@ export default function DashboardTab({
               Add Bill
             </button>
 
-            {(() => {
-              // Filter bills for this week
-              const thisWeekBills = groceryBills.filter(bill => {
-                if (!bill.date || !weekStart || !weekEnd) return false;
-                return bill.date >= weekStart && bill.date <= weekEnd;
-              });
+            {/* Bills List */}
+            <div className="mt-4 pt-4 border-t">
+              <div className="flex justify-between items-center mb-2">
+                <p className="text-sm font-medium text-gray-600">
+                  {showAllBills ? `All Bills (${groceryBills.length})` : 'This Week\'s Bills'}
+                </p>
+                <button
+                  onClick={() => setShowAllBills(!showAllBills)}
+                  className="text-xs px-2 py-1 rounded"
+                  style={{ backgroundColor: '#f0f0f0', color: '#3d59ab' }}
+                >
+                  {showAllBills ? 'Show This Week' : `Show All (${groceryBills.length})`}
+                </button>
+              </div>
 
-              return thisWeekBills.length > 0 ? (
-                <div className="mt-4 pt-4 border-t">
-                  <p className="text-sm font-medium text-gray-600 mb-2">
-                    This Week's Bills ({thisWeekBills.length})
-                  </p>
-                  <div className="space-y-1 max-h-32 overflow-y-auto">
-                    {thisWeekBills.map(bill => (
-                      <div key={bill.id} className="flex justify-between items-center text-sm p-2 rounded" style={{ backgroundColor: '#f9f9ed' }}>
-                        <span>{formatDate(bill.date)} - {bill.store || 'N/A'}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">${bill.amount?.toFixed(2)}</span>
-                          <button
-                            onClick={() => deleteGroceryBill(bill.id)}
-                            className="text-red-500 hover:text-red-700"
-                          >
-                            <X size={14} />
-                          </button>
+              {(() => {
+                if (showAllBills) {
+                  // Group all bills by week
+                  const billsByWeek = {};
+                  groceryBills.forEach(bill => {
+                    if (!bill.date) return;
+                    const weekInfo = getWeekInfo(bill.date);
+                    const weekId = weekInfo.weekId || 'unknown';
+                    if (!billsByWeek[weekId]) {
+                      billsByWeek[weekId] = { label: weekInfo.label || 'Unknown', bills: [], total: 0 };
+                    }
+                    billsByWeek[weekId].bills.push(bill);
+                    billsByWeek[weekId].total += bill.amount || 0;
+                  });
+
+                  const sortedWeeks = Object.entries(billsByWeek).sort((a, b) => b[0].localeCompare(a[0]));
+
+                  return sortedWeeks.length > 0 ? (
+                    <div className="space-y-3 max-h-64 overflow-y-auto">
+                      {sortedWeeks.map(([weekId, weekData]) => (
+                        <div key={weekId} className="border rounded-lg overflow-hidden" style={{ borderColor: weekId === weekStart ? '#3d59ab' : '#e5e7eb' }}>
+                          <div className="flex justify-between items-center px-3 py-2 text-sm font-medium" style={{ backgroundColor: weekId === weekStart ? '#dbeafe' : '#f9fafb' }}>
+                            <span>{weekData.label}</span>
+                            <span style={{ color: '#3d59ab' }}>${weekData.total.toFixed(2)}</span>
+                          </div>
+                          <div className="divide-y">
+                            {weekData.bills.map(bill => (
+                              <div key={bill.id} className="flex justify-between items-center text-sm px-3 py-1.5 bg-white">
+                                <span className="text-gray-600">{formatDate(bill.date)} - {bill.store || 'N/A'}</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium">${bill.amount?.toFixed(2)}</span>
+                                  <button
+                                    onClick={() => deleteGroceryBill(bill.id)}
+                                    className="text-red-500 hover:text-red-700"
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-400 text-center py-2">No bills entered yet</p>
+                  );
+                } else {
+                  // Show only this week's bills
+                  const thisWeekBills = groceryBills.filter(bill => {
+                    if (!bill.date || !weekStart || !weekEnd) return false;
+                    return bill.date >= weekStart && bill.date <= weekEnd;
+                  });
+
+                  return thisWeekBills.length > 0 ? (
+                    <>
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                        {thisWeekBills.map(bill => (
+                          <div key={bill.id} className="flex justify-between items-center text-sm p-2 rounded" style={{ backgroundColor: '#f9f9ed' }}>
+                            <span>{formatDate(bill.date)} - {bill.store || 'N/A'}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">${bill.amount?.toFixed(2)}</span>
+                              <button
+                                onClick={() => deleteGroceryBill(bill.id)}
+                                className="text-red-500 hover:text-red-700"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                  <div className="mt-2 pt-2 border-t text-right">
-                    <span className="text-sm text-gray-500">Week Total: </span>
-                    <span className="font-bold" style={{ color: '#3d59ab' }}>
-                      ${thisWeekBills.reduce((sum, b) => sum + (b.amount || 0), 0).toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <p className="mt-4 text-sm text-gray-400 text-center">No bills entered for this week yet</p>
-              );
-            })()}
+                      <div className="mt-2 pt-2 border-t text-right">
+                        <span className="text-sm text-gray-500">Week Total: </span>
+                        <span className="font-bold" style={{ color: '#3d59ab' }}>
+                          ${thisWeekBills.reduce((sum, b) => sum + (b.amount || 0), 0).toFixed(2)}
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-sm text-gray-400 text-center py-2">No bills for this week</p>
+                  );
+                }
+              })()}
+            </div>
           </div>
         </div>
 

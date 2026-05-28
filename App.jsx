@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { ChefHat, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ChefHat, ChevronLeft, ChevronRight } from 'lucide-react';
 import Papa from 'papaparse';
 import Tabs from './components/Tabs';
 import WorkflowStatus from './components/WorkflowStatus';
@@ -1110,8 +1110,7 @@ export default function App() {
             </button>
           </div>
 
-          <div className="flex items-center gap-3">
-            <SyncStatus
+          <SyncStatus
               isOnline={isOnline}
               isSyncing={isSyncing}
               lastSyncedAt={lastSyncedAt}
@@ -1120,14 +1119,6 @@ export default function App() {
               isReadOnly={isReadOnly}
               onForceSync={forceSync}
             />
-            <Link
-              to="/admin"
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 transition-colors text-sm"
-            >
-              <Settings size={18} />
-              Admin
-            </Link>
-          </div>
         </div>
       </header>
 

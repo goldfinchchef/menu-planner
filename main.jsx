@@ -4,7 +4,6 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import App from './App.jsx'
 import DriverView from './pages/DriverView.jsx'
 import ClientPortal from './pages/ClientPortal.jsx'
-import AdminPage from './pages/AdminPage.jsx'
 import './index.css'
 
 // Experimental route-based navigation
@@ -78,11 +77,10 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <ErrorBoundary>
       <BrowserRouter>
         <Routes>
-          {/* Production routes - unchanged */}
+          {/* Production routes */}
           <Route path="/" element={<App />} />
           <Route path="/driver" element={<DriverView />} />
           <Route path="/client/:id" element={<ClientPortal />} />
-          <Route path="/admin" element={<AdminPage />} />
 
           {/* Experimental route-based navigation */}
           <Route path="/test" element={<ExperimentalLayout />}>
