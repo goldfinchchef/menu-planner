@@ -134,11 +134,18 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
     if (!cardRef.current) return;
 
     try {
-      const canvas = await html2canvas(cardRef.current, {
-        scale: 2, // Higher resolution
+      const element = cardRef.current;
+      const canvas = await html2canvas(element, {
+        scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
-        logging: false
+        logging: false,
+        width: element.offsetWidth,
+        height: element.offsetHeight,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: element.offsetWidth,
+        windowHeight: element.offsetHeight
       });
 
       const link = document.createElement('a');
