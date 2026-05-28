@@ -1256,6 +1256,7 @@ export default function App() {
               } catch { return null; }
             })()}
             menuItems={getWeekMenuItems()}
+            allMenuItems={menuItems}
             recipes={recipes}
             clients={clients}
             groceryBills={groceryBills}

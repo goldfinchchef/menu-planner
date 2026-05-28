@@ -22,6 +22,7 @@ export default function DashboardTab({
   weekStart,
   weekEnd,
   menuItems = [],
+  allMenuItems = [],
   recipes = {},
   clients = [],
   groceryBills = [],
@@ -273,8 +274,10 @@ export default function DashboardTab({
   };
 
   // Build per-client breakdown grouped by week
+  // Build client breakdown from ALL menu items (not just selected week)
+  // This shows historical grocery costs for all clients including paused ones
   const buildClientBreakdown = () => {
-    const approvedItems = menuItems.filter(item => item.approved);
+    const approvedItems = (allMenuItems.length > 0 ? allMenuItems : menuItems).filter(item => item.approved);
     const weekData = {};
 
     approvedItems.forEach(item => {
@@ -742,29 +745,32 @@ export default function DashboardTab({
                   <h4 className="font-bold mb-4" style={{ color: '#3d59ab' }}>Client Costs by Week</h4>
                   <div className="space-y-2">
                     {clientNames.map(clientName => {
-                      const client = clientData[clientName];
+                      const clientCostData = clientData[clientName];
+                      const clientRecord = clients.find(c => c.name === clientName || c.displayName === clientName);
+                      const isPaused = clientRecord?.status === 'paused';
                       const isClientExpanded = expandedClients[clientName] || false;
-                      const clientWeekIds = Object.keys(client.weeks).sort((a, b) => b.localeCompare(a));
+                      const clientWeekIds = Object.keys(clientCostData.weeks).sort((a, b) => b.localeCompare(a));
 
                       return (
-                        <div key={clientName} className="border rounded-lg overflow-hidden" style={{ borderColor: '#3d59ab' }}>
+                        <div key={clientName} className="border rounded-lg overflow-hidden" style={{ borderColor: isPaused ? '#9ca3af' : '#3d59ab' }}>
                           <button
                             onClick={() => toggleClientExpanded(clientName)}
                             className="w-full px-4 py-3 flex justify-between items-center hover:opacity-90"
-                            style={{ backgroundColor: '#dbeafe' }}
+                            style={{ backgroundColor: isPaused ? '#f3f4f6' : '#dbeafe' }}
                           >
                             <div className="flex items-center gap-3">
                               <span className="text-gray-500">{isClientExpanded ? '▼' : '▶'}</span>
-                              <span className="font-bold text-lg" style={{ color: '#3d59ab' }}>{clientName}</span>
+                              <span className="font-bold text-lg" style={{ color: isPaused ? '#6b7280' : '#3d59ab' }}>{clientName}</span>
+                              {isPaused && <span className="text-xs px-2 py-0.5 rounded bg-gray-200 text-gray-600">Paused</span>}
                               <span className="text-sm text-gray-500">({clientWeekIds.length} week{clientWeekIds.length !== 1 ? 's' : ''})</span>
                             </div>
-                            <span className="font-bold text-lg" style={{ color: '#22c55e' }}>${client.total.toFixed(2)}</span>
+                            <span className="font-bold text-lg" style={{ color: '#22c55e' }}>${clientCostData.total.toFixed(2)}</span>
                           </button>
 
                           {isClientExpanded && (
-                            <div className="border-t" style={{ borderColor: '#3d59ab' }}>
+                            <div className="border-t" style={{ borderColor: isPaused ? '#9ca3af' : '#3d59ab' }}>
                               {clientWeekIds.map(weekId => {
-                                const weekInfo = client.weeks[weekId];
+                                const weekInfo = clientCostData.weeks[weekId];
                                 const rowKey = `${clientName}_${weekId}`;
                                 const isWeekExpanded = expandedClientWeeks[rowKey] || false;
 
