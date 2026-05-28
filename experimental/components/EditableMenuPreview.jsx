@@ -182,80 +182,77 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
-      <div className="bg-white rounded-lg shadow-2xl overflow-hidden" style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gridTemplateRows: '50px 1fr', width: '900px', maxWidth: '95vw', height: '90vh', maxHeight: '800px' }}>
-      {/* Header - spans full width */}
-      <div className="bg-white border-b px-4 flex items-center justify-between" style={{ gridColumn: '1 / -1' }}>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => switchClient(Math.max(0, currentIndex - 1))}
-            disabled={currentIndex === 0}
-            className="p-1 rounded hover:bg-gray-100 disabled:opacity-30"
-          >
-            <ChevronLeft size={20} />
-          </button>
-          <span className="font-medium text-sm">
-            {currentIndex + 1} / {clientMenus.length}
-          </span>
-          <button
-            onClick={() => switchClient(Math.min(clientMenus.length - 1, currentIndex + 1))}
-            disabled={currentIndex === clientMenus.length - 1}
-            className="p-1 rounded hover:bg-gray-100 disabled:opacity-30"
-          >
-            <ChevronRight size={20} />
-          </button>
-          <span className="text-gray-500 text-sm ml-2">{editState.clientName}</span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={downloadJPG}
-            className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700"
-          >
-            <Download size={14} />
-            Download JPG
-          </button>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded"
-          >
-            <X size={18} />
-          </button>
-        </div>
-      </div>
-
-      {/* Left sidebar - client list */}
-      <div className="bg-white border-r overflow-y-auto">
-        <div className="p-3 border-b sticky top-0 bg-white z-10">
-          <h3 className="font-semibold text-sm" style={{ color: '#3d59ab' }}>Clients</h3>
-        </div>
-        <div className="p-2">
-          {clientMenus.map((cm, idx) => (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+      {/* Modal container */}
+      <div className="bg-white rounded-lg shadow-2xl flex flex-col" style={{ width: '950px', maxWidth: '100%', height: '85vh', maxHeight: '750px' }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0">
+          <div className="flex items-center gap-3">
             <button
-              key={cm.clientId}
-              onClick={() => switchClient(idx)}
-              className={`w-full text-left px-3 py-2 rounded mb-1 text-sm ${
-                idx === currentIndex
-                  ? 'bg-blue-100 text-blue-800 font-medium'
-                  : 'hover:bg-gray-100'
-              }`}
+              onClick={() => switchClient(Math.max(0, currentIndex - 1))}
+              disabled={currentIndex === 0}
+              className="p-1 rounded hover:bg-gray-100 disabled:opacity-30"
             >
-              {cm.client.name}
+              <ChevronLeft size={20} />
             </button>
-          ))}
+            <span className="font-medium text-sm">
+              {currentIndex + 1} / {clientMenus.length}
+            </span>
+            <button
+              onClick={() => switchClient(Math.min(clientMenus.length - 1, currentIndex + 1))}
+              disabled={currentIndex === clientMenus.length - 1}
+              className="p-1 rounded hover:bg-gray-100 disabled:opacity-30"
+            >
+              <ChevronRight size={20} />
+            </button>
+            <span className="text-gray-500 text-sm ml-2">{editState.clientName}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={downloadJPG}
+              className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700"
+            >
+              <Download size={14} />
+              Download JPG
+            </button>
+            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded">
+              <X size={18} />
+            </button>
+          </div>
         </div>
-      </div>
 
-      {/* Content area - card and edit panel */}
-      <div className="overflow-auto bg-gray-100 p-4">
-        <div className="flex gap-4 items-start">
-            {/* Card preview */}
-            <div className="flex-shrink-0">
-              <div
-                ref={cardRef}
-                className="w-[340px] shadow-xl rounded-lg overflow-hidden"
-                style={{ backgroundColor: '#fff' }}
-              >
+        {/* Body - sidebar and content */}
+        <div className="flex flex-1 min-h-0">
+          {/* Sidebar */}
+          <div className="w-44 border-r bg-white flex-shrink-0 overflow-y-auto">
+            <div className="p-3 border-b sticky top-0 bg-white">
+              <h3 className="font-semibold text-sm" style={{ color: '#3d59ab' }}>Clients</h3>
+            </div>
+            <div className="p-2">
+              {clientMenus.map((cm, idx) => (
+                <button
+                  key={cm.clientId}
+                  onClick={() => switchClient(idx)}
+                  className={`w-full text-left px-2 py-1.5 rounded mb-1 text-sm ${
+                    idx === currentIndex ? 'bg-blue-100 text-blue-800 font-medium' : 'hover:bg-gray-100'
+                  }`}
+                >
+                  {cm.client.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Content - card and edit panel */}
+          <div className="flex-1 bg-gray-100 p-4 overflow-auto">
+            <div className="flex gap-4">
+              {/* Card preview */}
+              <div className="flex-shrink-0">
+                <div
+                  ref={cardRef}
+                  className="w-80 shadow-xl rounded-lg overflow-hidden"
+                  style={{ backgroundColor: '#fff', fontSize: '14px' }}
+                >
                 {/* Header section */}
                 <div
                   className="relative px-4 pt-6 pb-6"
@@ -492,6 +489,7 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );
