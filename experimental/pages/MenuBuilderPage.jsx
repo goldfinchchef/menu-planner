@@ -5,7 +5,8 @@
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useExperimentalContext } from '../ExperimentalContext';
-import { Check, Edit2, X, ChevronDown, ChevronUp, Wand2, Save, Users, Loader2, Trash2, AlertCircle, Plus } from 'lucide-react';
+import { Check, Edit2, X, ChevronDown, ChevronUp, Wand2, Save, Users, Loader2, Trash2, AlertCircle, Plus, Image } from 'lucide-react';
+import EditableMenuPreview from '../components/EditableMenuPreview';
 
 // Compact multi-select dropdown for extras
 function ExtrasDropdown({ options, selected, onChange, compact = false }) {
@@ -145,6 +146,9 @@ export default function MenuBuilderPage() {
 
   // Removing client from week state
   const [removingClient, setRemovingClient] = useState(null);
+
+  // Styled menu preview state
+  const [showPreview, setShowPreview] = useState(false);
 
   // Load base menu data AND schedule menus on mount and when week changes
   useEffect(() => {
@@ -384,22 +388,36 @@ export default function MenuBuilderPage() {
             {selectedWeekId} • {clientCards.length} client{clientCards.length !== 1 ? 's' : ''} with menus
           </span>
         </div>
-        <button
-          onClick={handleClearWeek}
-          disabled={clearing || clientCards.length === 0}
-          className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded border ${
-            clearing || clientCards.length === 0
-              ? 'text-gray-400 border-gray-300 cursor-not-allowed'
-              : 'text-red-600 border-red-300 hover:bg-red-50'
-          }`}
-        >
-          {clearing ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : (
-            <Trash2 size={14} />
-          )}
-          Reset Week
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowPreview(true)}
+            disabled={clientCards.length === 0}
+            className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded border ${
+              clientCards.length === 0
+                ? 'text-gray-400 border-gray-300 cursor-not-allowed'
+                : 'text-purple-600 border-purple-300 hover:bg-purple-50'
+            }`}
+          >
+            <Image size={14} />
+            Preview Menus
+          </button>
+          <button
+            onClick={handleClearWeek}
+            disabled={clearing || clientCards.length === 0}
+            className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded border ${
+              clearing || clientCards.length === 0
+                ? 'text-gray-400 border-gray-300 cursor-not-allowed'
+                : 'text-red-600 border-red-300 hover:bg-red-50'
+            }`}
+          >
+            {clearing ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Trash2 size={14} />
+            )}
+            Reset Week
+          </button>
+        </div>
       </div>
 
       {/* Section 1: Base Weekly Menu */}
@@ -1032,6 +1050,16 @@ export default function MenuBuilderPage() {
           </div>
         )}
       </div>
+
+      {/* Styled Menu Preview Modal */}
+      {showPreview && (
+        <EditableMenuPreview
+          clients={clients}
+          menus={weekMenus}
+          weekId={selectedWeekId}
+          onClose={() => setShowPreview(false)}
+        />
+      )}
     </div>
   );
 }
