@@ -297,31 +297,6 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
                   </h2>
 
                   <p
-                    className="text-center mb-1"
-                    style={{
-                      color: '#7c7c7c',
-                      fontFamily: '"Glacial Indifference", sans-serif',
-                      fontSize: '10px',
-                      letterSpacing: '0.1em'
-                    }}
-                  >
-                    {editState.mealPlan}
-                  </p>
-
-                  {editState.subscriptionEnds && (
-                    <p
-                      className="text-center mb-1"
-                      style={{
-                        color: '#9a9a9a',
-                        fontFamily: '"Glacial Indifference", sans-serif',
-                        fontSize: '9px'
-                      }}
-                    >
-                      Subscription ends: {editState.subscriptionEnds}
-                    </p>
-                  )}
-
-                  <p
                     className="text-center mb-3"
                     style={{
                       color: '#5a5a5a',
@@ -431,6 +406,24 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
                     alt=""
                     className="absolute right-3 bottom-3 h-16 object-contain"
                   />
+                </div>
+
+                {/* Footer metadata */}
+                <div
+                  className="px-5 py-3 text-center"
+                  style={{ backgroundColor: '#f9f9ed' }}
+                >
+                  <p
+                    style={{
+                      fontFamily: '"Glacial Indifference", sans-serif',
+                      fontSize: '11px',
+                      color: '#4a4a4a',
+                      letterSpacing: '0.03em'
+                    }}
+                  >
+                    {editState.mealPlan}
+                    {editState.subscriptionEnds && ` • Subscription ends ${editState.subscriptionEnds}`}
+                  </p>
                 </div>
               </div>
             </div>
