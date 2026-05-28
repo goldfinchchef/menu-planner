@@ -185,14 +185,16 @@ export default function MenuBuilderPage() {
   // Component rotation history
   const [usageHistory, setUsageHistory] = useState({});
 
-  // Load component usage history on mount
+  // Load component usage history (excluding current week)
   useEffect(() => {
-    fetchComponentUsageHistory(5).then(history => {
-      setUsageHistory(history);
-    }).catch(err => {
-      console.error('Failed to load usage history:', err);
-    });
-  }, []);
+    if (selectedWeekId) {
+      fetchComponentUsageHistory(5, selectedWeekId).then(history => {
+        setUsageHistory(history);
+      }).catch(err => {
+        console.error('Failed to load usage history:', err);
+      });
+    }
+  }, [selectedWeekId]);
 
   // Load base menu data AND schedule menus on mount and when week changes
   useEffect(() => {
