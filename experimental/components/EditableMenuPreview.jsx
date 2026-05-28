@@ -250,7 +250,7 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
 
         {/* Content area - side by side */}
         <div className="flex-1 overflow-auto bg-gray-100 p-6">
-          <div className="flex gap-6 justify-center items-start min-h-full">
+          <div className="flex gap-6 items-start">
             {/* Card preview - fixed width, centered */}
             <div className="flex-shrink-0">
               <div
