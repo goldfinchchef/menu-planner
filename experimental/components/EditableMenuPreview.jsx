@@ -12,7 +12,7 @@
  */
 
 import React, { useState, useRef, useMemo } from 'react';
-import { X, Download, ChevronLeft, ChevronRight, Eye, EyeOff, Edit2, Check } from 'lucide-react';
+import { X, Download, ChevronLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import html2canvas from 'html2canvas';
 
 export default function EditableMenuPreview({ clients, menus, weekId, onClose }) {
@@ -119,6 +119,16 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
     }));
   };
 
+  // Update meal subtitle
+  const updateMealSubtitle = (mealId, newSubtitle) => {
+    setEditState(prev => ({
+      ...prev,
+      meals: prev.meals.map(m =>
+        m.id === mealId ? { ...m, subtitle: newSubtitle } : m
+      )
+    }));
+  };
+
   // Download as JPG
   const downloadJPG = async () => {
     if (!cardRef.current) return;
@@ -174,9 +184,9 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
   return (
     <div className="fixed inset-0 z-50 flex bg-black/60">
       {/* Left sidebar - client list */}
-      <div className="w-64 bg-white border-r overflow-y-auto">
-        <div className="p-4 border-b sticky top-0 bg-white">
-          <h3 className="font-semibold" style={{ color: '#3d59ab' }}>Client Menus</h3>
+      <div className="w-56 bg-white border-r overflow-y-auto flex-shrink-0">
+        <div className="p-3 border-b sticky top-0 bg-white z-10">
+          <h3 className="font-semibold text-sm" style={{ color: '#3d59ab' }}>Client Menus</h3>
           <p className="text-xs text-gray-500">{clientMenus.length} client{clientMenus.length !== 1 ? 's' : ''}</p>
         </div>
         <div className="p-2">
@@ -191,19 +201,16 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
               }`}
             >
               {cm.client.name}
-              <span className="text-xs text-gray-500 ml-2">
-                {cm.meals.length} meal{cm.meals.length !== 1 ? 's' : ''}
-              </span>
             </button>
           ))}
         </div>
       </div>
 
-      {/* Main area - preview and controls */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Main area */}
+      <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <div className="bg-white border-b px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="bg-white border-b px-4 py-3 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-3">
             <button
               onClick={() => switchClient(Math.max(0, currentIndex - 1))}
               disabled={currentIndex === 0}
@@ -211,7 +218,7 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
             >
               <ChevronLeft size={20} />
             </button>
-            <span className="font-medium">
+            <span className="font-medium text-sm">
               {currentIndex + 1} / {clientMenus.length}
             </span>
             <button
@@ -221,265 +228,277 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
             >
               <ChevronRight size={20} />
             </button>
+            <span className="text-gray-500 text-sm ml-2">{editState.clientName}</span>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <button
               onClick={downloadJPG}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+              className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700"
             >
-              <Download size={16} />
+              <Download size={14} />
               Download JPG
             </button>
             <button
               onClick={onClose}
               className="p-2 hover:bg-gray-100 rounded"
             >
-              <X size={20} />
+              <X size={18} />
             </button>
           </div>
         </div>
 
-        {/* Preview area */}
-        <div className="flex-1 overflow-y-auto p-8 bg-gray-100 flex">
-          {/* Card preview */}
-          <div className="flex-1 flex justify-center">
-            <div
-              ref={cardRef}
-              className="w-[360px] shadow-2xl rounded-lg overflow-hidden"
-              style={{ backgroundColor: '#fff' }}
-            >
-              {/* Header section */}
+        {/* Content area - side by side */}
+        <div className="flex-1 overflow-auto bg-gray-100 p-6">
+          <div className="flex gap-6 justify-center items-start min-h-full">
+            {/* Card preview - fixed width, centered */}
+            <div className="flex-shrink-0">
               <div
-                className="relative px-4 pt-6 pb-8"
-                style={{
-                  backgroundColor: '#f9f9ed',
-                  backgroundImage: 'url(/pattern4.png)',
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center'
-                }}
+                ref={cardRef}
+                className="w-[340px] shadow-2xl rounded-lg overflow-hidden"
+                style={{ backgroundColor: '#fff' }}
               >
-                <p
-                  className="text-center mb-2"
+                {/* Header section */}
+                <div
+                  className="relative px-4 pt-6 pb-6"
                   style={{
-                    fontFamily: '"Glacial Indifference", sans-serif',
-                    fontSize: '12px',
-                    letterSpacing: '0.3em',
-                    color: '#5a5a5a'
+                    backgroundColor: '#f9f9ed',
+                    backgroundImage: 'url(/pattern4.png)',
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center'
                   }}
                 >
-                  GOLDFINCH CHEF SERVICES
-                </p>
-
-                <h2
-                  className="text-center mb-1"
-                  style={{
-                    color: '#3d59ab',
-                    fontFamily: '"Poller One", cursive',
-                    fontSize: '18px',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
-                    textDecoration: 'underline',
-                    textDecorationColor: '#3d59ab',
-                    textUnderlineOffset: '4px'
-                  }}
-                >
-                  {editState.clientName}'s Menu
-                </h2>
-
-                <p
-                  className="text-center mb-1"
-                  style={{
-                    color: '#7c7c7c',
-                    fontFamily: '"Glacial Indifference", sans-serif',
-                    fontSize: '11px',
-                    letterSpacing: '0.1em'
-                  }}
-                >
-                  {editState.mealPlan}
-                </p>
-
-                {editState.subscriptionEnds && (
                   <p
                     className="text-center mb-2"
                     style={{
-                      color: '#9a9a9a',
                       fontFamily: '"Glacial Indifference", sans-serif',
-                      fontSize: '10px'
-                    }}
-                  >
-                    Subscription ends: {editState.subscriptionEnds}
-                  </p>
-                )}
-
-                <p
-                  className="text-center mb-4"
-                  style={{
-                    color: '#5a5a5a',
-                    fontFamily: '"Beth Ellen", cursive',
-                    fontSize: '12px'
-                  }}
-                >
-                  here's what to expect on your plate!
-                </p>
-
-                <div className="flex items-center justify-center gap-3">
-                  <img
-                    src="/goldfinch5.png"
-                    alt="Goldfinch"
-                    className="w-12 h-12 object-contain"
-                  />
-                  <p
-                    style={{
-                      fontFamily: '"Glacial Indifference", sans-serif',
-                      fontSize: '14px',
-                      letterSpacing: '0.2em',
+                      fontSize: '11px',
+                      letterSpacing: '0.3em',
                       color: '#5a5a5a'
                     }}
                   >
-                    {formatDate(editState.deliveryDate)}
+                    GOLDFINCH CHEF SERVICES
                   </p>
+
+                  <h2
+                    className="text-center mb-1"
+                    style={{
+                      color: '#3d59ab',
+                      fontFamily: '"Poller One", cursive',
+                      fontSize: '16px',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                      textDecoration: 'underline',
+                      textDecorationColor: '#3d59ab',
+                      textUnderlineOffset: '4px'
+                    }}
+                  >
+                    {editState.clientName}'s Menu
+                  </h2>
+
+                  <p
+                    className="text-center mb-1"
+                    style={{
+                      color: '#7c7c7c',
+                      fontFamily: '"Glacial Indifference", sans-serif',
+                      fontSize: '10px',
+                      letterSpacing: '0.1em'
+                    }}
+                  >
+                    {editState.mealPlan}
+                  </p>
+
+                  {editState.subscriptionEnds && (
+                    <p
+                      className="text-center mb-1"
+                      style={{
+                        color: '#9a9a9a',
+                        fontFamily: '"Glacial Indifference", sans-serif',
+                        fontSize: '9px'
+                      }}
+                    >
+                      Subscription ends: {editState.subscriptionEnds}
+                    </p>
+                  )}
+
+                  <p
+                    className="text-center mb-3"
+                    style={{
+                      color: '#5a5a5a',
+                      fontFamily: '"Beth Ellen", cursive',
+                      fontSize: '11px'
+                    }}
+                  >
+                    here's what to expect on your plate!
+                  </p>
+
+                  <div className="flex items-center justify-center gap-2">
+                    <img
+                      src="/goldfinch5.png"
+                      alt="Goldfinch"
+                      className="w-10 h-10 object-contain"
+                    />
+                    <p
+                      style={{
+                        fontFamily: '"Glacial Indifference", sans-serif',
+                        fontSize: '12px',
+                        letterSpacing: '0.15em',
+                        color: '#5a5a5a'
+                      }}
+                    >
+                      {formatDate(editState.deliveryDate)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Meals section */}
+                <div
+                  className="px-5 py-6"
+                  style={{ backgroundColor: '#d9a87a' }}
+                >
+                  <div className="space-y-4">
+                    {editState.meals.filter(m => m.visible).map((meal) => (
+                      <div key={meal.id} className="text-center">
+                        {meal.title && (
+                          <h3
+                            style={{
+                              color: '#ffffff',
+                              fontFamily: '"Glacial Indifference", sans-serif',
+                              fontSize: meal.isExtra ? '0.9rem' : '1rem',
+                              fontWeight: 'bold',
+                              letterSpacing: '0.12em',
+                              textTransform: 'uppercase',
+                              marginBottom: meal.subtitle ? '0.3rem' : 0,
+                              opacity: meal.isExtra ? 0.9 : 1
+                            }}
+                          >
+                            {meal.title}
+                          </h3>
+                        )}
+                        {meal.subtitle && (
+                          <p
+                            style={{
+                              color: '#f5e6d3',
+                              fontFamily: '"Glacial Indifference", sans-serif',
+                              fontSize: '0.8rem',
+                              letterSpacing: '0.08em',
+                              textTransform: 'uppercase'
+                            }}
+                          >
+                            {meal.subtitle}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                    {editState.meals.filter(m => m.visible).length === 0 && (
+                      <p className="text-center text-white/70 italic text-sm">No menu items</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Footer section */}
+                <div
+                  className="relative px-5 py-5"
+                  style={{
+                    backgroundColor: '#f9f9ed',
+                    fontFamily: '"Glacial Indifference", sans-serif'
+                  }}
+                >
+                  <h4
+                    className="mb-2"
+                    style={{
+                      color: '#3d59ab',
+                      fontFamily: '"Poller One", cursive',
+                      fontSize: '1rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em'
+                    }}
+                  >
+                    Get Ready!
+                  </h4>
+                  <p
+                    className="pr-16"
+                    style={{
+                      color: '#5a5a5a',
+                      fontSize: '0.8rem',
+                      lineHeight: '1.4'
+                    }}
+                  >
+                    Remember to put out bags, containers, and ice packs. And get excited – great food is on the way!
+                  </p>
+                  <img
+                    src="/stemflower.png"
+                    alt=""
+                    className="absolute right-3 bottom-3 h-16 object-contain"
+                  />
                 </div>
               </div>
+            </div>
 
-              {/* Meals section */}
-              <div
-                className="px-6 py-8"
-                style={{ backgroundColor: '#d9a87a' }}
-              >
-                <div className="space-y-6">
-                  {editState.meals.filter(m => m.visible).map((meal) => (
-                    <div key={meal.id} className="text-center">
-                      {meal.title && (
-                        <h3
-                          style={{
-                            color: '#ffffff',
-                            fontFamily: '"Glacial Indifference", sans-serif',
-                            fontSize: meal.isExtra ? '0.95rem' : '1.1rem',
-                            fontWeight: 'bold',
-                            letterSpacing: '0.15em',
-                            textTransform: 'uppercase',
-                            marginBottom: meal.subtitle ? '0.5rem' : 0,
-                            opacity: meal.isExtra ? 0.9 : 1
-                          }}
+            {/* Edit panel */}
+            <div className="w-64 bg-white rounded-lg shadow-lg p-4 flex-shrink-0">
+              <h4 className="font-semibold mb-3 text-sm" style={{ color: '#3d59ab' }}>Edit Preview</h4>
+
+              {/* Subscription ends */}
+              <div className="mb-4">
+                <label className="block text-xs text-gray-500 mb-1">Subscription Ends</label>
+                <input
+                  type="text"
+                  value={editState.subscriptionEnds}
+                  onChange={(e) => setEditState(prev => ({ ...prev, subscriptionEnds: e.target.value }))}
+                  placeholder="e.g., June 30, 2024"
+                  className="w-full px-2 py-1.5 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Meals */}
+              <div>
+                <label className="block text-xs text-gray-500 mb-2">Meals & Extras</label>
+                <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                  {editState.meals.map((meal) => (
+                    <div
+                      key={meal.id}
+                      className={`p-2 rounded border ${meal.visible ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-100'}`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <button
+                          onClick={() => toggleMealVisibility(meal.id)}
+                          className={`p-1 rounded hover:bg-gray-100 ${meal.visible ? 'text-green-600' : 'text-gray-400'}`}
+                          title={meal.visible ? 'Click to hide' : 'Click to show'}
                         >
-                          {meal.title}
-                        </h3>
-                      )}
-                      {meal.subtitle && (
-                        <p
-                          style={{
-                            color: '#f5e6d3',
-                            fontFamily: '"Glacial Indifference", sans-serif',
-                            fontSize: '0.85rem',
-                            letterSpacing: '0.1em',
-                            textTransform: 'uppercase'
-                          }}
-                        >
-                          {meal.subtitle}
-                        </p>
+                          {meal.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+                        </button>
+                        <span className="text-xs text-gray-400">{meal.isExtra ? 'Extra' : 'Meal'}</span>
+                      </div>
+                      <input
+                        type="text"
+                        value={meal.title}
+                        onChange={(e) => updateMealTitle(meal.id, e.target.value)}
+                        className={`w-full px-2 py-1 border rounded text-sm font-medium mb-1 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                          !meal.visible ? 'bg-gray-100 text-gray-400' : ''
+                        }`}
+                        placeholder="Meal title"
+                      />
+                      {!meal.isExtra && (
+                        <input
+                          type="text"
+                          value={meal.subtitle}
+                          onChange={(e) => updateMealSubtitle(meal.id, e.target.value)}
+                          className={`w-full px-2 py-1 border rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                            !meal.visible ? 'bg-gray-100 text-gray-400' : ''
+                          }`}
+                          placeholder="Sides (e.g., Broccoli, Rice)"
+                        />
                       )}
                     </div>
                   ))}
-                  {editState.meals.filter(m => m.visible).length === 0 && (
-                    <p className="text-center text-white/70 italic">No menu items</p>
-                  )}
                 </div>
               </div>
 
-              {/* Footer section */}
-              <div
-                className="relative px-6 py-6"
-                style={{
-                  backgroundColor: '#f9f9ed',
-                  fontFamily: '"Glacial Indifference", sans-serif'
-                }}
-              >
-                <h4
-                  className="mb-3"
-                  style={{
-                    color: '#3d59ab',
-                    fontFamily: '"Poller One", cursive',
-                    fontSize: '1.1rem',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em'
-                  }}
-                >
-                  Get Ready!
-                </h4>
-                <p
-                  className="mb-4 pr-20"
-                  style={{
-                    color: '#5a5a5a',
-                    fontSize: '0.9rem',
-                    lineHeight: '1.5'
-                  }}
-                >
-                  Remember to put out bags, containers, and ice packs. And get excited – great food is on the way!
-                </p>
-                <img
-                  src="/stemflower.png"
-                  alt=""
-                  className="absolute right-4 bottom-4 h-20 object-contain"
-                />
-              </div>
+              <p className="text-xs text-gray-400 mt-4 italic">
+                Changes are preview-only and won't be saved.
+              </p>
             </div>
-          </div>
-
-          {/* Edit panel */}
-          <div className="w-72 bg-white rounded-lg shadow-lg ml-6 p-4 h-fit max-h-[calc(100vh-200px)] overflow-y-auto">
-            <h4 className="font-semibold mb-4" style={{ color: '#3d59ab' }}>Edit Preview</h4>
-
-            {/* Subscription ends */}
-            <div className="mb-4">
-              <label className="block text-xs text-gray-500 mb-1">Subscription Ends</label>
-              <input
-                type="text"
-                value={editState.subscriptionEnds}
-                onChange={(e) => setEditState(prev => ({ ...prev, subscriptionEnds: e.target.value }))}
-                placeholder="e.g., June 30, 2024"
-                className="w-full px-2 py-1.5 border rounded text-sm"
-              />
-            </div>
-
-            {/* Meals */}
-            <div>
-              <label className="block text-xs text-gray-500 mb-2">Meals & Extras</label>
-              <div className="space-y-2">
-                {editState.meals.map((meal) => (
-                  <div
-                    key={meal.id}
-                    className={`p-2 rounded border ${meal.visible ? 'bg-white' : 'bg-gray-100 opacity-60'}`}
-                  >
-                    <div className="flex items-start gap-2">
-                      <button
-                        onClick={() => toggleMealVisibility(meal.id)}
-                        className={`mt-1 p-1 rounded ${meal.visible ? 'text-green-600' : 'text-gray-400'}`}
-                        title={meal.visible ? 'Hide' : 'Show'}
-                      >
-                        {meal.visible ? <Eye size={14} /> : <EyeOff size={14} />}
-                      </button>
-                      <div className="flex-1">
-                        <input
-                          type="text"
-                          value={meal.title}
-                          onChange={(e) => updateMealTitle(meal.id, e.target.value)}
-                          className="w-full px-1.5 py-1 border rounded text-sm font-medium"
-                          disabled={!meal.visible}
-                        />
-                        {meal.subtitle && (
-                          <p className="text-xs text-gray-500 mt-1 px-1">{meal.subtitle}</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <p className="text-xs text-gray-400 mt-4 italic">
-              Edits are local only and won't be saved to the database.
-            </p>
           </div>
         </div>
       </div>
