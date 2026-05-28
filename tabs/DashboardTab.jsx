@@ -3,8 +3,9 @@
  * Shows deliveries, order value, grocery costs, and analysis
  */
 
-import React, { useState } from 'react';
-import { Truck, DollarSign, Receipt, TrendingUp, X } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Truck, DollarSign, Receipt, TrendingUp, X, Upload } from 'lucide-react';
+import Papa from 'papaparse';
 
 // Format date for display
 function formatDate(date) {
@@ -28,8 +29,10 @@ export default function DashboardTab({
   setNewGroceryBill,
   addGroceryBill,
   deleteGroceryBill,
-  getRecipeCost
+  getRecipeCost,
+  importGroceryBills
 }) {
+  const groceryFileRef = useRef();
   const [showGroceryAnalysis, setShowGroceryAnalysis] = useState(false);
   const [showRecipeBreakdown, setShowRecipeBreakdown] = useState(() => {
     const saved = localStorage.getItem('groceryAnalysis_showRecipeBreakdown');
@@ -77,6 +80,86 @@ export default function DashboardTab({
       const newValue = { ...prev, [key]: !prev[key] };
       localStorage.setItem('groceryAnalysis_expandedClientWeeks', JSON.stringify(newValue));
       return newValue;
+    });
+  };
+
+  // Handle QB CSV import
+  const handleQBImport = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        const bills = [];
+        let skipped = 0;
+
+        results.data.forEach((row, index) => {
+          // Try to find date, amount, and vendor columns (QB exports vary)
+          const dateVal = row['Date'] || row['date'] || row['Transaction Date'] || row['Txn Date'];
+          const amountVal = row['Amount'] || row['amount'] || row['Debit'] || row['Credit'] || row['Total'];
+          const vendorVal = row['Vendor'] || row['vendor'] || row['Payee'] || row['Name'] || row['Description'] || row['Memo'];
+
+          if (!dateVal || !amountVal) {
+            skipped++;
+            return;
+          }
+
+          // Parse date (handle various formats)
+          let parsedDate;
+          const dateStr = String(dateVal).trim();
+
+          // Try MM/DD/YYYY format first
+          if (dateStr.includes('/')) {
+            const parts = dateStr.split('/');
+            if (parts.length === 3) {
+              const [m, d, y] = parts;
+              const year = y.length === 2 ? '20' + y : y;
+              parsedDate = `${year}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+            }
+          } else if (dateStr.includes('-')) {
+            // Already YYYY-MM-DD format
+            parsedDate = dateStr;
+          }
+
+          if (!parsedDate) {
+            skipped++;
+            return;
+          }
+
+          // Parse amount (remove $ and commas, handle negatives)
+          let amount = String(amountVal).replace(/[$,]/g, '').trim();
+          amount = parseFloat(amount);
+          if (isNaN(amount)) {
+            skipped++;
+            return;
+          }
+          // Make positive (expenses might be negative in QB)
+          amount = Math.abs(amount);
+
+          bills.push({
+            date: parsedDate,
+            amount: amount,
+            store: vendorVal ? String(vendorVal).trim() : '',
+            id: Date.now() + index
+          });
+        });
+
+        if (bills.length > 0 && importGroceryBills) {
+          importGroceryBills(bills);
+          alert(`Imported ${bills.length} transaction${bills.length !== 1 ? 's' : ''}${skipped > 0 ? ` (${skipped} skipped)` : ''}`);
+        } else if (bills.length === 0) {
+          alert('No valid transactions found. Make sure your CSV has Date and Amount columns.');
+        }
+
+        // Reset file input
+        event.target.value = '';
+      },
+      error: (error) => {
+        alert('Error reading CSV: ' + error.message);
+        event.target.value = '';
+      }
     });
   };
 
@@ -320,10 +403,31 @@ export default function DashboardTab({
       <div className="grid md:grid-cols-2 gap-6">
         {/* Grocery Input */}
         <div className="bg-white rounded-lg shadow-lg p-6">
-          <h3 className="text-xl font-bold mb-4 flex items-center gap-2" style={{ color: '#3d59ab' }}>
-            <Receipt size={24} />
-            Grocery Input
-          </h3>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-bold flex items-center gap-2" style={{ color: '#3d59ab' }}>
+              <Receipt size={24} />
+              Grocery Input
+            </h3>
+            {importGroceryBills && (
+              <>
+                <input
+                  type="file"
+                  ref={groceryFileRef}
+                  onChange={handleQBImport}
+                  accept=".csv"
+                  className="hidden"
+                />
+                <button
+                  onClick={() => groceryFileRef.current?.click()}
+                  className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border"
+                  style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
+                >
+                  <Upload size={16} />
+                  Import QB
+                </button>
+              </>
+            )}
+          </div>
           <div className="space-y-3">
             <div className="grid grid-cols-3 gap-2">
               <input

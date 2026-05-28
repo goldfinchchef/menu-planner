@@ -1283,6 +1283,7 @@ export default function App() {
               setNewGroceryBill({ date: '', amount: '', store: '' });
             }}
             deleteGroceryBill={(id) => setGroceryBills(prev => prev.filter(b => b.id !== id))}
+            importGroceryBills={(bills) => setGroceryBills(prev => [...prev, ...bills])}
             getRecipeCost={getRecipeCost}
           />
         )}
