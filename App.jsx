@@ -1133,7 +1133,7 @@ export default function App() {
 
       <div className="max-w-6xl mx-auto p-4 space-y-6">
 
-        {['kds', 'deliveries'].includes(activeTab) && (
+        {activeTab === 'deliveries' && (
           <WorkflowStatus
             menuItems={getWeekMenuItems()}
             completedDishes={getWeekKdsStatus()}
