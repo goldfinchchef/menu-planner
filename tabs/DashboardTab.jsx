@@ -85,6 +85,19 @@ export default function DashboardTab({
     });
   };
 
+  // Helper to find column value case-insensitively
+  const findColumnValue = (row, ...possibleNames) => {
+    const keys = Object.keys(row);
+    for (const name of possibleNames) {
+      // Exact match first
+      if (row[name] !== undefined) return row[name];
+      // Case-insensitive match
+      const key = keys.find(k => k.toLowerCase() === name.toLowerCase());
+      if (key && row[key] !== undefined) return row[key];
+    }
+    return undefined;
+  };
+
   // Handle QB CSV import
   const handleQBImport = (event) => {
     const file = event.target.files?.[0];
@@ -96,12 +109,18 @@ export default function DashboardTab({
       complete: (results) => {
         const bills = [];
         let skipped = 0;
+        let duplicates = 0;
+
+        // Build set of existing bills for duplicate detection (date + amount)
+        const existingBills = new Set(
+          groceryBills.map(b => `${b.date}_${Math.abs(b.amount).toFixed(2)}`)
+        );
 
         results.data.forEach((row, index) => {
-          // Try to find date, amount, and vendor columns (QB exports vary)
-          const dateVal = row['Date'] || row['date'] || row['Transaction Date'] || row['Txn Date'];
-          const amountVal = row['Amount'] || row['amount'] || row['Debit'] || row['Credit'] || row['Total'];
-          const vendorVal = row['Vendor'] || row['vendor'] || row['Payee'] || row['Name'] || row['Description'] || row['Memo'];
+          // Find columns case-insensitively
+          const dateVal = findColumnValue(row, 'Date', 'Transaction Date', 'Txn Date');
+          const amountVal = findColumnValue(row, 'Amount', 'Debit', 'Credit', 'Total');
+          const storeVal = findColumnValue(row, 'Store', 'Vendor', 'Payee', 'Name', 'Description', 'Memo');
 
           if (!dateVal || !amountVal) {
             skipped++;
@@ -140,19 +159,34 @@ export default function DashboardTab({
           // Make positive (expenses might be negative in QB)
           amount = Math.abs(amount);
 
+          // Check for duplicate (same date and amount)
+          const billKey = `${parsedDate}_${amount.toFixed(2)}`;
+          if (existingBills.has(billKey)) {
+            duplicates++;
+            return;
+          }
+          existingBills.add(billKey); // Prevent duplicates within same import
+
           bills.push({
             date: parsedDate,
             amount: amount,
-            store: vendorVal ? String(vendorVal).trim() : '',
+            store: storeVal ? String(storeVal).trim() : '',
             id: Date.now() + index
           });
         });
 
         if (bills.length > 0 && importGroceryBills) {
           importGroceryBills(bills);
-          alert(`Imported ${bills.length} transaction${bills.length !== 1 ? 's' : ''}${skipped > 0 ? ` (${skipped} skipped)` : ''}`);
+          let msg = `Imported ${bills.length} transaction${bills.length !== 1 ? 's' : ''}`;
+          if (duplicates > 0) msg += ` (${duplicates} duplicate${duplicates !== 1 ? 's' : ''} skipped)`;
+          if (skipped > 0) msg += ` (${skipped} invalid row${skipped !== 1 ? 's' : ''} skipped)`;
+          alert(msg);
         } else if (bills.length === 0) {
-          alert('No valid transactions found. Make sure your CSV has Date and Amount columns.');
+          if (duplicates > 0) {
+            alert(`No new transactions to import. ${duplicates} duplicate${duplicates !== 1 ? 's' : ''} found.`);
+          } else {
+            alert('No valid transactions found. Make sure your CSV has Date and Amount columns.');
+          }
         }
 
         // Reset file input
@@ -163,6 +197,14 @@ export default function DashboardTab({
         event.target.value = '';
       }
     });
+  };
+
+  // Handle clear all grocery bills
+  const handleClearAllBills = () => {
+    if (!groceryBills.length) return;
+    if (confirm(`Are you sure you want to delete all ${groceryBills.length} grocery bills? This cannot be undone.`)) {
+      groceryBills.forEach(bill => deleteGroceryBill(bill.id));
+    }
   };
 
   // Build aggregated cook list with costs
@@ -412,25 +454,36 @@ export default function DashboardTab({
               <Receipt size={24} />
               Grocery Input
             </h3>
-            {importGroceryBills && (
-              <>
-                <input
-                  type="file"
-                  ref={groceryFileRef}
-                  onChange={handleQBImport}
-                  accept=".csv"
-                  className="hidden"
-                />
+            <div className="flex gap-2">
+              {groceryBills.length > 0 && (
                 <button
-                  onClick={() => groceryFileRef.current?.click()}
-                  className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border"
-                  style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
+                  onClick={handleClearAllBills}
+                  className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border border-red-300 text-red-600 hover:bg-red-50"
                 >
-                  <Upload size={16} />
-                  Import QB
+                  <X size={16} />
+                  Clear All
                 </button>
-              </>
-            )}
+              )}
+              {importGroceryBills && (
+                <>
+                  <input
+                    type="file"
+                    ref={groceryFileRef}
+                    onChange={handleQBImport}
+                    accept=".csv"
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => groceryFileRef.current?.click()}
+                    className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border"
+                    style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
+                  >
+                    <Upload size={16} />
+                    Import QB
+                  </button>
+                </>
+              )}
+            </div>
           </div>
           <div className="space-y-3">
             <div className="grid grid-cols-3 gap-2">
