@@ -245,35 +245,38 @@ export default function DashboardTab({
     return weekData;
   };
 
-  const { entries: cookListEntries, projectedTotal: weeklyFoodCost } = buildCookListWithCosts();
-  const actualSpending = getThisWeekGrocerySpending();
-  const difference = actualSpending - weeklyFoodCost;
-  const wastePercent = weeklyFoodCost > 0 ? ((difference / weeklyFoodCost) * 100).toFixed(1) : 0;
+  // Get scheduled clients - those with a delivery date within this week
+  const getScheduledClients = () => {
+    if (!weekStart || !weekEnd) return [];
 
-  // Get unique clients with menus this week
-  const clientsWithMenus = [...new Set(
-    menuItems
-      .filter(item => {
-        if (!item.date || !weekStart || !weekEnd) return false;
-        const itemDate = new Date(item.date + 'T12:00:00');
-        const weekStartDate = new Date(weekStart + 'T00:00:00');
-        const weekEndDate = new Date(weekEnd + 'T23:59:59');
-        return itemDate >= weekStartDate && itemDate <= weekEndDate;
-      })
-      .map(item => item.clientName)
-  )];
+    return clients.filter(client => {
+      if (client.status !== 'active') return false;
+      const deliveryDates = client.deliveryDates || [];
+      // Check if any delivery date falls within this week
+      return deliveryDates.some(dateStr => {
+        if (!dateStr) return false;
+        return dateStr >= weekStart && dateStr <= weekEnd;
+      });
+    });
+  };
 
-  // Calculate value of orders
-  const valueOfOrders = clientsWithMenus.reduce((total, clientName) => {
-    const client = clients.find(c => c.name === clientName || c.displayName === clientName);
-    if (!client) return total;
+  const scheduledClients = getScheduledClients();
 
+  // Calculate value of orders from scheduled clients
+  const valueOfOrders = scheduledClients.reduce((total, client) => {
     const planPrice = parseFloat(client.planPrice) || 0;
     const serviceFee = client.pickup ? 0 : (parseFloat(client.serviceFee) || 0);
     const subtotal = planPrice + serviceFee;
     const discount = client.prepayDiscount ? subtotal * 0.1 : 0;
     return total + (subtotal - discount);
   }, 0);
+
+  // Food cost calculation - only from approved menu items
+  const approvedMenuItems = menuItems.filter(item => item.approved);
+  const { entries: cookListEntries, projectedTotal: weeklyFoodCost } = buildCookListWithCosts();
+  const actualSpending = getThisWeekGrocerySpending();
+  const difference = actualSpending - weeklyFoodCost;
+  const wastePercent = weeklyFoodCost > 0 ? ((difference / weeklyFoodCost) * 100).toFixed(1) : 0;
 
   return (
     <div className="space-y-6">
@@ -294,9 +297,9 @@ export default function DashboardTab({
               <span className="text-lg font-medium text-gray-600">Stops this week</span>
             </div>
             <p className="text-5xl font-bold mb-2" style={{ color: '#3d59ab' }}>
-              {clientsWithMenus.length}
+              {scheduledClients.length}
             </p>
-            <p className="text-sm text-gray-500">unique client delivery addresses</p>
+            <p className="text-sm text-gray-500">clients with deliveries scheduled</p>
           </div>
 
           {/* Value of Orders */}
@@ -308,7 +311,7 @@ export default function DashboardTab({
             <p className="text-5xl font-bold mb-2 text-green-600">
               ${valueOfOrders.toFixed(2)}
             </p>
-            <p className="text-sm text-gray-500">total from {clientsWithMenus.length} client{clientsWithMenus.length !== 1 ? 's' : ''}</p>
+            <p className="text-sm text-gray-500">total from {scheduledClients.length} client{scheduledClients.length !== 1 ? 's' : ''}</p>
           </div>
         </div>
       </div>
