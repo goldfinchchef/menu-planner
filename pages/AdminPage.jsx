@@ -13,7 +13,6 @@ import { runMigration, getMigrationStatus } from '../lib/migration';
 import { isConfigured, checkConnection } from '../lib/supabase';
 import { ZONES, DEFAULT_NEW_DRIVER, DEFAULT_NEW_MENU_ITEM, DEFAULT_NEW_INGREDIENT, DEFAULT_NEW_RECIPE, STORE_SECTIONS } from '../constants';
 import SubscriptionsTab from '../tabs/SubscriptionsTab';
-import MenuTab from '../tabs/MenuTab';
 import RecipesTab from '../tabs/RecipesTab';
 import IngredientsTab from '../tabs/IngredientsTab';
 import ClientsTab from '../tabs/ClientsTab';
@@ -4005,7 +4004,6 @@ export default function AdminPage() {
         <div className="flex gap-2 mb-6 overflow-x-auto">
           {[
             { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
-            { id: 'menu', label: 'Menu Planner', icon: Utensils },
             { id: 'billing', label: 'Billing & Dates', icon: CreditCard },
             { id: 'clients', label: 'Clients', icon: Users },
             { id: 'ingredients', label: 'Ingredients', icon: Package }
@@ -4056,33 +4054,6 @@ export default function AdminPage() {
           />
         )}
 
-        {/* Menu Planner Section */}
-        {activeSection === 'menu' && (
-          <MenuTab
-            menuDate={menuDate}
-            setMenuDate={setMenuDate}
-            clients={clients.filter(c => c.status === 'active')}
-            allClients={clients}
-            selectedClients={selectedClients}
-            setSelectedClients={setSelectedClients}
-            recipes={recipes}
-            newMenuItem={newMenuItem}
-            setNewMenuItem={setNewMenuItem}
-            menuItems={menuItems}
-            setMenuItems={updateMenuItems}
-            addMenuItem={addMenuItem}
-            clearMenu={clearMenu}
-            deleteMenuItem={deleteMenuItem}
-            getOrdersByClient={getOrdersByClient}
-            clientPortalData={clientPortalData}
-            weeklyTasks={weeklyTasks}
-            weeks={weeks}
-            selectedWeekId={selectedWeekId}
-            setSelectedWeekId={setSelectedWeekId}
-            lockWeekAndSnapshot={lockWeekWithSnapshot}
-            unlockWeekById={unlockWeekById}
-          />
-        )}
 
         {/* Menu Approval Section */}
         {activeSection === 'approvals' && (
