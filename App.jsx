@@ -1,10 +1,9 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChefHat, Settings } from 'lucide-react';
+import { ChefHat, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
 import Papa from 'papaparse';
 import Tabs from './components/Tabs';
 import WorkflowStatus from './components/WorkflowStatus';
-import WeekSelector from './components/WeekSelector';
 import SyncStatus from './components/SyncStatus';
 import { useAppData } from './hooks/useAppData';
 // Direct imports to avoid barrel export initialization issues
@@ -17,7 +16,7 @@ import DashboardTab from './tabs/DashboardTab';
 import BillingTab from './tabs/BillingTab';
 import ClientsTab from './tabs/ClientsTab';
 import IngredientsTab from './tabs/IngredientsTab';
-import { getWeekId, getWeekIdFromDate } from './utils/weekUtils';
+import { getWeekId, getWeekIdFromDate, getAdjacentWeekId, formatWeekRange } from './utils/weekUtils';
 import {
   categorizeIngredient,
   exportClientsCSV,
@@ -1078,12 +1077,32 @@ export default function App() {
       <input type="file" ref={recipesFileRef} onChange={importRecipesCSV} accept=".csv" className="hidden" />
       <input type="file" ref={ingredientsFileRef} onChange={importIngredientsCSV} accept=".csv" className="hidden" />
 
-      <header className="text-white p-4" style={{ backgroundColor: '#3d59ab' }}>
+      <header className="text-white px-4 py-2" style={{ backgroundColor: '#3d59ab' }}>
         <div className="flex items-center justify-between max-w-6xl mx-auto">
           <div className="flex items-center gap-3">
-            <ChefHat size={32} style={{ color: '#ffd700' }} />
-            <h1 className="text-2xl font-bold">Goldfinch Chef</h1>
+            <ChefHat size={28} style={{ color: '#ffd700' }} />
+            <h1 className="text-xl font-bold">Goldfinch Chef</h1>
           </div>
+
+          {/* Global Week Navigation */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSelectedWeekId(getAdjacentWeekId(selectedWeekId, -1))}
+              className="p-1.5 rounded hover:bg-white/20 transition-colors"
+            >
+              <ChevronLeft size={20} />
+            </button>
+            <span className="font-medium min-w-[150px] text-center">
+              {formatWeekRange(selectedWeekId)}
+            </span>
+            <button
+              onClick={() => setSelectedWeekId(getAdjacentWeekId(selectedWeekId, 1))}
+              className="p-1.5 rounded hover:bg-white/20 transition-colors"
+            >
+              <ChevronRight size={20} />
+            </button>
+          </div>
+
           <div className="flex items-center gap-3">
             <SyncStatus
               isOnline={isOnline}
@@ -1096,9 +1115,9 @@ export default function App() {
             />
             <Link
               to="/admin"
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 transition-colors text-sm"
             >
-              <Settings size={20} />
+              <Settings size={18} />
               Admin
             </Link>
           </div>
@@ -1112,15 +1131,6 @@ export default function App() {
       </nav>
 
       <div className="max-w-6xl mx-auto p-4 space-y-6">
-        {['kds', 'menuBuilder', 'deliveries', 'dashboard'].includes(activeTab) && (
-          <WeekSelector
-            selectedWeekId={selectedWeekId}
-            setSelectedWeekId={setSelectedWeekId}
-            weeks={weeks}
-            onLockWeek={lockWeekAndSnapshot}
-            onUnlockWeek={unlockWeekById}
-          />
-        )}
 
         {['kds', 'deliveries'].includes(activeTab) && (
           <WorkflowStatus
