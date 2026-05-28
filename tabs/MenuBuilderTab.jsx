@@ -951,6 +951,19 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
                               Incomplete
                             </span>
                           ) : null}
+                          {/* Remove button for all clients */}
+                          <button
+                            onClick={() => handleRemoveClientFromWeek(clientId, client.name)}
+                            disabled={isRemoving}
+                            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
+                            title="Remove from week"
+                          >
+                            {isRemoving ? (
+                              <Loader2 size={12} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={12} />
+                            )}
+                          </button>
                         </div>
                       </div>
 
