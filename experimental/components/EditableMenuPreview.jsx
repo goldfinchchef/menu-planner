@@ -248,11 +248,18 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
       {/* Content area - card and edit panel */}
       <div className="overflow-auto bg-gray-100 p-4">
         <div className="flex gap-4 items-start">
-            {/* Card preview */}
-            <div className="flex-shrink-0">
+            {/* Card preview - scaled to 70% for display, full size for export */}
+            <div
+              className="flex-shrink-0 origin-top-left"
+              style={{
+                transform: 'scale(0.7)',
+                width: '384px',
+                marginRight: '-115px' /* compensate for scale: 384 * 0.3 */
+              }}
+            >
               <div
                 ref={cardRef}
-                className="w-[320px] shadow-2xl rounded-lg overflow-hidden"
+                className="w-[384px] shadow-2xl rounded-lg overflow-hidden"
                 style={{ backgroundColor: '#fff' }}
               >
                 {/* Header section */}
