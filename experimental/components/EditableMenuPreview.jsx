@@ -182,7 +182,8 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60" style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gridTemplateRows: '50px 1fr' }}>
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+      <div className="bg-white rounded-lg shadow-2xl overflow-hidden" style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gridTemplateRows: '50px 1fr', width: '900px', maxWidth: '95vw', height: '90vh', maxHeight: '800px' }}>
       {/* Header - spans full width */}
       <div className="bg-white border-b px-4 flex items-center justify-between" style={{ gridColumn: '1 / -1' }}>
         <div className="flex items-center gap-3">
@@ -248,18 +249,11 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
       {/* Content area - card and edit panel */}
       <div className="overflow-auto bg-gray-100 p-4">
         <div className="flex gap-4 items-start">
-            {/* Card preview - scaled to 70% for display, full size for export */}
-            <div
-              className="flex-shrink-0 origin-top-left"
-              style={{
-                transform: 'scale(0.7)',
-                width: '384px',
-                marginRight: '-115px' /* compensate for scale: 384 * 0.3 */
-              }}
-            >
+            {/* Card preview */}
+            <div className="flex-shrink-0">
               <div
                 ref={cardRef}
-                className="w-[384px] shadow-2xl rounded-lg overflow-hidden"
+                className="w-[340px] shadow-xl rounded-lg overflow-hidden"
                 style={{ backgroundColor: '#fff' }}
               >
                 {/* Header section */}
@@ -499,5 +493,6 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
           </div>
         </div>
       </div>
+    </div>
   );
 }
