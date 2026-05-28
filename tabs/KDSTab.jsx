@@ -1,5 +1,7 @@
 import React, { useState, useRef } from 'react';
-import { Check, ChevronDown, ChevronUp, Utensils, Calendar, Printer, AlertCircle, RefreshCw, Clock } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Utensils, Calendar, Printer, AlertCircle, RefreshCw, Clock, FileText, Package } from 'lucide-react';
+import { fetchBaseWeeklyMenus } from '../lib/database';
+import { isSupabaseMode } from '../lib/dataMode';
 
 // Category display config
 const CATEGORY_CONFIG = {
@@ -226,6 +228,7 @@ function ProductionDaySection({
 export default function KDSTab({
   menuItems,
   recipes,
+  clients = [],
   completedDishes,
   toggleDishComplete,
   allDishesComplete,
@@ -242,7 +245,11 @@ export default function KDSTab({
   onApproveAll = null
 }) {
   const [expandedTiles, setExpandedTiles] = useState({});
+  const [isPrintingProduction, setIsPrintingProduction] = useState(false);
   const kdsView = getKDSView();
+
+  // Active clients for print functions
+  const activeClients = clients.filter(c => c.status === 'active');
 
   // Format last refresh time
   const formatRefreshTime = (timestamp) => {
@@ -349,6 +356,317 @@ export default function KDSTab({
     printWindow.print();
   };
 
+  // Production Sheet print function
+  const printProductionSheet = async () => {
+    if (unapprovedMenuCount > 0) {
+      const topClients = Object.entries(unapprovedByClient).slice(0, 3).map(([name, count]) => `${name} (${count})`).join(', ');
+      alert(`Cannot print yet: ${unapprovedMenuCount} unapproved menu(s).\n\nClients: ${topClients}\n\nApprove all menus first.`);
+      return;
+    }
+
+    setIsPrintingProduction(true);
+
+    try {
+      // Check if menus use base menu workflow
+      const hasBaseMenuData = menuItems.some(m => m.baseMealIndex != null || m.base_meal_index != null);
+
+      let baseMenus = [];
+      if (hasBaseMenuData && isSupabaseMode()) {
+        try {
+          baseMenus = await fetchBaseWeeklyMenus(selectedWeekId);
+        } catch (err) {
+          console.warn('Failed to fetch base menus:', err);
+        }
+      }
+
+      const useBaseMenuWorkflow = hasBaseMenuData && baseMenus.length > 0;
+
+      // Helper: find client by ID or name
+      const findClient = (menu) => {
+        if (menu.clientId || menu.client_id) {
+          const byId = activeClients.find(c => c.id === (menu.clientId || menu.client_id));
+          if (byId) return byId;
+        }
+        return activeClients.find(c => c.name === menu.clientName || c.displayName === menu.clientName);
+      };
+
+      // Group menus by meal
+      const mealNumbers = [1, 2, 3, 4];
+      const menusByMeal = {};
+
+      if (useBaseMenuWorkflow) {
+        mealNumbers.forEach(mealNum => {
+          menusByMeal[mealNum] = menuItems.filter(m => {
+            const baseMealIdx = m.baseMealIndex || m.base_meal_index;
+            return baseMealIdx === mealNum && (m.protein || m.veg || m.starch);
+          });
+        });
+      } else {
+        mealNumbers.forEach(mealNum => {
+          menusByMeal[mealNum] = menuItems.filter(m =>
+            (m.mealIndex || m.meal_index) === mealNum && (m.protein || m.veg || m.starch)
+          );
+        });
+      }
+
+      // Build base menu lookup
+      const baseMenuByIndex = {};
+      baseMenus.forEach(bm => { baseMenuByIndex[bm.meal_index] = bm; });
+
+      const printWindow = window.open('', '_blank');
+
+      let content = `
+        <html>
+        <head>
+          <title>Production Sheet - ${selectedWeekId}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; font-size: 12px; line-height: 1.4; }
+            h1 { color: #000; margin-bottom: 5px; font-size: 20px; }
+            .header { margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #000; }
+            .header p { margin: 0; color: #333; font-size: 11px; }
+            .meal-section { margin-bottom: 30px; }
+            .meal-header { color: #000; padding: 12px 0; font-size: 16px; font-weight: bold; margin-bottom: 16px; border-bottom: 3px solid #000; }
+            .base-meal-header { color: #000; padding: 10px 0; font-size: 13px; margin-bottom: 12px; border-bottom: 2px solid #000; }
+            .base-label { font-weight: bold; }
+            .base-components { font-weight: bold; }
+            .total { float: right; font-weight: bold; }
+            .standard-section { margin-bottom: 16px; margin-left: 10px; }
+            .standard-header { color: #000; padding: 6px 0; font-size: 12px; font-weight: bold; margin-bottom: 8px; border-bottom: 1px solid #000; }
+            .override-section { margin-bottom: 16px; margin-left: 10px; border-left: 3px solid #000; padding-left: 10px; }
+            .override-header { color: #000; padding: 6px 0; font-size: 11px; font-weight: bold; margin-bottom: 8px; border-bottom: 1px solid #000; }
+            .client-list { margin-left: 4px; }
+            .client-line { font-size: 11px; color: #000; padding: 2px 0; }
+            .client-line:before { content: "•"; margin-right: 6px; color: #000; }
+            .dietary { margin-left: 18px; font-size: 10px; color: #000; font-style: italic; }
+            .client-extras { margin-left: 18px; font-size: 10px; color: #000; font-weight: bold; }
+            .override-menu { font-size: 10px; color: #000; margin-left: 18px; margin-top: 2px; }
+            .extras-summary { font-size: 10px; color: #000; font-weight: bold; margin-top: 8px; padding: 4px 8px; border: 1px solid #000; border-radius: 3px; }
+            .group { margin-bottom: 20px; margin-left: 10px; break-inside: avoid; }
+            .group-header { color: #000; padding: 8px 0; font-size: 13px; font-weight: bold; margin-bottom: 10px; border-bottom: 2px solid #000; }
+            @media print { body { padding: 15px; } .meal-section { break-inside: avoid-page; } }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>Production Sheet</h1>
+            <p>Week: ${selectedWeekId} | Generated: ${new Date().toLocaleDateString()}</p>
+          </div>
+      `;
+
+      mealNumbers.forEach(mealNum => {
+        const menus = menusByMeal[mealNum];
+        if (!menus || menus.length === 0) return;
+
+        content += `<div class="meal-section">`;
+        content += `<div class="meal-header">MEAL ${mealNum}</div>`;
+
+        if (useBaseMenuWorkflow && baseMenuByIndex[mealNum]) {
+          const baseMeal = baseMenuByIndex[mealNum];
+          const baseComponents = [baseMeal.protein, baseMeal.veg, baseMeal.starch].filter(Boolean).join(' + ');
+
+          // Separate standard vs override
+          const standard = [];
+          const overrideGroups = {};
+          let totalPortions = 0;
+
+          menus.forEach(menu => {
+            const client = findClient(menu);
+            const clientName = client?.displayName || client?.name || menu.clientName;
+            const portions = menu.portions || 1;
+            totalPortions += portions;
+
+            const proteinMatch = (menu.protein || '') === (baseMeal.protein || '');
+            const vegMatch = (menu.veg || '') === (baseMeal.veg || '');
+            const starchMatch = (menu.starch || '') === (baseMeal.starch || '');
+            const isStandard = proteinMatch && vegMatch && starchMatch;
+
+            const clientData = { name: clientName, portions, dietaryRestrictions: client?.dietaryRestrictions, extras: menu.extras || [], menu };
+
+            if (isStandard) {
+              standard.push(clientData);
+            } else {
+              const diffs = [];
+              if (!proteinMatch) diffs.push(`Protein → ${menu.protein || '(none)'}`);
+              if (!vegMatch) diffs.push(`Veg → ${menu.veg || '(none)'}`);
+              if (!starchMatch) diffs.push(`Starch → ${menu.starch || '(none)'}`);
+              const key = diffs.join(', ');
+              if (!overrideGroups[key]) overrideGroups[key] = { label: key, clients: [], totalPortions: 0 };
+              overrideGroups[key].clients.push(clientData);
+              overrideGroups[key].totalPortions += portions;
+            }
+          });
+
+          const standardPortions = standard.reduce((sum, c) => sum + c.portions, 0);
+
+          content += `<div class="base-meal-header">`;
+          content += `<span class="base-label">Base:</span> <span class="base-components">${baseComponents || '(empty)'}</span>`;
+          content += `<span class="total">${totalPortions}p total</span>`;
+          content += `</div>`;
+
+          if (standard.length > 0) {
+            content += `<div class="standard-section">`;
+            content += `<div class="standard-header">STANDARD — ${standardPortions} portions</div>`;
+            content += `<div class="client-list">`;
+            standard.sort((a, b) => b.portions - a.portions || a.name.localeCompare(b.name));
+            standard.forEach(c => {
+              content += `<div class="client-line">${c.name} (${c.portions})</div>`;
+              if (c.dietaryRestrictions) content += `<div class="dietary">${c.dietaryRestrictions}</div>`;
+              if (c.extras?.length > 0) content += `<div class="client-extras">+ ${c.extras.join(', ')}</div>`;
+            });
+            content += `</div></div>`;
+          }
+
+          Object.values(overrideGroups).sort((a, b) => b.totalPortions - a.totalPortions).forEach(og => {
+            content += `<div class="override-section">`;
+            content += `<div class="override-header">OVERRIDE: ${og.label} — ${og.totalPortions}p</div>`;
+            content += `<div class="client-list">`;
+            og.clients.sort((a, b) => b.portions - a.portions || a.name.localeCompare(b.name));
+            og.clients.forEach(c => {
+              content += `<div class="client-line">${c.name} (${c.portions})</div>`;
+              if (c.dietaryRestrictions) content += `<div class="dietary">${c.dietaryRestrictions}</div>`;
+              content += `<div class="override-menu">[${c.menu.protein || '—'} | ${c.menu.veg || '—'} | ${c.menu.starch || '—'}]</div>`;
+              if (c.extras?.length > 0) content += `<div class="client-extras">+ ${c.extras.join(', ')}</div>`;
+            });
+            content += `</div></div>`;
+          });
+
+        } else {
+          // Legacy: group by protein+veg or similar
+          const groups = {};
+          menus.forEach(menu => {
+            const client = findClient(menu);
+            const key = [menu.protein, menu.veg, menu.starch].filter(Boolean).join(' + ') || '(Empty)';
+            if (!groups[key]) groups[key] = { name: key, portions: 0, clients: [] };
+            groups[key].portions += menu.portions || 1;
+            groups[key].clients.push({
+              name: client?.displayName || client?.name || menu.clientName,
+              portions: menu.portions || 1,
+              dietaryRestrictions: client?.dietaryRestrictions,
+              extras: menu.extras || []
+            });
+          });
+
+          Object.values(groups).sort((a, b) => b.portions - a.portions).forEach(group => {
+            content += `<div class="group">`;
+            content += `<div class="group-header">${group.name} — ${group.portions} portions</div>`;
+            content += `<div class="client-list">`;
+            group.clients.sort((a, b) => b.portions - a.portions || a.name.localeCompare(b.name));
+            group.clients.forEach(c => {
+              content += `<div class="client-line">${c.name} (${c.portions})</div>`;
+              if (c.dietaryRestrictions) content += `<div class="dietary">${c.dietaryRestrictions}</div>`;
+              if (c.extras?.length > 0) content += `<div class="client-extras">+ ${c.extras.join(', ')}</div>`;
+            });
+            content += `</div></div>`;
+          });
+        }
+
+        content += `</div>`;
+      });
+
+      content += `</body></html>`;
+      printWindow.document.write(content);
+      printWindow.document.close();
+      printWindow.print();
+    } finally {
+      setIsPrintingProduction(false);
+    }
+  };
+
+  // Packing List print function
+  const printPackingList = () => {
+    if (unapprovedMenuCount > 0) {
+      const topClients = Object.entries(unapprovedByClient).slice(0, 3).map(([name, count]) => `${name} (${count})`).join(', ');
+      alert(`Cannot print yet: ${unapprovedMenuCount} unapproved menu(s).\n\nClients: ${topClients}\n\nApprove all menus first.`);
+      return;
+    }
+
+    // Group by client
+    const ordersByClient = {};
+    menuItems.forEach(item => {
+      const clientName = item.clientName || 'Unknown';
+      if (!ordersByClient[clientName]) ordersByClient[clientName] = [];
+      ordersByClient[clientName].push(item);
+    });
+
+    const printWindow = window.open('', '_blank');
+
+    let content = `
+      <html>
+      <head>
+        <title>Packing List - ${selectedWeekId}</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 15px; font-size: 11px; line-height: 1.3; }
+          h1 { color: #3d59ab; margin-bottom: 3px; font-size: 18px; }
+          .header { margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #3d59ab; }
+          .header p { margin: 0; color: #666; font-size: 10px; }
+          .columns { column-count: 2; column-gap: 25px; }
+          .client { break-inside: avoid; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px dotted #ccc; }
+          .client-name { font-weight: bold; font-size: 12px; color: #3d59ab; margin-bottom: 4px; }
+          .portions { color: #888; font-size: 10px; font-weight: normal; margin-left: 6px; }
+          .meals { margin-left: 4px; }
+          .meal { margin-bottom: 6px; }
+          .protein { font-weight: bold; font-size: 11px; color: #333; padding: 2px 0; }
+          .protein:before { content: "•"; margin-right: 6px; color: #3d59ab; font-weight: bold; }
+          .sides { margin-left: 16px; color: #555; font-size: 10px; }
+          .side { padding: 1px 0; }
+          .side:before { content: "◦"; margin-right: 5px; color: #999; }
+          .extras { margin-left: 16px; margin-top: 2px; }
+          .extra { color: #7c3aed; font-style: italic; font-size: 10px; padding: 1px 0; }
+          .extra:before { content: "+"; margin-right: 4px; }
+          @media print { body { padding: 10px; } .columns { column-count: 2; } }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>Packing List</h1>
+          <p>Week: ${selectedWeekId} | ${new Date().toLocaleDateString()}</p>
+        </div>
+        <div class="columns">
+    `;
+
+    Object.entries(ordersByClient)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .forEach(([clientName, orders]) => {
+        const client = activeClients.find(c => (c.displayName || c.name) === clientName) ||
+                       activeClients.find(c => c.name === clientName);
+        const displayName = client?.displayName || clientName;
+        const portions = orders[0]?.portions || 1;
+
+        content += `<div class="client">`;
+        content += `<div class="client-name">${displayName}<span class="portions">(${portions}p)</span></div>`;
+        content += `<div class="meals">`;
+
+        orders.forEach(order => {
+          content += `<div class="meal">`;
+          if (order.protein) {
+            content += `<div class="protein">${order.protein}</div>`;
+            if (order.veg || order.starch) {
+              content += `<div class="sides">`;
+              if (order.veg) content += `<div class="side">${order.veg}</div>`;
+              if (order.starch) content += `<div class="side">${order.starch}</div>`;
+              content += `</div>`;
+            }
+          } else {
+            if (order.veg) content += `<div class="protein">${order.veg}</div>`;
+            if (order.starch) content += `<div class="protein">${order.starch}</div>`;
+          }
+          if (order.extras?.length > 0) {
+            content += `<div class="extras">`;
+            order.extras.forEach(extra => { content += `<div class="extra">${extra}</div>`; });
+            content += `</div>`;
+          }
+          content += `</div>`;
+        });
+
+        content += `</div></div>`;
+      });
+
+    content += `</div></body></html>`;
+    printWindow.document.write(content);
+    printWindow.document.close();
+    printWindow.print();
+  };
+
   // Check if there are any items at all
   const hasMonTueItems = ['protein', 'veg', 'starch', 'extras'].some(
     cat => Object.keys(kdsView.monTue?.[cat] || {}).length > 0
@@ -431,25 +749,49 @@ export default function KDSTab({
               </span>
             )}
             {hasAnyItems && (
-              <div className="relative group">
+              <>
                 <button
-                  onClick={printKDS}
-                  disabled={unapprovedMenuCount > 0}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 ${
-                    unapprovedMenuCount > 0 ? 'opacity-50 cursor-not-allowed' : ''
+                  onClick={printProductionSheet}
+                  disabled={unapprovedMenuCount > 0 || isPrintingProduction}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${
+                    unapprovedMenuCount > 0 || isPrintingProduction ? 'opacity-50 cursor-not-allowed border-gray-300 text-gray-400' : 'border-gray-300 text-gray-600 hover:bg-gray-50'
                   }`}
-                  style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
-                  title={unapprovedMenuCount > 0 ? 'Approve all menus to enable printing' : 'Print KDS'}
+                  title={unapprovedMenuCount > 0 ? 'Approve all menus first' : 'Print Production Sheet'}
                 >
-                  <Printer size={18} />
-                  Print
+                  <FileText size={16} />
+                  Production
                 </button>
-                {unapprovedMenuCount > 0 && (
-                  <span className="absolute -bottom-5 left-0 text-xs text-amber-600 whitespace-nowrap">
-                    Approve all menus to enable
-                  </span>
-                )}
-              </div>
+                <button
+                  onClick={printPackingList}
+                  disabled={unapprovedMenuCount > 0}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${
+                    unapprovedMenuCount > 0 ? 'opacity-50 cursor-not-allowed border-gray-300 text-gray-400' : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                  }`}
+                  title={unapprovedMenuCount > 0 ? 'Approve all menus first' : 'Print Packing List'}
+                >
+                  <Package size={16} />
+                  Packing
+                </button>
+                <div className="relative group">
+                  <button
+                    onClick={printKDS}
+                    disabled={unapprovedMenuCount > 0}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 ${
+                      unapprovedMenuCount > 0 ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                    style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
+                    title={unapprovedMenuCount > 0 ? 'Approve all menus to enable printing' : 'Print KDS'}
+                  >
+                    <Printer size={18} />
+                    Print
+                  </button>
+                  {unapprovedMenuCount > 0 && (
+                    <span className="absolute -bottom-5 left-0 text-xs text-amber-600 whitespace-nowrap">
+                      Approve all menus to enable
+                    </span>
+                  )}
+                </div>
+              </>
             )}
             {menuItems.length > 0 && allDishesComplete() && (
               <button

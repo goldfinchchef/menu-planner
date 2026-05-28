@@ -1170,6 +1170,7 @@ export default function App() {
           <KDSTab
             menuItems={getApprovedMenuItems()}
             recipes={recipes}
+            clients={clients}
             completedDishes={completedDishes}
             toggleDishComplete={toggleDishComplete}
             allDishesComplete={allDishesComplete}
