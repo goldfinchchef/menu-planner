@@ -358,27 +358,45 @@ export default function DashboardTab({
               Add Bill
             </button>
 
-            {groceryBills.length > 0 && (
-              <div className="mt-4 pt-4 border-t">
-                <p className="text-sm font-medium text-gray-600 mb-2">Recent Bills</p>
-                <div className="space-y-1 max-h-32 overflow-y-auto">
-                  {groceryBills.slice(-5).reverse().map(bill => (
-                    <div key={bill.id} className="flex justify-between items-center text-sm p-2 rounded" style={{ backgroundColor: '#f9f9ed' }}>
-                      <span>{formatDate(bill.date)} - {bill.store || 'N/A'}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">${bill.amount?.toFixed(2)}</span>
-                        <button
-                          onClick={() => deleteGroceryBill(bill.id, bill.weekId)}
-                          className="text-red-500 hover:text-red-700"
-                        >
-                          <X size={14} />
-                        </button>
+            {(() => {
+              // Filter bills for this week
+              const thisWeekBills = groceryBills.filter(bill => {
+                if (!bill.date || !weekStart || !weekEnd) return false;
+                return bill.date >= weekStart && bill.date <= weekEnd;
+              });
+
+              return thisWeekBills.length > 0 ? (
+                <div className="mt-4 pt-4 border-t">
+                  <p className="text-sm font-medium text-gray-600 mb-2">
+                    This Week's Bills ({thisWeekBills.length})
+                  </p>
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {thisWeekBills.map(bill => (
+                      <div key={bill.id} className="flex justify-between items-center text-sm p-2 rounded" style={{ backgroundColor: '#f9f9ed' }}>
+                        <span>{formatDate(bill.date)} - {bill.store || 'N/A'}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">${bill.amount?.toFixed(2)}</span>
+                          <button
+                            onClick={() => deleteGroceryBill(bill.id)}
+                            className="text-red-500 hover:text-red-700"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                  <div className="mt-2 pt-2 border-t text-right">
+                    <span className="text-sm text-gray-500">Week Total: </span>
+                    <span className="font-bold" style={{ color: '#3d59ab' }}>
+                      ${thisWeekBills.reduce((sum, b) => sum + (b.amount || 0), 0).toFixed(2)}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            )}
+              ) : (
+                <p className="mt-4 text-sm text-gray-400 text-center">No bills entered for this week yet</p>
+              );
+            })()}
           </div>
         </div>
 
