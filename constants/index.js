@@ -26,9 +26,9 @@ export const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'kds', label: 'KDS', icon: Monitor },
   { id: 'menuBuilder', label: 'Menu', icon: CalendarDays },
-  { id: 'recipes', label: 'Recipes', icon: Book },
   { id: 'scheduling', label: 'Scheduling', icon: Calendar },
   { id: 'clients', label: 'Clients', icon: Users },
+  { id: 'recipes', label: 'Recipes', icon: Book },
   { id: 'ingredients', label: 'Ingredients', icon: ShoppingCart }
 ];
 
