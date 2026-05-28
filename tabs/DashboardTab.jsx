@@ -138,12 +138,15 @@ export default function DashboardTab({
   // Get this week's grocery spending
   const getThisWeekGrocerySpending = () => {
     if (!weekStart || !weekEnd) return 0;
-    const weekStartDate = new Date(weekStart);
-    const weekEndDate = new Date(weekEnd);
+    const weekStartDate = new Date(weekStart + 'T00:00:00');
+    const weekEndDate = new Date(weekEnd + 'T23:59:59');
+    if (isNaN(weekStartDate.getTime()) || isNaN(weekEndDate.getTime())) return 0;
 
     return groceryBills
       .filter(bill => {
-        const billDate = new Date(bill.date);
+        if (!bill.date) return false;
+        const billDate = new Date(bill.date + 'T12:00:00');
+        if (isNaN(billDate.getTime())) return false;
         return billDate >= weekStartDate && billDate <= weekEndDate;
       })
       .reduce((sum, bill) => sum + (bill.amount || 0), 0);
@@ -153,7 +156,9 @@ export default function DashboardTab({
   const getMonthlyGroceryData = () => {
     const months = {};
     groceryBills.forEach(bill => {
-      const date = new Date(bill.date);
+      if (!bill.date) return;
+      const date = new Date(bill.date + 'T12:00:00');
+      if (isNaN(date.getTime())) return;
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       if (!months[monthKey]) {
         months[monthKey] = { spending: 0, calculated: 0 };
@@ -165,7 +170,9 @@ export default function DashboardTab({
 
   // Helper to get week info from a date
   const getWeekInfo = (dateStr) => {
+    if (!dateStr) return { weekId: '', label: '', monday: null, sunday: null };
     const date = new Date(dateStr + 'T12:00:00');
+    if (isNaN(date.getTime())) return { weekId: '', label: '', monday: null, sunday: null };
     const day = date.getDay();
     const diffToMonday = date.getDate() - day + (day === 0 ? -6 : 1);
     const monday = new Date(date);

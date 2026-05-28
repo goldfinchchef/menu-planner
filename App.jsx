@@ -35,7 +35,7 @@ import { checkConnection, isConfigured } from './lib/supabase';
 
 export default function App() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState('kds');
   const {
     recipes, setRecipes,
     menuItems, setMenuItems,
@@ -1238,7 +1238,15 @@ export default function App() {
         {activeTab === 'dashboard' && (
           <DashboardTab
             weekStart={selectedWeekId}
-            weekEnd={selectedWeekId ? new Date(new Date(selectedWeekId + 'T12:00:00').getTime() + 6 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : null}
+            weekEnd={(() => {
+              if (!selectedWeekId) return null;
+              try {
+                const start = new Date(selectedWeekId + 'T12:00:00');
+                if (isNaN(start.getTime())) return null;
+                const end = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
+                return end.toISOString().split('T')[0];
+              } catch { return null; }
+            })()}
             menuItems={getWeekMenuItems()}
             recipes={recipes}
             clients={clients}
