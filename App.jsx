@@ -587,7 +587,13 @@ export default function App() {
 
   // KDS functions - only show approved menus for selected week
   const getApprovedMenuItems = () => {
-    return menuItems.filter(item => item.approved);
+    return menuItems.filter(item => {
+      if (!item.approved) return false;
+      // Filter by selected week
+      if (!item.date || !selectedWeekId) return false;
+      const itemWeekId = getWeekIdFromDate(item.date);
+      return itemWeekId === selectedWeekId;
+    });
   };
 
   // Week-related helpers (moved here to be available for KDS functions)
