@@ -35,6 +35,7 @@ import { checkConnection, isConfigured } from './lib/supabase';
 export default function App() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('kds');
+  const [newGroceryBill, setNewGroceryBill] = useState({ date: '', amount: '', store: '' });
   const {
     recipes, setRecipes,
     menuItems, setMenuItems,
@@ -1261,9 +1262,20 @@ export default function App() {
             recipes={recipes}
             clients={clients}
             groceryBills={groceryBills}
-            newGroceryBill={{ date: '', amount: '', store: '' }}
-            setNewGroceryBill={() => {}}
-            addGroceryBill={(bill) => setGroceryBills(prev => [...prev, { ...bill, id: Date.now() }])}
+            newGroceryBill={newGroceryBill}
+            setNewGroceryBill={setNewGroceryBill}
+            addGroceryBill={() => {
+              if (!newGroceryBill.date || !newGroceryBill.amount) {
+                alert('Please enter date and amount');
+                return;
+              }
+              setGroceryBills(prev => [...prev, {
+                ...newGroceryBill,
+                amount: parseFloat(newGroceryBill.amount) || 0,
+                id: Date.now()
+              }]);
+              setNewGroceryBill({ date: '', amount: '', store: '' });
+            }}
             deleteGroceryBill={(id) => setGroceryBills(prev => prev.filter(b => b.id !== id))}
             getRecipeCost={getRecipeCost}
           />
