@@ -11,7 +11,7 @@
  * Does NOT modify Supabase data.
  */
 
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { X, Download, ChevronLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import html2canvas from 'html2canvas';
 
@@ -43,29 +43,33 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
     );
   }, [clients, menus]);
 
-  // Current client index
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const currentClient = clientMenus[currentIndex];
+  // LocalStorage key for a client's edit state
+  const getStorageKey = (clientId) => `menu-preview-${weekId}-${clientId}`;
 
-  // Local editable state for current client
-  const [editState, setEditState] = useState(() => initEditState(currentClient));
+  // Load edit state from localStorage or initialize from data
+  function loadEditState(clientData) {
+    if (!clientData) return { meals: [], subscriptionEnds: '', clientName: '' };
 
-  // Ref for the card to capture
-  const cardRef = useRef(null);
+    const storageKey = getStorageKey(clientData.clientId);
+    const saved = localStorage.getItem(storageKey);
 
-  // Reset edit state when switching clients
-  const switchClient = (newIndex) => {
-    setCurrentIndex(newIndex);
-    setEditState(initEditState(clientMenus[newIndex]));
-  };
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Failed to parse saved edit state:', e);
+      }
+    }
 
-  // Initialize edit state from client data
+    return initEditState(clientData);
+  }
+
+  // Initialize edit state from client data (fresh, no localStorage)
   function initEditState(clientData) {
     if (!clientData) return { meals: [], subscriptionEnds: '', clientName: '' };
 
     const meals = [];
     clientData.meals.forEach((menu, idx) => {
-      // Main meal
       if (menu.protein || menu.veg || menu.starch) {
         meals.push({
           id: `meal-${idx}`,
@@ -75,7 +79,6 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
           isExtra: false
         });
       }
-      // Extras as separate items
       (menu.extras || []).forEach((extra, extraIdx) => {
         meals.push({
           id: `extra-${idx}-${extraIdx}`,
@@ -98,6 +101,30 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
       meals
     };
   }
+
+  // Current client index
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const currentClient = clientMenus[currentIndex];
+
+  // Local editable state for current client
+  const [editState, setEditState] = useState(() => loadEditState(currentClient));
+
+  // Ref for the card to capture
+  const cardRef = useRef(null);
+
+  // Save edit state to localStorage whenever it changes
+  useEffect(() => {
+    if (currentClient && editState.clientName) {
+      const storageKey = getStorageKey(currentClient.clientId);
+      localStorage.setItem(storageKey, JSON.stringify(editState));
+    }
+  }, [editState, currentClient]);
+
+  // Reset edit state when switching clients
+  const switchClient = (newIndex) => {
+    setCurrentIndex(newIndex);
+    setEditState(loadEditState(clientMenus[newIndex]));
+  };
 
   // Toggle meal visibility
   const toggleMealVisibility = (mealId) => {
