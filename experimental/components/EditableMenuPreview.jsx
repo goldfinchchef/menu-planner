@@ -162,18 +162,26 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
 
     try {
       const element = cardRef.current;
-      const canvas = await html2canvas(element, {
+
+      // Clone the element to isolate it from layout issues
+      const clone = element.cloneNode(true);
+      clone.style.position = 'absolute';
+      clone.style.left = '-9999px';
+      clone.style.top = '0';
+      clone.style.width = element.offsetWidth + 'px';
+      clone.style.transform = 'none'; // Remove any transforms
+      document.body.appendChild(clone);
+
+      const canvas = await html2canvas(clone, {
         scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
         logging: false,
-        width: element.offsetWidth,
-        height: element.offsetHeight,
-        scrollX: 0,
-        scrollY: 0,
-        windowWidth: element.offsetWidth,
-        windowHeight: element.offsetHeight
+        removeContainer: true
       });
+
+      // Remove the clone
+      document.body.removeChild(clone);
 
       const link = document.createElement('a');
       const clientName = (editState.clientName || 'client').toLowerCase().replace(/[^a-z0-9]+/g, '-');
