@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Check, ChevronDown, ChevronUp, Utensils, Calendar, Printer, AlertCircle, RefreshCw, Clock, FileText, Package } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Utensils, Calendar, Printer, AlertCircle, RefreshCw, Clock, FileText, Package, Download } from 'lucide-react';
 import { fetchBaseWeeklyMenus } from '../lib/database';
 import { isSupabaseMode } from '../lib/dataMode';
 
@@ -242,7 +242,8 @@ export default function KDSTab({
   isSyncing = false,
   unapprovedMenuCount = 0,
   unapprovedByClient = {},
-  onApproveAll = null
+  onApproveAll = null,
+  exportShoppingList = null
 }) {
   const [expandedTiles, setExpandedTiles] = useState({});
   const [isPrintingProduction, setIsPrintingProduction] = useState(false);
@@ -772,6 +773,26 @@ export default function KDSTab({
                   <Package size={16} />
                   Packing
                 </button>
+                {exportShoppingList && (
+                  <button
+                    onClick={() => {
+                      if (unapprovedMenuCount > 0) {
+                        const topClients = Object.entries(unapprovedByClient).slice(0, 3).map(([name, count]) => `${name} (${count})`).join(', ');
+                        alert(`Cannot export yet: ${unapprovedMenuCount} unapproved menu(s).\n\nClients: ${topClients}\n\nApprove all menus first.`);
+                        return;
+                      }
+                      exportShoppingList();
+                    }}
+                    disabled={unapprovedMenuCount > 0}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${
+                      unapprovedMenuCount > 0 ? 'opacity-50 cursor-not-allowed border-gray-300 text-gray-400' : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                    }`}
+                    title={unapprovedMenuCount > 0 ? 'Approve all menus first' : 'Export Shopping List CSV'}
+                  >
+                    <Download size={16} />
+                    Shopping
+                  </button>
+                )}
                 <div className="relative group">
                   <button
                     onClick={printKDS}

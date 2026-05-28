@@ -26,8 +26,7 @@ export const TABS = [
   { id: 'kds', label: 'KDS', icon: Monitor },
   { id: 'menuBuilder', label: 'Menu', icon: CalendarDays },
   { id: 'recipes', label: 'Recipes', icon: Book },
-  { id: 'deliveries', label: 'Deliveries', icon: Truck },
-  { id: 'prep', label: 'Shop', icon: ShoppingCart }
+  { id: 'deliveries', label: 'Deliveries', icon: Truck }
 ];
 
 export const DEFAULT_RECIPES = {

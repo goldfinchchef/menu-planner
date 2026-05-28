@@ -1185,6 +1185,7 @@ export default function App() {
             unapprovedMenuCount={unapprovedMenuCount}
             unapprovedByClient={unapprovedByClient}
             onApproveAll={handleApproveAllFromWarning}
+            exportShoppingList={exportPrepList}
           />
         )}
 
