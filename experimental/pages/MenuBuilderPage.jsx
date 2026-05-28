@@ -28,11 +28,11 @@ function RotationWarning({ componentName, usageHistory }) {
     >
       <span
         className="w-2 h-2 rounded-full bg-yellow-400 cursor-help"
-        title={`Used ${count} time${count !== 1 ? 's' : ''} in last 5 weeks`}
+        title={`Used in ${count} of last 5 weeks`}
       />
       {showTooltip && (
         <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap shadow-lg">
-          Used {count} time{count !== 1 ? 's' : ''} in last 5 weeks.
+          Used in {count} of last 5 weeks.
           {lastWeekId && <span className="block text-gray-300">Last used: {lastWeekId}</span>}
         </div>
       )}
