@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Upload, Download, Save, X, Edit2, Check, Trash2, AlertCircle, RefreshCw, AlertTriangle, Copy } from 'lucide-react';
+import { Upload, Download, Save, X, Edit2, Check, Trash2, AlertCircle, RefreshCw, AlertTriangle, Copy, ChevronDown, ChevronRight } from 'lucide-react';
 import { STORE_SECTIONS, RECIPE_CATEGORIES } from '../constants';
 import { normalizeName } from '../utils';
 
@@ -43,6 +43,12 @@ export default function RecipesTab(props) {
   const [editShowNewVendorInput, setEditShowNewVendorInput] = useState({});
   const [showNewUnitInput, setShowNewUnitInput] = useState({});
   const [editShowNewUnitInput, setEditShowNewUnitInput] = useState({});
+  const [expandedRecipes, setExpandedRecipes] = useState({});
+
+  const toggleRecipeExpanded = (category, index) => {
+    const key = `${category}-${index}`;
+    setExpandedRecipes(prev => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const recipeCounts = getRecipeCounts();
   const uniqueVendors = getUniqueVendors ? getUniqueVendors() : [];
@@ -636,39 +642,70 @@ export default function RecipesTab(props) {
                         </div>
                       </div>
                     ) : (
-                      <div className="flex justify-between items-start p-3 rounded-lg" style={{ backgroundColor: '#f9f9ed' }}>
-                        <div className="flex-1">
+                      <div className="rounded-lg overflow-hidden" style={{ backgroundColor: '#f9f9ed' }}>
+                        {/* Collapsed header - always visible */}
+                        <button
+                          onClick={() => toggleRecipeExpanded(category, index)}
+                          className="w-full flex items-center justify-between p-3 hover:bg-opacity-80 text-left"
+                        >
                           <div className="flex items-center gap-2">
+                            {expandedRecipes[`${category}-${index}`] ? (
+                              <ChevronDown size={16} className="text-gray-400" />
+                            ) : (
+                              <ChevronRight size={16} className="text-gray-400" />
+                            )}
                             {isRecipeIncomplete(recipe) && (
                               <AlertTriangle size={16} className="text-amber-500" title="Missing costs or instructions" />
                             )}
-                            <p className="font-medium">{recipe.name}</p>
+                            <span className="font-medium">{recipe.name}</span>
                             {cost > 0 && (
                               <span className="text-xs px-2 py-1 rounded bg-green-100 text-green-700">
                                 ${cost.toFixed(2)}/portion
                               </span>
                             )}
                           </div>
-                          <p className="text-sm text-gray-600">
-                            {recipe.ingredients?.map(i => `${i.name} (${i.quantity} ${i.unit || 'oz'})`).join(', ')}
-                          </p>
-                          {recipe.instructions && (
-                            <p className="text-xs text-gray-500 mt-1">{recipe.instructions}</p>
-                          )}
-                        </div>
-                        <div className="flex gap-2">
-                          <button onClick={() => startEditingRecipe(category, index)} className="text-blue-600" title="Edit">
-                            <Edit2 size={18} />
-                          </button>
-                          {duplicateRecipe && (
-                            <button onClick={() => duplicateRecipe(category, index)} className="text-green-600" title="Duplicate">
-                              <Copy size={18} />
-                            </button>
-                          )}
-                          <button onClick={() => deleteRecipe(category, index)} className="text-red-600" title="Delete">
-                            <Trash2 size={18} />
-                          </button>
-                        </div>
+                        </button>
+
+                        {/* Expanded content */}
+                        {expandedRecipes[`${category}-${index}`] && (
+                          <div className="px-3 pb-3 pt-0 border-t" style={{ borderColor: '#ebb582' }}>
+                            <p className="text-sm text-gray-600 mt-2">
+                              <span className="font-medium text-gray-700">Ingredients: </span>
+                              {recipe.ingredients?.map(i => `${i.name} (${i.quantity} ${i.unit || 'oz'})`).join(', ')}
+                            </p>
+                            {recipe.instructions && (
+                              <p className="text-sm text-gray-500 mt-2">
+                                <span className="font-medium text-gray-700">Instructions: </span>
+                                {recipe.instructions}
+                              </p>
+                            )}
+                            <div className="flex gap-2 mt-3">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); startEditingRecipe(category, index); }}
+                                className="flex items-center gap-1 text-blue-600 text-sm hover:underline"
+                                title="Edit"
+                              >
+                                <Edit2 size={16} /> Edit
+                              </button>
+                              {duplicateRecipe && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); duplicateRecipe(category, index); }}
+                                  className="flex items-center gap-1 text-green-600 text-sm hover:underline"
+                                  title="Duplicate"
+                                >
+                                  <Copy size={16} /> Copy
+                                </button>
+                              )}
+                              <button
+                                onClick={(e) => { e.stopPropagation(); deleteRecipe(category, index); }}
+                                className="flex items-center gap-1 text-red-600 text-sm hover:underline"
+                                title="Delete"
+                              >
+                                <Trash2 size={16} /> Delete
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
