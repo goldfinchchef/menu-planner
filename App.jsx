@@ -329,14 +329,60 @@ export default function App() {
       return;
     }
 
-    validIngredients.forEach(ing => addToMasterIngredients(ing));
+    // In Supabase mode, ensure all ingredients exist in master list with valid UUIDs
+    let ingredientsWithIds = validIngredients;
+    if (isSupabaseMode()) {
+      // Find ingredients without valid UUIDs
+      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const missingIngredients = validIngredients.filter(ing => {
+        // Check if it has a valid UUID
+        if (ing.ingredient_id && UUID_REGEX.test(String(ing.ingredient_id))) return false;
+        // Check if name matches a master ingredient
+        const master = findExactMatch(ing.name);
+        if (master?.id && UUID_REGEX.test(String(master.id))) return false;
+        return true;
+      });
+
+      // Auto-add missing ingredients to Supabase
+      if (missingIngredients.length > 0) {
+        console.log('[App.saveRecipe] Auto-adding', missingIngredients.length, 'missing ingredients');
+        for (const ing of missingIngredients) {
+          const result = await saveIngredientToSupabase({
+            name: ing.name,
+            cost: ing.cost || '',
+            unit: ing.unit || 'oz',
+            source: ing.source || '',
+            section: ing.section || 'Other'
+          });
+          if (!result.success) {
+            alert(`Failed to add ingredient "${ing.name}": ${result.error}`);
+            return;
+          }
+          // Update master ingredients with new list
+          setMasterIngredients(result.ingredients);
+        }
+      }
+
+      // Re-map ingredients with correct UUIDs from updated master list
+      // Need to get fresh master ingredients after adding
+      const currentMaster = await import('./lib/database').then(m => m.fetchIngredients());
+      ingredientsWithIds = validIngredients.map(ing => {
+        const master = currentMaster.find(m => m.name.toLowerCase().trim() === ing.name.toLowerCase().trim());
+        return {
+          ...ing,
+          ingredient_id: master?.id || ing.ingredient_id
+        };
+      });
+    } else {
+      validIngredients.forEach(ing => addToMasterIngredients(ing));
+    }
 
     const recipeToSave = {
       id: recipe.id,  // Include id for updates
       name: recipe.name,
       subcategory: recipe.subcategory || null,
       instructions: recipe.instructions,
-      ingredients: validIngredients
+      ingredients: ingredientsWithIds
     };
 
     if (isSupabaseMode()) {
