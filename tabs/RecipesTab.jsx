@@ -46,6 +46,19 @@ export default function RecipesTab(props) {
 
   const recipeCounts = getRecipeCounts();
 
+  // Quick update subcategory without opening modal
+  const updateSubcategory = async (category, index, recipe, newSubcategory) => {
+    const recipeToSave = {
+      id: recipe.id,
+      name: recipe.name,
+      category: category,
+      subcategory: newSubcategory || null,
+      instructions: recipe.instructions || '',
+      ingredients: recipe.ingredients || []
+    };
+    await saveRecipe(recipeToSave);
+  };
+
   // Flatten recipes for table display, filtered by category/subcategory/search
   const filteredRecipes = useMemo(() => {
     const result = [];
@@ -395,8 +408,21 @@ export default function RecipesTab(props) {
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-2 text-sm text-gray-600">
-                        {item.recipe.subcategory || '—'}
+                      <td className="px-4 py-2 text-sm text-gray-600" onClick={(e) => e.stopPropagation()}>
+                        {SUBCATEGORIES[item.category] ? (
+                          <select
+                            value={item.recipe.subcategory || ''}
+                            onChange={(e) => updateSubcategory(item.category, item.index, item.recipe, e.target.value)}
+                            className="w-full bg-transparent border-0 text-sm text-gray-600 cursor-pointer hover:text-gray-900 focus:ring-1 focus:ring-blue-300 rounded py-0.5 -my-0.5"
+                          >
+                            <option value="">—</option>
+                            {SUBCATEGORIES[item.category].map(sub => (
+                              <option key={sub} value={sub}>{sub}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span>—</span>
+                        )}
                       </td>
                       <td className="px-4 py-2">
                         {cost > 0 ? (
