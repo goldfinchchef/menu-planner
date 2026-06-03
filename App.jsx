@@ -28,7 +28,7 @@ import {
   downloadCSV
 } from './utils';
 import { DEFAULT_NEW_CLIENT, DEFAULT_NEW_RECIPE, DEFAULT_NEW_MENU_ITEM, DEFAULT_NEW_INGREDIENT } from './constants';
-import { fetchKdsDishStatuses, setKdsDishDone, saveRecipeToSupabase, deleteRecipeFromSupabase, getUnapprovedMenuCountForWeek, approveAllMenusForWeek, fetchMenusByWeek, updateClientDeliveryDates } from './lib/database';
+import { fetchKdsDishStatuses, setKdsDishDone, saveRecipeToSupabase, deleteRecipeFromSupabase, getUnapprovedMenuCountForWeek, approveAllMenusForWeek, fetchMenusByWeek, updateClientDeliveryDates, saveIngredientToSupabase, deleteIngredientFromSupabase } from './lib/database';
 import { isSupabaseMode, getDataMode } from './lib/dataMode';
 import { checkConnection, isConfigured } from './lib/supabase';
 
@@ -1019,19 +1019,40 @@ export default function App() {
   };
 
   // Ingredient functions
-  const addMasterIngredient = () => {
+  const addMasterIngredient = async () => {
     if (!newIngredient.name) { alert('Please enter an ingredient name'); return; }
     const similar = findSimilarIngredients(newIngredient.name);
     const exact = findExactMatch(newIngredient.name);
     if (exact) { alert(`"${newIngredient.name}" already exists as "${exact.name}"`); return; }
     if (similar.length > 0 && !window.confirm(`Similar ingredients found: ${similar.map(s => s.name).join(', ')}\n\nAdd "${newIngredient.name}" anyway?`)) return;
-    setMasterIngredients([...masterIngredients, { ...newIngredient, id: Date.now() }]);
-    setNewIngredient(DEFAULT_NEW_INGREDIENT);
-    alert('Ingredient added!');
+
+    if (isSupabaseMode()) {
+      const result = await saveIngredientToSupabase(newIngredient);
+      if (result.success) {
+        setMasterIngredients(result.ingredients);
+        setNewIngredient(DEFAULT_NEW_INGREDIENT);
+        alert('Ingredient added!');
+      } else {
+        alert(`Failed to add ingredient: ${result.error}`);
+      }
+    } else {
+      setMasterIngredients([...masterIngredients, { ...newIngredient, id: Date.now() }]);
+      setNewIngredient(DEFAULT_NEW_INGREDIENT);
+      alert('Ingredient added (local only)!');
+    }
   };
 
-  const deleteMasterIngredient = (id) => {
-    if (window.confirm('Delete this ingredient?')) {
+  const deleteMasterIngredient = async (id) => {
+    if (!window.confirm('Delete this ingredient?')) return;
+
+    if (isSupabaseMode()) {
+      const result = await deleteIngredientFromSupabase(id);
+      if (result.success) {
+        setMasterIngredients(result.ingredients);
+      } else {
+        alert(`Failed to delete ingredient: ${result.error}`);
+      }
+    } else {
       setMasterIngredients(masterIngredients.filter(ing => ing.id !== id));
     }
   };
@@ -1041,8 +1062,23 @@ export default function App() {
     setEditingIngredientData({ ...ing });
   };
 
-  const saveEditingMasterIngredient = () => {
-    setMasterIngredients(prev => prev.map(ing => ing.id === editingIngredientId ? { ...editingIngredientData } : ing));
+  const saveEditingMasterIngredient = async () => {
+    if (!editingIngredientData) return;
+
+    // Persist to Supabase
+    if (isSupabaseMode()) {
+      const result = await saveIngredientToSupabase(editingIngredientData);
+      if (result.success) {
+        setMasterIngredients(result.ingredients);
+      } else {
+        alert(`Failed to save ingredient: ${result.error}`);
+        return;
+      }
+    } else {
+      // Local mode - just update state
+      setMasterIngredients(prev => prev.map(ing => ing.id === editingIngredientId ? { ...editingIngredientData } : ing));
+    }
+
     setEditingIngredientId(null);
     setEditingIngredientData(null);
   };
