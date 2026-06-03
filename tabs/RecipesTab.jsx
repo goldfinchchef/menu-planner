@@ -2,8 +2,12 @@ import React, { useState, useMemo } from 'react';
 import { Upload, Download, X, Edit2, Copy, AlertTriangle, ChevronRight } from 'lucide-react';
 import { STORE_SECTIONS, RECIPE_CATEGORIES } from '../constants';
 
-// Subcategories for Protein only (for now)
-const PROTEIN_SUBCATEGORIES = ['Chicken', 'Beef', 'Pork', 'Fish & Seafood', 'Vegetarian'];
+// Subcategories by category
+const SUBCATEGORIES = {
+  protein: ['Chicken', 'Beef', 'Pork', 'Fish & Seafood', 'Vegetarian'],
+  veg: ['Roasted', 'Sautéed', 'Steamed', 'Raw/Salad', 'Grilled'],
+  starch: ['Potato', 'Rice', 'Pasta', 'Bread', 'Grains']
+};
 
 export default function RecipesTab(props) {
   const {
@@ -49,8 +53,8 @@ export default function RecipesTab(props) {
       items.forEach((recipe, index) => {
         // Category filter
         if (selectedCategory !== 'all' && category !== selectedCategory) return;
-        // Subcategory filter (only for protein)
-        if (selectedSubcategory && category === 'protein') {
+        // Subcategory filter
+        if (selectedSubcategory && SUBCATEGORIES[category]) {
           if ((recipe.subcategory || '').toLowerCase() !== selectedSubcategory.toLowerCase()) return;
         }
         // Search filter
@@ -323,8 +327,8 @@ export default function RecipesTab(props) {
           ))}
         </div>
 
-        {/* Subcategory Pills (Protein only) */}
-        {selectedCategory === 'protein' && (
+        {/* Subcategory Pills */}
+        {SUBCATEGORIES[selectedCategory] && (
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setSelectedSubcategory(null)}
@@ -334,9 +338,9 @@ export default function RecipesTab(props) {
                   : 'border border-dashed border-gray-400 text-gray-600 bg-white'
               }`}
             >
-              All Proteins
+              All {selectedCategory.charAt(0).toUpperCase() + selectedCategory.slice(1)}
             </button>
-            {PROTEIN_SUBCATEGORIES.map(sub => (
+            {SUBCATEGORIES[selectedCategory].map(sub => (
               <button
                 key={sub}
                 onClick={() => setSelectedSubcategory(sub)}
@@ -570,10 +574,10 @@ export default function RecipesTab(props) {
                     onChange={(e) => updateModalRecipe('subcategory', e.target.value)}
                     className="w-full p-2 border-2 rounded-lg"
                     style={{ borderColor: '#ebb582' }}
-                    disabled={modalRecipe.category !== 'protein'}
+                    disabled={!SUBCATEGORIES[modalRecipe.category]}
                   >
                     <option value="">None</option>
-                    {modalRecipe.category === 'protein' && PROTEIN_SUBCATEGORIES.map(sub => (
+                    {SUBCATEGORIES[modalRecipe.category]?.map(sub => (
                       <option key={sub} value={sub}>{sub}</option>
                     ))}
                   </select>
