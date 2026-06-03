@@ -169,6 +169,10 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
       clone.style.left = '-9999px';
       clone.style.top = '0';
       clone.style.width = element.offsetWidth + 'px';
+      clone.style.height = 'auto'; // Let it expand naturally
+      clone.style.minHeight = element.scrollHeight + 'px';
+      clone.style.maxHeight = 'none';
+      clone.style.overflow = 'visible'; // Ensure nothing is clipped
       clone.style.transform = 'none'; // Remove any transforms
       document.body.appendChild(clone);
 
@@ -177,7 +181,11 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
         useCORS: true,
         backgroundColor: '#ffffff',
         logging: false,
-        removeContainer: true
+        removeContainer: true,
+        height: clone.scrollHeight,
+        windowHeight: clone.scrollHeight + 100,
+        scrollY: 0,
+        scrollX: 0
       });
 
       // Remove the clone
