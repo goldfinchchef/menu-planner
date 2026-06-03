@@ -16,7 +16,7 @@ import DashboardTab from './tabs/DashboardTab';
 import BillingTab from './tabs/BillingTab';
 import ClientsTab from './tabs/ClientsTab';
 import IngredientsTab from './tabs/IngredientsTab';
-import { getWeekId, getWeekIdFromDate, getAdjacentWeekId, formatWeekRange } from './utils/weekUtils';
+import { getWeekId, getWeekIdFromDate, getAdjacentWeekId, formatWeekRange, getWeekStartDate, getWeekEndDate } from './utils/weekUtils';
 import {
   categorizeIngredient,
   exportClientsCSV,
@@ -329,7 +329,9 @@ export default function App() {
     validIngredients.forEach(ing => addToMasterIngredients(ing));
 
     const recipeToSave = {
+      id: newRecipe.id,  // Include id for updates
       name: newRecipe.name,
+      subcategory: newRecipe.subcategory || null,
       instructions: newRecipe.instructions,
       ingredients: validIngredients
     };
@@ -1245,16 +1247,8 @@ export default function App() {
 
         {activeTab === 'dashboard' && (
           <DashboardTab
-            weekStart={selectedWeekId}
-            weekEnd={(() => {
-              if (!selectedWeekId) return null;
-              try {
-                const start = new Date(selectedWeekId + 'T12:00:00');
-                if (isNaN(start.getTime())) return null;
-                const end = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
-                return end.toISOString().split('T')[0];
-              } catch { return null; }
-            })()}
+            weekStart={getWeekStartDate(selectedWeekId)}
+            weekEnd={getWeekEndDate(selectedWeekId)}
             menuItems={getWeekMenuItems()}
             allMenuItems={menuItems}
             recipes={recipes}

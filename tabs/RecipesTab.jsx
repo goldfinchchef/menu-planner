@@ -1,16 +1,11 @@
-import React, { useState } from 'react';
-import { Upload, Download, Save, X, Edit2, Check, Trash2, AlertCircle, RefreshCw, AlertTriangle, Copy, ChevronDown, ChevronRight } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Upload, Download, X, Edit2, Copy, AlertTriangle, ChevronRight } from 'lucide-react';
 import { STORE_SECTIONS, RECIPE_CATEGORIES } from '../constants';
-import { normalizeName } from '../utils';
 
-let recipesTabRenderCount = 0;
+// Subcategories for Protein only (for now)
+const PROTEIN_SUBCATEGORIES = ['Chicken', 'Beef', 'Pork', 'Fish & Seafood', 'Vegetarian'];
 
 export default function RecipesTab(props) {
-  recipesTabRenderCount++;
-  // Log ALL props to see exactly what's being passed
-  console.log(`[RecipesTab RENDER #${recipesTabRenderCount}] masterIngredients len:`, props.masterIngredients?.length);
-
-  // Destructure after logging
   const {
     recipes,
     newRecipe,
@@ -20,7 +15,6 @@ export default function RecipesTab(props) {
     masterIngredients,
     recipesFileRef,
     findExactMatch,
-    findSimilarIngredients,
     getRecipeCost,
     getRecipeCounts,
     saveRecipe,
@@ -31,273 +25,236 @@ export default function RecipesTab(props) {
     addEditingIngredient,
     removeEditingIngredient,
     exportRecipesCSV,
-    getUniqueVendors,
     updateMasterIngredientCost,
-    syncRecipeIngredientsFromMaster,
-    units = ['oz', 'lb', 'each', 'bunch', 'cup', 'tbsp', 'tsp'],
+    units = ['oz', 'fl oz', 'lb', 'g', 'kg', 'cup', 'tbsp', 'tsp', 'each', 'bunch', 'clove', 'head', 'can', 'jar'],
     addUnit,
     duplicateRecipe
   } = props;
 
-  const [showNewVendorInput, setShowNewVendorInput] = useState({});
-  const [editShowNewVendorInput, setEditShowNewVendorInput] = useState({});
-  const [showNewUnitInput, setShowNewUnitInput] = useState({});
-  const [editShowNewUnitInput, setEditShowNewUnitInput] = useState({});
-  const [expandedRecipes, setExpandedRecipes] = useState({});
-
-  const toggleRecipeExpanded = (category, index) => {
-    const key = `${category}-${index}`;
-    setExpandedRecipes(prev => ({ ...prev, [key]: !prev[key] }));
-  };
+  // UI State
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedSubcategory, setSelectedSubcategory] = useState(null);
+  const [selectedRecipe, setSelectedRecipe] = useState(null); // { category, index, recipe }
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalRecipe, setModalRecipe] = useState(null); // recipe being edited in modal
+  const [modalMode, setModalMode] = useState('new'); // 'new' or 'edit'
+  const [searchQuery, setSearchQuery] = useState('');
 
   const recipeCounts = getRecipeCounts();
-  const uniqueVendors = getUniqueVendors ? getUniqueVendors() : [];
 
-  // Check if a recipe is incomplete (missing costs or instructions)
-  const isRecipeIncomplete = (recipe) => {
-    const missingInstructions = !recipe.instructions || recipe.instructions.trim() === '';
-    const missingCosts = recipe.ingredients?.some(ing => !ing.cost || ing.cost === '' || parseFloat(ing.cost) === 0);
-    return missingInstructions || missingCosts;
-  };
+  // Flatten recipes for table display, filtered by category/subcategory/search
+  const filteredRecipes = useMemo(() => {
+    const result = [];
+    Object.entries(recipes).forEach(([category, items]) => {
+      items.forEach((recipe, index) => {
+        // Category filter
+        if (selectedCategory !== 'all' && category !== selectedCategory) return;
+        // Subcategory filter (only for protein)
+        if (selectedSubcategory && category === 'protein') {
+          if ((recipe.subcategory || '').toLowerCase() !== selectedSubcategory.toLowerCase()) return;
+        }
+        // Search filter
+        if (searchQuery) {
+          const q = searchQuery.toLowerCase();
+          if (!recipe.name.toLowerCase().includes(q)) return;
+        }
+        result.push({ category, index, recipe });
+      });
+    });
+    return result.sort((a, b) => a.recipe.name.localeCompare(b.recipe.name));
+  }, [recipes, selectedCategory, selectedSubcategory, searchQuery]);
 
-  // Count incomplete recipes
-  const getIncompleteCount = () => {
+  // Count recipes missing costs (any ingredient without master price)
+  const missingCostsCount = useMemo(() => {
     let count = 0;
-    Object.values(recipes).forEach(categoryRecipes => {
-      categoryRecipes.forEach(recipe => {
-        if (isRecipeIncomplete(recipe)) count++;
+    Object.values(recipes).forEach(items => {
+      items.forEach(recipe => {
+        const hasMissingCost = recipe.ingredients?.some(ing => {
+          if (!ing.name || ing.name.length < 3) return false;
+          const master = findExactMatch(ing.name);
+          return !master || !master.cost;
+        });
+        if (hasMissingCost) count++;
       });
     });
     return count;
+  }, [recipes, findExactMatch]);
+
+  // Open modal for new recipe
+  const openNewRecipeModal = () => {
+    setModalRecipe({
+      name: '',
+      category: 'protein',
+      subcategory: '',
+      instructions: '',
+      ingredients: [{ ingredient_id: null, name: '', quantity: '', unit: 'oz', cost: '', source: '', section: 'Other' }]
+    });
+    setModalMode('new');
+    setIsModalOpen(true);
   };
 
-  const incompleteCount = getIncompleteCount();
+  // Open modal for editing existing recipe
+  const openEditRecipeModal = (category, index, recipe) => {
+    // Backfill ingredient_id from master list if missing
+    const ingredientsWithIds = (recipe.ingredients || []).map(ing => {
+      let ingredientId = ing.ingredient_id || null;
+      if (!ingredientId && ing.name) {
+        const master = findExactMatch(ing.name);
+        if (master?.id) ingredientId = master.id;
+      }
+      return {
+        ingredient_id: ingredientId,
+        name: ing.name || '',
+        quantity: ing.quantity || '',
+        unit: ing.unit || 'oz',
+        cost: ing.cost || '',
+        source: ing.source || '',
+        section: ing.section || 'Other'
+      };
+    });
 
-  const addIngredient = () => setNewRecipe({
-    ...newRecipe,
-    ingredients: [...newRecipe.ingredients, { ingredient_id: null, name: '', quantity: '', unit: 'oz', cost: '', source: '', section: 'Other' }]
-  });
+    setModalRecipe({
+      id: recipe.id,
+      name: recipe.name,
+      category: category,
+      subcategory: recipe.subcategory || '',
+      instructions: recipe.instructions || '',
+      ingredients: ingredientsWithIds.length > 0 ? ingredientsWithIds : [{ ingredient_id: null, name: '', quantity: '', unit: 'oz', cost: '', source: '', section: 'Other' }]
+    });
+    setModalMode('edit');
+    setIsModalOpen(true);
+  };
 
-  const updateIngredient = (index, field, value) => {
-    const updated = [...newRecipe.ingredients];
+  // Update modal recipe field
+  const updateModalRecipe = (field, value) => {
+    setModalRecipe(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Update modal ingredient
+  const updateModalIngredient = (index, field, value) => {
+    const updated = [...modalRecipe.ingredients];
     updated[index][field] = value;
 
-    // Auto-fill from master when ingredient name changes
+    // Auto-fill from master when name changes
     if (field === 'name' && value.length > 2) {
-      const masterIng = findExactMatch(value);
-      if (masterIng) {
+      const master = findExactMatch(value);
+      if (master) {
         updated[index] = {
           ...updated[index],
-          ingredient_id: masterIng.id, // Store master ingredient UUID
-          name: value,
-          cost: masterIng.cost || updated[index].cost,
-          source: masterIng.source || updated[index].source,
-          section: masterIng.section || updated[index].section,
-          unit: masterIng.unit || updated[index].unit
+          ingredient_id: master.id,
+          cost: master.cost || updated[index].cost,
+          source: master.source || updated[index].source,
+          section: master.section || updated[index].section,
+          unit: master.unit || updated[index].unit
         };
       } else {
-        // Clear ingredient_id if name doesn't match master
         updated[index].ingredient_id = null;
       }
     }
 
-    // Sync cost back to master when cost changes
-    if (field === 'cost' && value && updated[index].name && updateMasterIngredientCost) {
-      updateMasterIngredientCost(updated[index].name, value);
-    }
-
-    setNewRecipe({ ...newRecipe, ingredients: updated });
+    setModalRecipe(prev => ({ ...prev, ingredients: updated }));
   };
 
-  const removeIngredient = (index) => setNewRecipe({
-    ...newRecipe,
-    ingredients: newRecipe.ingredients.filter((_, i) => i !== index)
-  });
+  // Add ingredient to modal
+  const addModalIngredient = () => {
+    setModalRecipe(prev => ({
+      ...prev,
+      ingredients: [...prev.ingredients, { ingredient_id: null, name: '', quantity: '', unit: 'oz', cost: '', source: '', section: 'Other' }]
+    }));
+  };
 
-  const autoFillIngredient = (index, masterIng) => {
-    const updated = [...newRecipe.ingredients];
-    updated[index] = {
-      ...updated[index],
-      ingredient_id: masterIng.id, // Store master ingredient UUID
-      name: masterIng.name,
-      cost: masterIng.cost,
-      source: masterIng.source,
-      section: masterIng.section,
-      unit: masterIng.unit
+  // Remove ingredient from modal
+  const removeModalIngredient = (index) => {
+    setModalRecipe(prev => ({
+      ...prev,
+      ingredients: prev.ingredients.filter((_, i) => i !== index)
+    }));
+  };
+
+  // Save modal recipe
+  const saveModalRecipe = async () => {
+    if (!modalRecipe.name.trim()) {
+      alert('Recipe name is required');
+      return;
+    }
+
+    // Update the newRecipe state and call saveRecipe (which handles Supabase)
+    const recipeToSave = {
+      id: modalRecipe.id,
+      name: modalRecipe.name.trim(),
+      subcategory: modalRecipe.subcategory || null,
+      instructions: modalRecipe.instructions || '',
+      ingredients: modalRecipe.ingredients.filter(ing => ing.name.trim())
     };
-    setNewRecipe({ ...newRecipe, ingredients: updated });
+
+    // Use the existing save mechanism
+    setNewRecipe({ ...recipeToSave, category: modalRecipe.category });
+
+    // Wait a tick for state to update, then save
+    setTimeout(async () => {
+      await saveRecipe();
+      setIsModalOpen(false);
+      setModalRecipe(null);
+      // Refresh selected recipe if we were editing it
+      if (selectedRecipe && selectedRecipe.recipe.id === recipeToSave.id) {
+        setSelectedRecipe(null);
+      }
+    }, 0);
   };
 
-  // Handle sync button click
-  const handleSync = () => {
-    if (!syncRecipeIngredientsFromMaster) return;
-    const result = syncRecipeIngredientsFromMaster();
-    alert(`Sync complete!\n\n${result.ingredientsAdded} ingredient(s) added to master list\n${result.costsUpdated} cost(s) updated from master`);
-  };
-
-  // Vendor dropdown with "Add new" option
-  const VendorSelect = ({ value, onChange, index, isEditing = false }) => {
-    const showNew = isEditing ? editShowNewVendorInput[index] : showNewVendorInput[index];
-    const setShowNew = isEditing
-      ? (val) => setEditShowNewVendorInput(prev => ({ ...prev, [index]: val }))
-      : (val) => setShowNewVendorInput(prev => ({ ...prev, [index]: val }));
-
-    if (showNew) {
-      return (
-        <div className="flex gap-1">
-          <input
-            type="text"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder="New vendor"
-            className={isEditing ? "w-16 p-1 border rounded text-sm" : "w-20 p-2 border-2 rounded-lg"}
-            style={isEditing ? {} : { borderColor: '#ebb582' }}
-            autoFocus
-          />
-          <button
-            onClick={() => setShowNew(false)}
-            className="text-gray-500 hover:text-gray-700"
-            type="button"
-          >
-            <X size={isEditing ? 14 : 16} />
-          </button>
-        </div>
-      );
+  // Handle row click to select recipe
+  const handleRowClick = (item) => {
+    if (selectedRecipe?.recipe.id === item.recipe.id) {
+      setSelectedRecipe(null); // Deselect if clicking same row
+    } else {
+      setSelectedRecipe(item);
     }
-
-    return (
-      <select
-        value={uniqueVendors.includes(value) ? value : ''}
-        onChange={(e) => {
-          if (e.target.value === '__new__') {
-            setShowNew(true);
-            onChange('');
-          } else {
-            onChange(e.target.value);
-          }
-        }}
-        className={isEditing ? "w-20 p-1 border rounded text-sm" : "w-24 p-2 border-2 rounded-lg"}
-        style={isEditing ? {} : { borderColor: '#ebb582' }}
-      >
-        <option value="">Vendor</option>
-        {uniqueVendors.map(v => <option key={v} value={v}>{v}</option>)}
-        <option value="__new__">+ Add new...</option>
-      </select>
-    );
   };
 
-  // Unit dropdown with "Add new" option
-  const UnitSelect = ({ value, onChange, index, isEditing = false }) => {
-    const showNew = isEditing ? editShowNewUnitInput[index] : showNewUnitInput[index];
-    const setShowNew = isEditing
-      ? (val) => setEditShowNewUnitInput(prev => ({ ...prev, [index]: val }))
-      : (val) => setShowNewUnitInput(prev => ({ ...prev, [index]: val }));
-
-    if (showNew) {
-      return (
-        <div className="flex gap-1">
-          <input
-            type="text"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            onBlur={() => {
-              // Add the new unit when user leaves the field
-              if (value && addUnit) {
-                addUnit(value);
-              }
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                if (value && addUnit) {
-                  addUnit(value);
-                }
-                setShowNew(false);
-              }
-            }}
-            placeholder="New unit"
-            className={isEditing ? "w-14 p-1 border rounded text-sm" : "w-16 p-2 border-2 rounded-lg"}
-            style={isEditing ? {} : { borderColor: '#ebb582' }}
-            autoFocus
-          />
-          <button
-            onClick={() => {
-              if (value && addUnit) {
-                addUnit(value);
-              }
-              setShowNew(false);
-            }}
-            className="text-green-600 hover:text-green-700"
-            type="button"
-            title="Save unit"
-          >
-            <Check size={isEditing ? 14 : 16} />
-          </button>
-          <button
-            onClick={() => {
-              onChange('oz');
-              setShowNew(false);
-            }}
-            className="text-gray-500 hover:text-gray-700"
-            type="button"
-            title="Cancel"
-          >
-            <X size={isEditing ? 14 : 16} />
-          </button>
-        </div>
-      );
+  // Handle copy recipe
+  const handleCopyRecipe = (e, category, index) => {
+    e.stopPropagation();
+    if (duplicateRecipe) {
+      duplicateRecipe(category, index);
     }
-
-    return (
-      <select
-        value={units.includes(value) ? value : (value || 'oz')}
-        onChange={(e) => {
-          if (e.target.value === '__new__') {
-            setShowNew(true);
-            onChange('');
-          } else {
-            onChange(e.target.value);
-          }
-        }}
-        className={isEditing ? "w-16 p-1 border rounded text-sm" : "w-20 p-2 border-2 rounded-lg"}
-        style={isEditing ? {} : { borderColor: '#ebb582' }}
-      >
-        {units.map(u => <option key={u} value={u}>{u}</option>)}
-        <option value="__new__">+ New...</option>
-      </select>
-    );
   };
+
+  // Handle delete recipe
+  const handleDeleteRecipe = (category, index) => {
+    if (window.confirm('Are you sure you want to delete this recipe?')) {
+      deleteRecipe(category, index);
+      if (selectedRecipe?.category === category && selectedRecipe?.index === index) {
+        setSelectedRecipe(null);
+      }
+    }
+  };
+
+  // Category counts
+  const categoryCounts = useMemo(() => {
+    const counts = { all: 0 };
+    RECIPE_CATEGORIES.forEach(cat => { counts[cat] = 0; });
+    Object.entries(recipes).forEach(([category, items]) => {
+      counts[category] = items.length;
+      counts.all += items.length;
+    });
+    return counts;
+  }, [recipes]);
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-lg shadow-lg p-6">
-        <div className="flex justify-between items-center mb-4">
-          <div>
+    <div className="h-full flex flex-col">
+      {/* Toolbar */}
+      <div className="bg-white rounded-lg shadow-lg p-4 mb-4">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-4">
             <h2 className="text-2xl font-bold" style={{ color: '#3d59ab' }}>Recipes</h2>
-            <p className="text-sm">
-              {incompleteCount > 0 ? (
-                <span className="text-amber-600 font-medium">
-                  <AlertTriangle size={14} className="inline mr-1" />
-                  {incompleteCount} recipe{incompleteCount !== 1 ? 's' : ''} incomplete
-                </span>
-              ) : (
-                <span className="text-green-600 font-medium">
-                  <Check size={14} className="inline mr-1" />
-                  All recipes complete
-                </span>
-              )}
-              <span className="text-gray-500 ml-2">({recipeCounts.total} total)</span>
-            </p>
+            {missingCostsCount > 0 && (
+              <span className="flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium bg-amber-100 text-amber-800">
+                <AlertTriangle size={14} />
+                {missingCostsCount} missing costs
+              </span>
+            )}
           </div>
           <div className="flex gap-2">
-            {syncRecipeIngredientsFromMaster && (
-              <button
-                onClick={handleSync}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-green-500 text-green-600 hover:bg-green-50"
-              >
-                <RefreshCw size={18} />Sync Ingredients
-              </button>
-            )}
             <button
               onClick={() => recipesFileRef.current.click()}
               className="flex items-center gap-2 px-4 py-2 rounded-lg border-2"
@@ -307,417 +264,431 @@ export default function RecipesTab(props) {
             </button>
             <button
               onClick={exportRecipesCSV}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-white"
-              style={{ backgroundColor: '#3d59ab' }}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border-2"
+              style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
             >
               <Download size={18} />Export
             </button>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <select
-              value={newRecipe.category}
-              onChange={(e) => setNewRecipe({ ...newRecipe, category: e.target.value })}
-              className="p-2 border-2 rounded-lg"
-              style={{ borderColor: '#ebb582' }}
-            >
-              {RECIPE_CATEGORIES.map(cat => (
-                <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
-              ))}
-            </select>
-            <input
-              type="text"
-              value={newRecipe.name}
-              onChange={(e) => setNewRecipe({ ...newRecipe, name: e.target.value })}
-              placeholder="Recipe name"
-              className="p-2 border-2 rounded-lg"
-              style={{ borderColor: '#ebb582' }}
-            />
-          </div>
-          <textarea
-            value={newRecipe.instructions}
-            onChange={(e) => setNewRecipe({ ...newRecipe, instructions: e.target.value })}
-            placeholder="Cooking instructions..."
-            className="w-full p-2 border-2 rounded-lg"
-            style={{ borderColor: '#ebb582' }}
-            rows="2"
-          />
-          <div>
-            <label className="block text-sm font-medium mb-2" style={{ color: '#423d3c' }}>Ingredients</label>
-            {newRecipe.ingredients.map((ing, index) => {
-              // Debug: log matching attempt
-              if (ing.name.length > 2) {
-                console.log('[ING MATCH DEBUG - New Recipe]', {
-                  input: ing.name,
-                  normalizedInput: normalizeName(ing.name),
-                  masterSample: masterIngredients.slice(0, 5).map(i => ({ name: i.name, normalized: normalizeName(i.name) })),
-                  masterCount: masterIngredients.length,
-                  match: findExactMatch(ing.name)
-                });
-              }
-              const exactMatch = ing.name.length > 2 ? findExactMatch(ing.name) : null;
-              const similarIngs = ing.name.length > 2 && !exactMatch ? findSimilarIngredients(ing.name) : [];
-              // Check if ingredient has valid master ingredient_id (UUID format)
-              const hasValidIngredientId = ing.ingredient_id && typeof ing.ingredient_id === 'string' && ing.ingredient_id.includes('-');
-              const isInMasterList = hasValidIngredientId || exactMatch;
-              const showNotInMasterWarning = ing.name.length > 2 && !isInMasterList && similarIngs.length === 0;
-              return (
-                <div key={index} className="mb-2">
-                  <div className="flex flex-wrap gap-2 p-2 rounded" style={{ backgroundColor: showNotInMasterWarning ? '#fef2f2' : '#f9f9ed' }}>
-                    <input
-                      type="text"
-                      value={ing.name}
-                      onChange={(e) => updateIngredient(index, 'name', e.target.value)}
-                      placeholder="Ingredient"
-                      className="flex-1 min-w-[120px] p-2 border-2 rounded-lg"
-                      style={{ borderColor: '#ebb582' }}
-                      list={`ing-${index}`}
-                    />
-                    <datalist id={`ing-${index}`}>
-                      {masterIngredients.map((mi, i) => <option key={i} value={mi.name} />)}
-                    </datalist>
-                    <input
-                      type="text"
-                      value={ing.quantity}
-                      onChange={(e) => updateIngredient(index, 'quantity', e.target.value)}
-                      placeholder="Qty"
-                      className="w-16 p-2 border-2 rounded-lg"
-                      style={{ borderColor: '#ebb582' }}
-                    />
-                    <UnitSelect
-                      value={ing.unit || 'oz'}
-                      onChange={(val) => updateIngredient(index, 'unit', val)}
-                      index={index}
-                    />
-                    <input
-                      type="text"
-                      value={ing.cost}
-                      onChange={(e) => updateIngredient(index, 'cost', e.target.value)}
-                      placeholder="$"
-                      className="w-16 p-2 border-2 rounded-lg"
-                      style={{ borderColor: '#ebb582' }}
-                    />
-                    <VendorSelect
-                      value={ing.source}
-                      onChange={(val) => updateIngredient(index, 'source', val)}
-                      index={index}
-                    />
-                    <select
-                      value={ing.section}
-                      onChange={(e) => updateIngredient(index, 'section', e.target.value)}
-                      className="w-28 p-2 border-2 rounded-lg"
-                      style={{ borderColor: '#ebb582' }}
-                    >
-                      {STORE_SECTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    {newRecipe.ingredients.length > 1 && (
-                      <button onClick={() => removeIngredient(index)} className="text-red-600 p-2">
-                        <X size={20} />
-                      </button>
-                    )}
-                  </div>
-                  {exactMatch && (
-                    <button
-                      onClick={() => autoFillIngredient(index, exactMatch)}
-                      className="mt-1 text-xs px-2 py-1 rounded bg-green-100 text-green-700"
-                    >
-                      Auto-fill "{exactMatch.name}"
-                    </button>
-                  )}
-                  {similarIngs.length > 0 && (
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      <span className="text-xs text-orange-600">
-                        <AlertCircle size={12} className="inline" /> Similar:
-                      </span>
-                      {similarIngs.slice(0, 3).map((si, i) => (
-                        <button
-                          key={i}
-                          onClick={() => autoFillIngredient(index, si)}
-                          className="text-xs px-2 py-1 rounded bg-orange-100 text-orange-700"
-                        >
-                          "{si.name}"
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {showNotInMasterWarning && (
-                    <div className="mt-1 text-xs text-red-600 flex items-center gap-1">
-                      <AlertCircle size={12} />
-                      <span>Not in master list - add to Ingredients tab first</span>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
             <button
-              onClick={addIngredient}
-              className="text-sm px-3 py-1 rounded"
-              style={{ backgroundColor: '#ebb582' }}
+              onClick={openNewRecipeModal}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-white"
+              style={{ backgroundColor: '#3d59ab' }}
             >
-              + Add Ingredient
+              + New Recipe
             </button>
           </div>
-          <button
-            onClick={() => {
-              console.log('[RecipesTab] Save Recipe clicked', { recipeName: newRecipe?.name, category: newRecipe?.category });
-              saveRecipe();
-            }}
-            className="px-6 py-2 rounded-lg text-white"
-            style={{ backgroundColor: '#3d59ab' }}
-          >
-            <Save size={20} className="inline mr-2" />Save Recipe
-          </button>
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow-lg p-6">
-        <h2 className="text-2xl font-bold mb-4" style={{ color: '#3d59ab' }}>Recipe Library</h2>
-        {Object.entries(recipes).map(([category, items]) => items.length > 0 && (
-          <div key={category} className="mb-6">
-            <h3 className="text-lg font-bold capitalize mb-2" style={{ color: '#ebb582' }}>
-              {category} ({items.length})
-            </h3>
-            <div className="space-y-2">
-              {items.map((recipe, index) => {
-                const cost = getRecipeCost(recipe);
-                return (
-                  <div key={index}>
-                    {editingRecipe?.originalCategory === category && editingRecipe?.originalIndex === index ? (
-                      <div className="p-4 rounded-lg border-2" style={{ borderColor: '#3d59ab', backgroundColor: '#f9f9ed' }}>
-                        <input
-                          type="text"
-                          value={editingRecipe.recipe.name}
-                          onChange={(e) => setEditingRecipe({
-                            ...editingRecipe,
-                            recipe: { ...editingRecipe.recipe, name: e.target.value }
-                          })}
-                          className="w-full p-2 border-2 rounded-lg mb-2 font-bold"
-                          style={{ borderColor: '#ebb582' }}
-                        />
-                        <div className="flex items-center gap-2 mb-2">
-                          <label className="text-sm font-medium" style={{ color: '#423d3c' }}>Category:</label>
-                          <select
-                            value={editingRecipe.targetCategory}
-                            onChange={(e) => setEditingRecipe({
-                              ...editingRecipe,
-                              targetCategory: e.target.value
-                            })}
-                            className="p-2 border-2 rounded-lg text-sm"
-                            style={{ borderColor: '#ebb582' }}
-                          >
-                            <option value="protein">Protein</option>
-                            <option value="veg">Veg</option>
-                            <option value="starch">Starch</option>
-                          </select>
-                        </div>
-                        <textarea
-                          value={editingRecipe.recipe.instructions}
-                          onChange={(e) => setEditingRecipe({
-                            ...editingRecipe,
-                            recipe: { ...editingRecipe.recipe, instructions: e.target.value }
-                          })}
-                          placeholder="Instructions..."
-                          className="w-full p-2 border-2 rounded-lg mb-2"
-                          style={{ borderColor: '#ebb582' }}
-                          rows="2"
-                        />
-                        <p className="text-sm font-medium mb-2">Ingredients:</p>
-                        {editingRecipe.recipe.ingredients.map((ing, ingIndex) => {
-                          // Debug: log matching attempt
-                          if (ing.name.length > 2) {
-                            console.log('[ING MATCH DEBUG - Edit Recipe]', {
-                              input: ing.name,
-                              normalizedInput: normalizeName(ing.name),
-                              masterSample: masterIngredients.slice(0, 5).map(i => ({ name: i.name, normalized: normalizeName(i.name) })),
-                              masterCount: masterIngredients.length,
-                              match: findExactMatch(ing.name)
-                            });
-                          }
-                          const masterIng = ing.name.length > 2 ? findExactMatch(ing.name) : null;
-                          const hasValidIngredientId = ing.ingredient_id && typeof ing.ingredient_id === 'string' && ing.ingredient_id.includes('-');
-                          const isInMasterList = hasValidIngredientId || masterIng;
-                          const showNotInMasterWarning = ing.name.length > 2 && !isInMasterList;
-                          return (
-                            <div key={ingIndex} className="mb-2">
-                              <div className={`flex flex-wrap gap-2 p-1 rounded ${showNotInMasterWarning ? 'bg-red-50' : ''}`}>
-                                <input
-                                  type="text"
-                                  value={ing.name}
-                                  onChange={(e) => {
-                                    // updateEditingIngredient handles auto-fill including ingredient_id
-                                    updateEditingIngredient(ingIndex, 'name', e.target.value);
-                                  }}
-                                  placeholder="Name"
-                                  className="flex-1 min-w-[100px] p-1 border rounded text-sm"
-                                  list={`edit-ing-${ingIndex}`}
-                                />
-                                <datalist id={`edit-ing-${ingIndex}`}>
-                                  {masterIngredients.map((mi, i) => <option key={i} value={mi.name} />)}
-                                </datalist>
-                                <input
-                                  type="text"
-                                  value={ing.quantity}
-                                  onChange={(e) => updateEditingIngredient(ingIndex, 'quantity', e.target.value)}
-                                  placeholder="Qty"
-                                  className="w-12 p-1 border rounded text-sm"
-                                />
-                                <UnitSelect
-                                  value={ing.unit || 'oz'}
-                                  onChange={(val) => updateEditingIngredient(ingIndex, 'unit', val)}
-                                  index={ingIndex}
-                                  isEditing={true}
-                                />
-                                <input
-                                  type="text"
-                                  value={ing.cost}
-                                  onChange={(e) => {
-                                    updateEditingIngredient(ingIndex, 'cost', e.target.value);
-                                    // Sync cost back to master
-                                    if (e.target.value && ing.name && updateMasterIngredientCost) {
-                                      updateMasterIngredientCost(ing.name, e.target.value);
-                                    }
-                                  }}
-                                  placeholder="$"
-                                  className="w-12 p-1 border rounded text-sm"
-                                />
-                                <VendorSelect
-                                  value={ing.source}
-                                  onChange={(val) => updateEditingIngredient(ingIndex, 'source', val)}
-                                  index={ingIndex}
-                                  isEditing={true}
-                                />
-                                <select
-                                  value={ing.section}
-                                  onChange={(e) => updateEditingIngredient(ingIndex, 'section', e.target.value)}
-                                  className="w-24 p-1 border rounded text-sm"
-                                >
-                                  {STORE_SECTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                                </select>
-                                <button onClick={() => removeEditingIngredient(ingIndex)} className="text-red-600">
-                                  <X size={16} />
-                                </button>
-                              </div>
-                              {masterIng && (
-                                <div className="text-xs text-green-600 mt-1">
-                                  {/* Debug: log if master match exists but ingredient_id is missing */}
-                                  {!ing.ingredient_id && console.warn('[RecipesTab Edit] Master match found but ingredient_id missing:', { ingredient_name: ing.name, ingredient_id: ing.ingredient_id })}
-                                  Master: ${masterIng.cost || '?'}/{masterIng.unit} • {masterIng.source || 'No vendor'} • {masterIng.section}
-                                </div>
-                              )}
-                              {showNotInMasterWarning && (
-                                <div className="text-xs text-red-600 mt-1 flex items-center gap-1">
-                                  <AlertCircle size={12} />
-                                  <span>Not in master list - add to Ingredients tab first</span>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                        <button
-                          onClick={addEditingIngredient}
-                          className="text-sm px-2 py-1 rounded mb-2"
-                          style={{ backgroundColor: '#ebb582' }}
-                        >
-                          + Add
-                        </button>
-                        <div className="flex gap-2 mt-2">
-                          <button
-                            onClick={() => {
-                              console.log('[RecipesTab] Save Editing clicked', { recipeName: editingRecipe?.recipe?.name, category: editingRecipe?.category });
-                              saveEditingRecipe();
-                            }}
-                            className="flex items-center gap-1 px-3 py-1 rounded text-white text-sm"
-                            style={{ backgroundColor: '#3d59ab' }}
-                          >
-                            <Check size={16} />Save
-                          </button>
-                          <button
-                            onClick={() => setEditingRecipe(null)}
-                            className="px-3 py-1 rounded bg-gray-200 text-sm"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="rounded-lg overflow-hidden" style={{ backgroundColor: '#f9f9ed' }}>
-                        {/* Collapsed header - always visible */}
-                        <button
-                          onClick={() => toggleRecipeExpanded(category, index)}
-                          className="w-full flex items-center justify-between p-3 hover:bg-opacity-80 text-left"
-                        >
-                          <div className="flex items-center gap-2">
-                            {expandedRecipes[`${category}-${index}`] ? (
-                              <ChevronDown size={16} className="text-gray-400" />
-                            ) : (
-                              <ChevronRight size={16} className="text-gray-400" />
-                            )}
-                            {isRecipeIncomplete(recipe) && (
-                              <AlertTriangle size={16} className="text-amber-500" title="Missing costs or instructions" />
-                            )}
-                            <span className="font-medium">{recipe.name}</span>
-                            {cost > 0 && (
-                              <span className="text-xs px-2 py-1 rounded bg-green-100 text-green-700">
-                                ${cost.toFixed(2)}/portion
-                              </span>
-                            )}
-                          </div>
-                        </button>
+      {/* Filter Bar */}
+      <div className="bg-white rounded-lg shadow-lg p-4 mb-4">
+        {/* Search */}
+        <div className="mb-3">
+          <input
+            type="text"
+            placeholder="Search recipes..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full max-w-md px-4 py-2 border-2 rounded-lg"
+            style={{ borderColor: '#ebb582' }}
+          />
+        </div>
 
-                        {/* Expanded content */}
-                        {expandedRecipes[`${category}-${index}`] && (
-                          <div className="px-3 pb-3 pt-0 border-t" style={{ borderColor: '#ebb582' }}>
-                            <p className="text-sm text-gray-600 mt-2">
-                              <span className="font-medium text-gray-700">Ingredients: </span>
-                              {recipe.ingredients?.map(i => `${i.name} (${i.quantity} ${i.unit || 'oz'})`).join(', ')}
-                            </p>
-                            {recipe.instructions && (
-                              <p className="text-sm text-gray-500 mt-2">
-                                <span className="font-medium text-gray-700">Instructions: </span>
-                                {recipe.instructions}
-                              </p>
-                            )}
-                            <div className="flex gap-2 mt-3">
-                              <button
-                                onClick={(e) => { e.stopPropagation(); startEditingRecipe(category, index); }}
-                                className="flex items-center gap-1 text-blue-600 text-sm hover:underline"
-                                title="Edit"
-                              >
-                                <Edit2 size={16} /> Edit
-                              </button>
-                              {duplicateRecipe && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); duplicateRecipe(category, index); }}
-                                  className="flex items-center gap-1 text-green-600 text-sm hover:underline"
-                                  title="Duplicate"
-                                >
-                                  <Copy size={16} /> Copy
-                                </button>
-                              )}
-                              <button
-                                onClick={(e) => { e.stopPropagation(); deleteRecipe(category, index); }}
-                                className="flex items-center gap-1 text-red-600 text-sm hover:underline"
-                                title="Delete"
-                              >
-                                <Trash2 size={16} /> Delete
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+        {/* Category Pills */}
+        <div className="flex flex-wrap gap-2 mb-3">
+          <button
+            onClick={() => { setSelectedCategory('all'); setSelectedSubcategory(null); }}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              selectedCategory === 'all'
+                ? 'text-white'
+                : 'border-2 bg-white'
+            }`}
+            style={selectedCategory === 'all'
+              ? { backgroundColor: '#3d59ab' }
+              : { borderColor: '#3d59ab', color: '#3d59ab' }}
+          >
+            All ({categoryCounts.all})
+          </button>
+          {RECIPE_CATEGORIES.map(cat => (
+            <button
+              key={cat}
+              onClick={() => { setSelectedCategory(cat); setSelectedSubcategory(null); }}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium capitalize transition-colors ${
+                selectedCategory === cat
+                  ? 'text-white'
+                  : 'border-2 bg-white'
+              }`}
+              style={selectedCategory === cat
+                ? { backgroundColor: '#3d59ab' }
+                : { borderColor: '#3d59ab', color: '#3d59ab' }}
+            >
+              {cat} ({categoryCounts[cat] || 0})
+            </button>
+          ))}
+        </div>
+
+        {/* Subcategory Pills (Protein only) */}
+        {selectedCategory === 'protein' && (
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setSelectedSubcategory(null)}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                !selectedSubcategory
+                  ? 'bg-gray-700 text-white'
+                  : 'border border-dashed border-gray-400 text-gray-600 bg-white'
+              }`}
+            >
+              All Proteins
+            </button>
+            {PROTEIN_SUBCATEGORIES.map(sub => (
+              <button
+                key={sub}
+                onClick={() => setSelectedSubcategory(sub)}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  selectedSubcategory === sub
+                    ? 'bg-gray-700 text-white'
+                    : 'border border-dashed border-gray-400 text-gray-600 bg-white'
+                }`}
+              >
+                {sub}
+              </button>
+            ))}
           </div>
-        ))}
-        {Object.values(recipes).flat().length === 0 && (
-          <p className="text-gray-500">No recipes yet.</p>
         )}
       </div>
+
+      {/* Content Area: Table + Detail Panel */}
+      <div className="flex-1 flex gap-4 min-h-0">
+        {/* Recipe Table */}
+        <div className={`bg-white rounded-lg shadow-lg flex flex-col min-h-0 transition-all ${selectedRecipe ? 'flex-1' : 'w-full'}`}>
+          <div className="overflow-auto flex-1">
+            <table className="w-full">
+              <thead className="bg-gray-50 sticky top-0">
+                <tr>
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Name</th>
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700 w-32">Subcategory</th>
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700 w-28">Cost/portion</th>
+                  <th className="text-right px-4 py-3 text-sm font-semibold text-gray-700 w-24">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRecipes.map((item, i) => {
+                  const cost = getRecipeCost(item.recipe);
+                  const isSelected = selectedRecipe?.recipe.id === item.recipe.id;
+                  return (
+                    <tr
+                      key={item.recipe.id || `${item.category}-${item.index}`}
+                      onClick={() => handleRowClick(item)}
+                      className={`border-b cursor-pointer group transition-colors ${
+                        isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
+                      }`}
+                      style={{ height: '40px' }}
+                    >
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-2">
+                          <ChevronRight size={14} className={`text-gray-400 transition-transform ${isSelected ? 'rotate-90' : ''}`} />
+                          <span className="font-medium text-gray-900">{item.recipe.name}</span>
+                          {selectedCategory === 'all' && (
+                            <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 capitalize">
+                              {item.category}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-600">
+                        {item.recipe.subcategory || '—'}
+                      </td>
+                      <td className="px-4 py-2">
+                        {cost > 0 ? (
+                          <span className="text-sm font-medium text-green-700">${cost.toFixed(2)}</span>
+                        ) : (
+                          <span className="text-sm text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-1">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openEditRecipeModal(item.category, item.index, item.recipe); }}
+                            className="p-1.5 rounded hover:bg-gray-200 text-gray-600"
+                            title="Edit"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          <button
+                            onClick={(e) => handleCopyRecipe(e, item.category, item.index)}
+                            className="p-1.5 rounded hover:bg-gray-200 text-gray-600"
+                            title="Copy"
+                          >
+                            <Copy size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {filteredRecipes.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-8 text-center text-gray-500">
+                      No recipes found
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Detail Panel */}
+        {selectedRecipe && (
+          <div className="w-[290px] bg-white rounded-lg shadow-lg flex flex-col min-h-0">
+            <div className="p-4 border-b flex justify-between items-start">
+              <div className="flex-1 min-w-0">
+                <h3 className="font-bold text-lg text-gray-900 truncate">{selectedRecipe.recipe.name}</h3>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-xs px-2 py-0.5 rounded capitalize" style={{ backgroundColor: '#ebb582', color: '#423d3c' }}>
+                    {selectedRecipe.category}
+                  </span>
+                  {selectedRecipe.recipe.subcategory && (
+                    <span className="text-xs text-gray-500">{selectedRecipe.recipe.subcategory}</span>
+                  )}
+                </div>
+                {getRecipeCost(selectedRecipe.recipe) > 0 && (
+                  <p className="text-lg font-semibold text-green-700 mt-2">
+                    ${getRecipeCost(selectedRecipe.recipe).toFixed(2)}/portion
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => setSelectedRecipe(null)}
+                className="p-1 rounded hover:bg-gray-100 text-gray-500"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto p-4">
+              {/* Ingredients */}
+              <div className="mb-4">
+                <h4 className="text-sm font-semibold text-gray-700 mb-2">Ingredients</h4>
+                {selectedRecipe.recipe.ingredients?.length > 0 ? (
+                  <ul className="space-y-1">
+                    {selectedRecipe.recipe.ingredients.map((ing, i) => {
+                      const master = findExactMatch(ing.name);
+                      const hasMasterPrice = master?.cost;
+                      return (
+                        <li key={i} className="flex justify-between items-center text-sm py-1 border-b border-gray-100">
+                          <span className={`${!hasMasterPrice && ing.name.length > 2 ? 'text-red-600' : 'text-gray-700'}`}>
+                            {ing.name}
+                          </span>
+                          <span className="text-gray-500 text-xs">
+                            {ing.quantity} {ing.unit}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-gray-400 italic">No ingredients</p>
+                )}
+              </div>
+
+              {/* Instructions */}
+              {selectedRecipe.recipe.instructions && (
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-700 mb-2">Instructions</h4>
+                  <p className="text-sm text-gray-600 whitespace-pre-wrap">{selectedRecipe.recipe.instructions}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t">
+              <button
+                onClick={() => openEditRecipeModal(selectedRecipe.category, selectedRecipe.index, selectedRecipe.recipe)}
+                className="w-full py-2 rounded-lg text-white font-medium"
+                style={{ backgroundColor: '#3d59ab' }}
+              >
+                Edit Recipe
+              </button>
+              <button
+                onClick={() => handleDeleteRecipe(selectedRecipe.category, selectedRecipe.index)}
+                className="w-full py-2 mt-2 rounded-lg border-2 border-red-300 text-red-600 font-medium hover:bg-red-50"
+              >
+                Delete Recipe
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Recipe Editor Modal */}
+      {isModalOpen && modalRecipe && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="p-4 border-b flex justify-between items-center">
+              <h2 className="text-xl font-bold" style={{ color: '#3d59ab' }}>
+                {modalMode === 'new' ? 'New Recipe' : 'Edit Recipe'}
+              </h2>
+              <button
+                onClick={() => { setIsModalOpen(false); setModalRecipe(null); }}
+                className="p-1 rounded hover:bg-gray-100 text-gray-500"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-auto p-4">
+              {/* Recipe Name */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Recipe Name</label>
+                <input
+                  type="text"
+                  value={modalRecipe.name}
+                  onChange={(e) => updateModalRecipe('name', e.target.value)}
+                  placeholder="Enter recipe name"
+                  className="w-full p-2 border-2 rounded-lg"
+                  style={{ borderColor: '#ebb582' }}
+                />
+              </div>
+
+              {/* Category & Subcategory */}
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                  <select
+                    value={modalRecipe.category}
+                    onChange={(e) => updateModalRecipe('category', e.target.value)}
+                    className="w-full p-2 border-2 rounded-lg"
+                    style={{ borderColor: '#ebb582' }}
+                  >
+                    {RECIPE_CATEGORIES.map(cat => (
+                      <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Subcategory</label>
+                  <select
+                    value={modalRecipe.subcategory || ''}
+                    onChange={(e) => updateModalRecipe('subcategory', e.target.value)}
+                    className="w-full p-2 border-2 rounded-lg"
+                    style={{ borderColor: '#ebb582' }}
+                    disabled={modalRecipe.category !== 'protein'}
+                  >
+                    <option value="">None</option>
+                    {modalRecipe.category === 'protein' && PROTEIN_SUBCATEGORIES.map(sub => (
+                      <option key={sub} value={sub}>{sub}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Instructions */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Instructions</label>
+                <textarea
+                  value={modalRecipe.instructions}
+                  onChange={(e) => updateModalRecipe('instructions', e.target.value)}
+                  placeholder="Cooking instructions..."
+                  className="w-full p-2 border-2 rounded-lg"
+                  style={{ borderColor: '#ebb582' }}
+                  rows={3}
+                />
+              </div>
+
+              {/* Ingredients */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Ingredients</label>
+                <div className="space-y-2">
+                  {modalRecipe.ingredients.map((ing, index) => {
+                    const master = ing.name.length > 2 ? findExactMatch(ing.name) : null;
+                    const hasValidId = ing.ingredient_id && typeof ing.ingredient_id === 'string' && ing.ingredient_id.includes('-');
+                    const isInMaster = hasValidId || master;
+                    const showWarning = ing.name.length > 2 && !isInMaster;
+
+                    return (
+                      <div key={index}>
+                        <div className={`flex flex-wrap gap-2 p-2 rounded ${showWarning ? 'bg-red-50' : 'bg-gray-50'}`}>
+                          <input
+                            type="text"
+                            value={ing.name}
+                            onChange={(e) => updateModalIngredient(index, 'name', e.target.value)}
+                            placeholder="Ingredient"
+                            className="flex-1 min-w-[150px] p-2 border rounded"
+                            list={`modal-ing-${index}`}
+                          />
+                          <datalist id={`modal-ing-${index}`}>
+                            {masterIngredients.map((mi, i) => <option key={i} value={mi.name} />)}
+                          </datalist>
+                          <input
+                            type="text"
+                            value={ing.quantity}
+                            onChange={(e) => updateModalIngredient(index, 'quantity', e.target.value)}
+                            placeholder="Qty"
+                            className="w-16 p-2 border rounded"
+                          />
+                          <select
+                            value={ing.unit || 'oz'}
+                            onChange={(e) => updateModalIngredient(index, 'unit', e.target.value)}
+                            className="w-20 p-2 border rounded"
+                          >
+                            {units.map(u => <option key={u} value={u}>{u}</option>)}
+                          </select>
+                          {modalRecipe.ingredients.length > 1 && (
+                            <button
+                              onClick={() => removeModalIngredient(index)}
+                              className="p-2 text-red-500 hover:bg-red-100 rounded"
+                            >
+                              <X size={18} />
+                            </button>
+                          )}
+                        </div>
+                        {/* Master price info */}
+                        {master && (
+                          <p className="text-xs text-gray-500 mt-1 ml-2">
+                            Master price: ${master.cost || '?'}/{master.unit}
+                          </p>
+                        )}
+                        {showWarning && (
+                          <p className="text-xs text-red-600 mt-1 ml-2 flex items-center gap-1">
+                            <AlertTriangle size={12} />
+                            No master price found
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <button
+                  onClick={addModalIngredient}
+                  className="mt-2 px-3 py-1 text-sm rounded"
+                  style={{ backgroundColor: '#ebb582' }}
+                >
+                  + Add Ingredient
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t flex justify-end gap-2">
+              <button
+                onClick={() => { setIsModalOpen(false); setModalRecipe(null); }}
+                className="px-4 py-2 rounded-lg border-2 border-gray-300 text-gray-600 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveModalRecipe}
+                className="px-4 py-2 rounded-lg text-white"
+                style={{ backgroundColor: '#3d59ab' }}
+              >
+                Save Recipe
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
