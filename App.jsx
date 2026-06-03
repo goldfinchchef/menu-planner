@@ -310,13 +310,16 @@ export default function App() {
   };
 
   // Recipe functions
-  const saveRecipe = async () => {
+  const saveRecipe = async (recipeData = null) => {
+    // Use passed recipe data or fall back to newRecipe state
+    const recipe = recipeData || newRecipe;
+
     console.log('[App.saveRecipe] START');
     console.log('[App.saveRecipe] dataMode:', getDataMode(), 'isSupabaseMode:', isSupabaseMode());
-    console.log('[App.saveRecipe] recipeName:', newRecipe?.name, 'category:', newRecipe?.category);
+    console.log('[App.saveRecipe] recipeName:', recipe?.name, 'category:', recipe?.category);
 
-    if (!newRecipe.name) { alert('Please enter a recipe name'); return; }
-    const validIngredients = newRecipe.ingredients.filter(ing => ing.name && ing.quantity);
+    if (!recipe.name) { alert('Please enter a recipe name'); return; }
+    const validIngredients = (recipe.ingredients || []).filter(ing => ing.name && ing.quantity);
     if (validIngredients.length === 0) { alert('Please add at least one ingredient with name and quantity'); return; }
 
     // Check for duplicate ingredients
@@ -329,28 +332,28 @@ export default function App() {
     validIngredients.forEach(ing => addToMasterIngredients(ing));
 
     const recipeToSave = {
-      id: newRecipe.id,  // Include id for updates
-      name: newRecipe.name,
-      subcategory: newRecipe.subcategory || null,
-      instructions: newRecipe.instructions,
+      id: recipe.id,  // Include id for updates
+      name: recipe.name,
+      subcategory: recipe.subcategory || null,
+      instructions: recipe.instructions,
       ingredients: validIngredients
     };
 
     if (isSupabaseMode()) {
       console.log('[App.saveRecipe] calling saveRecipeToSupabase...');
-      const result = await saveRecipeToSupabase(recipeToSave, newRecipe.category);
+      const result = await saveRecipeToSupabase(recipeToSave, recipe.category);
       console.log('[App.saveRecipe] result:', result.success, result.error || '');
       if (result.success) {
         setRecipes(result.recipes);
-        setNewRecipe(DEFAULT_NEW_RECIPE);
+        if (!recipeData) setNewRecipe(DEFAULT_NEW_RECIPE);
         alert('Recipe saved!');
       } else {
         alert(`Failed to save recipe: ${result.error}`);
       }
     } else {
       console.log('[App.saveRecipe] LOCAL MODE - not calling Supabase');
-      setRecipes({ ...recipes, [newRecipe.category]: [...recipes[newRecipe.category], recipeToSave] });
-      setNewRecipe(DEFAULT_NEW_RECIPE);
+      setRecipes({ ...recipes, [recipe.category]: [...recipes[recipe.category], recipeToSave] });
+      if (!recipeData) setNewRecipe(DEFAULT_NEW_RECIPE);
       alert('Recipe saved (local only)!');
     }
   };

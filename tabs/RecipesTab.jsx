@@ -178,28 +178,24 @@ export default function RecipesTab(props) {
       return;
     }
 
-    // Update the newRecipe state and call saveRecipe (which handles Supabase)
+    // Build recipe data with category included
     const recipeToSave = {
       id: modalRecipe.id,
       name: modalRecipe.name.trim(),
+      category: modalRecipe.category,
       subcategory: modalRecipe.subcategory || null,
       instructions: modalRecipe.instructions || '',
       ingredients: modalRecipe.ingredients.filter(ing => ing.name.trim())
     };
 
-    // Use the existing save mechanism
-    setNewRecipe({ ...recipeToSave, category: modalRecipe.category });
-
-    // Wait a tick for state to update, then save
-    setTimeout(async () => {
-      await saveRecipe();
-      setIsModalOpen(false);
-      setModalRecipe(null);
-      // Refresh selected recipe if we were editing it
-      if (selectedRecipe && selectedRecipe.recipe.id === recipeToSave.id) {
-        setSelectedRecipe(null);
-      }
-    }, 0);
+    // Pass recipe data directly to saveRecipe (avoids state timing issues)
+    await saveRecipe(recipeToSave);
+    setIsModalOpen(false);
+    setModalRecipe(null);
+    // Refresh selected recipe if we were editing it
+    if (selectedRecipe && selectedRecipe.recipe.id === recipeToSave.id) {
+      setSelectedRecipe(null);
+    }
   };
 
   // Handle row click to select recipe
