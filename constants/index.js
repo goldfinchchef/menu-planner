@@ -23,7 +23,7 @@ export const DAYS = ['Monday', 'Tuesday', 'Thursday'];
 export const RECIPE_CATEGORIES = ['protein', 'veg', 'starch', 'sauces', 'breakfast', 'soups'];
 
 export const TABS = [
-  { id: 'kds', label: 'KDS', icon: Monitor },
+  { id: 'kds', label: 'Prep List', icon: Monitor },
   { id: 'menuBuilder', label: 'Menu', icon: CalendarDays },
   { id: 'scheduling', label: 'Scheduling', icon: Calendar },
   { id: 'clients', label: 'Clients', icon: Users },

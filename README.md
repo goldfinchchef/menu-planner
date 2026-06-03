@@ -6,7 +6,7 @@ A menu planning app for personal chefs to manage clients, recipes, and shopping 
 
 - **Menu Builder** - Select clients and build meals with protein, veg, and starch
 - **Recipe Library** - Store recipes with ingredients and cooking instructions
-- **Kitchen Display (KDS)** - View consolidated orders with portion counts
+- **Prep List** - View consolidated orders with portion counts
 - **Shopping List** - Auto-generated list organized by grocery section
 - **Client Management** - Track client info, household size, and preferences
 - **Master Ingredients** - Manage ingredient costs and sources

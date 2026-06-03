@@ -301,7 +301,7 @@ export default function KDSTab({
     let content = `
       <html>
       <head>
-        <title>KDS - Kitchen Production List</title>
+        <title>Prep List</title>
         <style>
           body { font-family: Arial, sans-serif; padding: 20px; }
           h1 { color: #3d59ab; margin-bottom: 5px; }
@@ -688,7 +688,7 @@ export default function KDSTab({
       {isLoadingState && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 flex items-center gap-3">
           <RefreshCw size={20} className="text-blue-500 animate-spin" />
-          <span className="text-blue-700 font-medium">Loading KDS...</span>
+          <span className="text-blue-700 font-medium">Loading Prep List...</span>
         </div>
       )}
 
@@ -710,7 +710,7 @@ export default function KDSTab({
                 ⚠️ {unapprovedMenuCount} menu row{unapprovedMenuCount !== 1 ? 's are' : ' is'} not approved
               </p>
               <p className="text-red-600 text-sm mt-1">
-                KDS totals & shopping list may be missing items.
+                Prep List totals & shopping list may be missing items.
               </p>
               {Object.keys(unapprovedByClient).length > 0 && (
                 <p className="text-red-500 text-xs mt-2">
@@ -801,7 +801,7 @@ export default function KDSTab({
                       unapprovedMenuCount > 0 ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
                     style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
-                    title={unapprovedMenuCount > 0 ? 'Approve all menus to enable printing' : 'Print KDS'}
+                    title={unapprovedMenuCount > 0 ? 'Approve all menus to enable printing' : 'Print Prep List'}
                   >
                     <Printer size={18} />
                     Print

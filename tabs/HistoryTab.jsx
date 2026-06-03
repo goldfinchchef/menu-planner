@@ -149,7 +149,7 @@ export default function HistoryTab({ historyByClient, orderHistory, setOrderHist
           ))}
         </div>
       ) : (
-        <p className="text-gray-500">No order history yet. Complete orders in KDS to see them here.</p>
+        <p className="text-gray-500">No order history yet. Complete orders in Prep List to see them here.</p>
       )}
     </div>
   );

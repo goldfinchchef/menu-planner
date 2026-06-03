@@ -2190,7 +2190,7 @@ function MenuApprovalSection({ clients, menuItems, updateMenuItems, lockWeekWith
       return;
     }
 
-    let message = `Approve ${readyClients.length} menu(s) and push to client portals?\n\nThis will lock the week and menus will appear in KDS for cooking.`;
+    let message = `Approve ${readyClients.length} menu(s) and push to client portals?\n\nThis will lock the week and menus will appear in Prep List for cooking.`;
 
     if (warningClients.length > 0) {
       message += `\n\n⚠️ Warnings for ${warningClients.length} client(s):`;
@@ -2281,7 +2281,7 @@ function MenuApprovalSection({ clients, menuItems, updateMenuItems, lockWeekWith
               Menu Approval
             </h2>
             <p className="text-gray-600">
-              Review all menus before pushing to client portals. Approving will lock the week and send menus to KDS.
+              Review all menus before pushing to client portals. Approving will lock the week and send menus to Prep List.
             </p>
           </div>
           {totalMenus > 0 && (

@@ -840,7 +840,7 @@ export default function DeliveriesTab({
           {zonesWithClients.length === 0 && (
             <div className="bg-white rounded-lg shadow-lg p-6 text-center">
               <p className="text-gray-500 italic">No orders ready for delivery on {selectedDate}</p>
-              <p className="text-sm text-gray-400 mt-2">Complete orders in KDS to see them here.</p>
+              <p className="text-sm text-gray-400 mt-2">Complete orders in Prep List to see them here.</p>
             </div>
           )}
 
