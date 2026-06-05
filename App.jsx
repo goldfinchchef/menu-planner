@@ -28,7 +28,7 @@ import {
   downloadCSV
 } from './utils';
 import { DEFAULT_NEW_CLIENT, DEFAULT_NEW_RECIPE, DEFAULT_NEW_MENU_ITEM, DEFAULT_NEW_INGREDIENT } from './constants';
-import { fetchKdsDishStatuses, setKdsDishDone, saveRecipeToSupabase, deleteRecipeFromSupabase, getUnapprovedMenuCountForWeek, approveAllMenusForWeek, fetchMenusByWeek, updateClientDeliveryDates, saveIngredientToSupabase, deleteIngredientFromSupabase } from './lib/database';
+import { fetchKdsDishStatuses, setKdsDishDone, saveRecipeToSupabase, deleteRecipeFromSupabase, getUnapprovedMenuCountForWeek, approveAllMenusForWeek, fetchMenusByWeek, updateClientDeliveryDates, saveIngredientToSupabase, deleteIngredientFromSupabase, saveClientToSupabase, deleteClientFromSupabase } from './lib/database';
 import { isSupabaseMode, getDataMode } from './lib/dataMode';
 import { checkConnection, isConfigured } from './lib/supabase';
 
@@ -1051,15 +1051,46 @@ export default function App() {
   };
 
   // Client functions
-  const addClient = () => {
-    if (!newClient.name) { alert('Please enter a client name'); return; }
-    setClients([...clients, { ...newClient }]);
-    setNewClient(DEFAULT_NEW_CLIENT);
-    alert('Client added!');
+  const addClient = async () => {
+    // Check both name and displayName (form uses displayName)
+    if (!newClient.name && !newClient.displayName) {
+      alert('Please enter a client name');
+      return;
+    }
+
+    const clientToSave = {
+      ...newClient,
+      name: newClient.name || newClient.displayName
+    };
+
+    if (isSupabaseMode()) {
+      const result = await saveClientToSupabase(clientToSave);
+      if (result.success) {
+        setClients(result.clients);
+        setNewClient(DEFAULT_NEW_CLIENT);
+        alert('Client added!');
+      } else {
+        alert(`Failed to add client: ${result.error}`);
+      }
+    } else {
+      setClients([...clients, { ...clientToSave, id: Date.now() }]);
+      setNewClient(DEFAULT_NEW_CLIENT);
+      alert('Client added (local only)!');
+    }
   };
 
-  const deleteClient = (index) => {
-    if (window.confirm('Delete this client?')) {
+  const deleteClient = async (index) => {
+    if (!window.confirm('Delete this client?')) return;
+
+    const client = clients[index];
+    if (isSupabaseMode()) {
+      const result = await deleteClientFromSupabase(client.name);
+      if (result.success) {
+        setClients(result.clients);
+      } else {
+        alert(`Failed to delete client: ${result.error}`);
+      }
+    } else {
       setClients(clients.filter((_, i) => i !== index));
     }
   };
