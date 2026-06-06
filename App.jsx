@@ -428,16 +428,29 @@ export default function App() {
     }
   };
 
-  const duplicateRecipe = (category, index) => {
+  const duplicateRecipe = async (category, index) => {
     const recipe = recipes[category][index];
-    // IMPORTANT: Do NOT spread ...recipe as it includes the id
-    // Create a new object without id so saving will INSERT a new record
+    // IMPORTANT: Do NOT include id so saving will INSERT a new record
     const duplicated = {
       name: `${recipe.name} (Copy)`,
+      category: category,
+      subcategory: recipe.subcategory || null,
       instructions: recipe.instructions || '',
       ingredients: (recipe.ingredients || []).map(ing => ({ ...ing }))
     };
-    setRecipes({ ...recipes, [category]: [...recipes[category], duplicated] });
+
+    if (isSupabaseMode()) {
+      const result = await saveRecipeToSupabase(duplicated, category);
+      if (result.success) {
+        setRecipes(result.recipes);
+        alert('Recipe duplicated!');
+      } else {
+        alert(`Failed to duplicate recipe: ${result.error}`);
+      }
+    } else {
+      setRecipes({ ...recipes, [category]: [...recipes[category], duplicated] });
+      alert('Recipe duplicated (local only)!');
+    }
   };
 
   const startEditingRecipe = (category, index) => {
