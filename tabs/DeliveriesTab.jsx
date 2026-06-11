@@ -1445,6 +1445,7 @@ export default function DeliveriesTab({
               const portalData = clientPortalData[client.name];
               const hasDeliverySchedule =
                 client.deliveryDay === dayName ||
+                client.confirmedDates?.includes(date) ||
                 client.deliveryDates?.includes(date) ||
                 portalData?.selectedDates?.includes(date);
 

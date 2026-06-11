@@ -167,7 +167,8 @@ export default function DriverView() {
     // Check 1: Regular delivery day matches
     if (client.deliveryDay === dayName) return true;
 
-    // Check 2: Admin-set specific delivery dates
+    // Check 2: Admin-set specific delivery dates (confirmedDates first, then deliveryDates)
+    if (client.confirmedDates?.includes(dateStr)) return true;
     if (client.deliveryDates?.includes(dateStr)) return true;
 
     // Check 3: Client-set delivery dates from portal

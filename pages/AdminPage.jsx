@@ -730,7 +730,8 @@ function DashboardSection({
       }
 
       // Check if client needs delivery dates set
-      if (client.deliveryDay && (!client.deliveryDates || client.deliveryDates.length === 0)) {
+      const hasDatesSet = (client.confirmedDates?.length > 0) || (client.deliveryDates?.length > 0);
+      if (client.deliveryDay && !hasDatesSet) {
         const portalDates = portalData.selectedDates || [];
         if (portalDates.length === 0) {
           addClientTask(clientName, 'Set delivery dates', dueDates.billing, 'normal');
@@ -1523,10 +1524,13 @@ function BillingDatesSection({ clients, updateClients, blockedDates, updateBlock
 
         <div className="space-y-2">
           {activeClients.map((client, idx) => {
-            const deliveryDates = client.deliveryDates || [];
+            // Check confirmedDates first (migrated data), fall back to deliveryDates
+            const allDates = client.confirmedDates?.length > 0
+              ? client.confirmedDates
+              : (client.deliveryDates || []);
             // Filter out past dates and keep only future/today dates
             const todayStr = formatLocalDate(today);
-            const futureDates = deliveryDates.filter(d => d && d >= todayStr);
+            const futureDates = allDates.filter(d => d && d >= todayStr);
             // Ensure we have exactly 4 slots for display
             const displayDates = [...futureDates];
             while (displayDates.length < 4) displayDates.push('');
@@ -1927,7 +1931,7 @@ function MenuApprovalSection({ clients, menuItems, updateMenuItems, lockWeekWith
       return { status: 'unknown', daysOverdue: 0, hasDates: false, canApprove: false, warning: null, blocked: true };
     }
 
-    const hasDates = client.deliveryDates && client.deliveryDates.length > 0;
+    const hasDates = (client.confirmedDates?.length > 0) || (client.deliveryDates?.length > 0);
 
     // Check if explicitly paused
     if (client.status === 'paused') {
@@ -2087,7 +2091,11 @@ function MenuApprovalSection({ clients, menuItems, updateMenuItems, lockWeekWith
 
     // Get the next delivery date for this client
     const portalDates = clientPortalData[client.name]?.selectedDates || [];
-    const clientDates = portalDates.length > 0 ? portalDates : (client.deliveryDates || []);
+    // Check confirmedDates first (migrated data), fall back to deliveryDates
+    const fallbackDates = client.confirmedDates?.length > 0
+      ? client.confirmedDates
+      : (client.deliveryDates || []);
+    const clientDates = portalDates.length > 0 ? portalDates : fallbackDates;
     const nextDate = clientDates.find(d => d >= today);
 
     if (!nextDate) {

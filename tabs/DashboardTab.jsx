@@ -403,9 +403,12 @@ export default function DashboardTab({
 
     return clients.filter(client => {
       if (client.status !== 'active') return false;
-      const deliveryDates = client.deliveryDates || [];
-      // Check if any delivery date falls within this week
-      return deliveryDates.some(dateStr => {
+      // Check confirmedDates first (migrated data), fall back to deliveryDates
+      const dates = client.confirmedDates?.length > 0
+        ? client.confirmedDates
+        : (client.deliveryDates || []);
+      // Check if any date falls within this week
+      return dates.some(dateStr => {
         if (!dateStr) return false;
         return dateStr >= weekStart && dateStr <= weekEnd;
       });

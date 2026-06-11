@@ -223,10 +223,13 @@ export default function BillingTab({ clients, updateClients, blockedDates, updat
 
         <div className="space-y-2">
           {activeClients.map((client, idx) => {
-            const deliveryDates = client.deliveryDates || [];
+            // Check confirmedDates first (migrated data), fall back to deliveryDates
+            const allDates = client.confirmedDates?.length > 0
+              ? client.confirmedDates
+              : (client.deliveryDates || []);
             // Filter out past dates and keep only future/today dates
             const todayStr = formatLocalDate(today);
-            const futureDates = deliveryDates.filter(d => d && d >= todayStr);
+            const futureDates = allDates.filter(d => d && d >= todayStr);
             // Ensure we have exactly 4 slots for display
             const displayDates = [...futureDates];
             while (displayDates.length < 4) displayDates.push('');

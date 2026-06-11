@@ -335,8 +335,9 @@ export default function MenuTab({
   const currentWeek = weeks?.[selectedWeekId];
   const isWeekLocked = currentWeek?.status === 'locked';
 
-  // Get clients scheduled for this week based on delivery_dates
-  // Filter to clients where ANY date in deliveryDates falls within the week range
+  // Get clients scheduled for this week based on delivery dates
+  // Filter to clients where ANY date falls within the week range
+  // Check confirmedDates first (migrated data), fall back to deliveryDates
   const activeClients = useMemo(() => {
     const allClientsList = allClients || clients || [];
     if (!selectedWeekId) return [];
@@ -345,7 +346,10 @@ export default function MenuTab({
     const weekEnd = getWeekEndDate(selectedWeekId);
 
     return allClientsList.filter(client => {
-      const dates = client.deliveryDates || client.delivery_dates || [];
+      // Check confirmedDates first, fall back to deliveryDates
+      const dates = client.confirmedDates?.length > 0
+        ? client.confirmedDates
+        : (client.deliveryDates || client.delivery_dates || []);
       if (!Array.isArray(dates) || dates.length === 0) return false;
 
       // Check if any non-blank date falls within the week range
@@ -392,8 +396,10 @@ export default function MenuTab({
     const portalDateInWeek = portalDates.find(d => weekDatesArray.includes(d));
     if (portalDateInWeek) return portalDateInWeek;
 
-    // Check 2: Admin-set specific deliveryDates
-    const specificDates = client.deliveryDates || [];
+    // Check 2: Admin-set specific dates (confirmedDates first, then deliveryDates)
+    const specificDates = client.confirmedDates?.length > 0
+      ? client.confirmedDates
+      : (client.deliveryDates || []);
     const specificDateInWeek = specificDates.find(d => weekDatesArray.includes(d));
     if (specificDateInWeek) return specificDateInWeek;
 
@@ -514,7 +520,8 @@ export default function MenuTab({
       }
     }
 
-    if (!client.deliveryDates || client.deliveryDates.length === 0) {
+    const hasDates = (client.confirmedDates?.length > 0) || (client.deliveryDates?.length > 0);
+    if (!hasDates) {
       warning = warning || 'Delivery dates not set';
     }
 
