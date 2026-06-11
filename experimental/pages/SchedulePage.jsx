@@ -18,6 +18,7 @@ export default function SchedulePage() {
     transitionToPlanning,
     transitionToEmpty,
     getScheduleCellState,
+    confirmClientDates,
     selectedWeekId
   } = useExperimentalContext();
 
@@ -31,6 +32,7 @@ export default function SchedulePage() {
       transitionToPlanning={transitionToPlanning}
       transitionToEmpty={transitionToEmpty}
       getScheduleCellState={getScheduleCellState}
+      confirmClientDates={confirmClientDates}
       selectedWeekId={selectedWeekId}
     />
   );

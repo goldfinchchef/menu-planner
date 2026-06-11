@@ -11,11 +11,12 @@ const COLORS = {
   green: '#22c55e'
 };
 
-// Status colors - four display states
-// Architecture:
-//   empty = no data in menus or client_week_status (default)
-//   unconfirmed = client_week_status.status = 'unconfirmed' (planning intent)
-//   confirmed = menus row exists (date picked & paid)
+// Status colors - five display states
+// Architecture (new model separating confirmed from planned):
+//   empty = no data anywhere (default)
+//   requested = clients.deliveryDates has date in week (client selected, not yet paid)
+//   confirmed = clients.confirmedDates has date in week (paid/approved, eligible for menu planning)
+//   planned = menus row exists (menu has been generated)
 //   skipped = client_week_status.status = 'skipped' (explicit opt-out)
 const STATUS_COLORS = {
   empty: {
@@ -24,23 +25,36 @@ const STATUS_COLORS = {
     border: '1px dashed #d1d5db',
     label: ''
   },
-  unconfirmed: {
+  requested: {
+    bg: '#fef3c7',           // amber/yellow
+    text: '#d97706',         // amber text
+    border: '1px solid #f59e0b',
+    label: 'requested'
+  },
+  confirmed: {
     bg: '#ecfdf5',           // soft green
     text: '#059669',         // green text
     border: '1px solid #10b981',
-    label: 'unconfirmed'
+    label: 'confirmed'
   },
-  confirmed: {
+  planned: {
     bg: '#3d59ab',           // deep navy
     text: '#ffffff',         // white text
     border: 'none',
-    label: 'confirmed'
+    label: 'planned'
   },
   skipped: {
     bg: '#f9fafb',           // very light grey
     text: '#9ca3af',         // muted text
     border: 'none',
     label: 'skipped'
+  },
+  // Legacy: keep 'unconfirmed' mapped to 'requested' for backwards compatibility
+  unconfirmed: {
+    bg: '#fef3c7',
+    text: '#d97706',
+    border: '1px solid #f59e0b',
+    label: 'requested'
   }
 };
 
@@ -135,10 +149,10 @@ const ISSUE_TYPES = {
 // Issues only appear when:
 //   - status = 'confirmed' (menu rows exist)
 //   - AND some meal is incomplete (missing protein/veg/starch)
-// No issues for: empty, unconfirmed, skipped
+// No issues for: empty, requested, confirmed, skipped
 function getIssuesForClientWeek(clientWeekMeals, mealsPerWeek, status) {
-  // Only check 'confirmed' status (menu rows exist, may be incomplete)
-  if (status !== 'confirmed') return [];
+  // Only check 'planned' status (menu rows exist, may be incomplete)
+  if (status !== 'planned') return [];
 
   const issues = [];
 
@@ -165,10 +179,10 @@ function getIssuesForClientWeek(clientWeekMeals, mealsPerWeek, status) {
 }
 
 // Get alert stripe color based on issues (priority: incomplete > billing)
-// Only shows for 'confirmed' status with incomplete meals
+// Only shows for 'planned' status with incomplete meals
 function getAlertStripeColor(issues, status) {
-  // Only show stripes for 'confirmed' with issues
-  if (status !== 'confirmed') return null;
+  // Only show stripes for 'planned' with issues
+  if (status !== 'planned') return null;
   if (issues.length === 0) return null;
 
   const hasIncomplete = issues.some(i => i.type === ISSUE_TYPES.INCOMPLETE);
@@ -207,7 +221,8 @@ function ScheduleModal({
   issues,
   onTransitionToConfirmed,
   onTransitionToPlanning,
-  onTransitionToEmpty
+  onTransitionToEmpty,
+  onConfirmDates
 }) {
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState(false);
@@ -246,7 +261,7 @@ function ScheduleModal({
 
   if (!isOpen || !client || !week) return null;
 
-  // Status from cell state: empty, unconfirmed, confirmed, skipped
+  // Status from cell state: empty, requested, confirmed, planned, skipped
   const status = cellState?.status || 'empty';
   const hasMenuRow = cellState?.hasRow === true;
   const statusStyle = STATUS_COLORS[status] || STATUS_COLORS.empty;
@@ -254,9 +269,28 @@ function ScheduleModal({
   const portions = client.portions || 4;
   const modalIssues = issues || [];
 
-  // Check if confirmed week has meal content
+  // Count of requested dates for this client
+  const requestedDatesCount = client.deliveryDates?.length || 0;
+
+  // Check if planned week has meal content
   const hasContent = clientWeekMeals.some(m => m?.protein || m?.veg || m?.starch);
   const mealCount = clientWeekMeals.length;
+
+  // Handle confirming next N dates (moves from requested to confirmed)
+  const handleConfirmDates = async (count = 4) => {
+    if (!onConfirmDates) return;
+    setStatusUpdating(true);
+    try {
+      const result = await onConfirmDates(client.id, count);
+      if (result.success) {
+        onClose();
+      } else {
+        alert(`Failed to confirm dates: ${result.error}`);
+      }
+    } finally {
+      setStatusUpdating(false);
+    }
+  };
 
   // Handle status transitions
   const handleStatusChange = async (newStatus) => {
@@ -265,8 +299,8 @@ function ScheduleModal({
       return;
     }
 
-    // Changing FROM confirmed requires confirmation
-    if (status === 'confirmed') {
+    // Changing FROM planned requires confirmation (has menu content)
+    if (status === 'planned') {
       setShowConfirmDialog({ targetStatus: newStatus, hasContent });
       setStatusDropdownOpen(false);
       return;
@@ -280,12 +314,12 @@ function ScheduleModal({
     setStatusUpdating(true);
     setStatusDropdownOpen(false);
     try {
-      if (newStatus === 'confirmed') {
+      if (newStatus === 'planned') {
         await onTransitionToConfirmed(client, week.weekId, week.dateKey);
       } else if (newStatus === 'empty') {
         await onTransitionToEmpty(client.id, week.weekId);
       } else {
-        // unconfirmed or skipped
+        // skipped
         await onTransitionToPlanning(client.id, week.weekId, newStatus);
       }
       onClose();
@@ -427,35 +461,31 @@ function ScheduleModal({
                   )}
                 </button>
                 {statusDropdownOpen && (
-                  <div className="absolute right-0 mt-1 bg-white border rounded shadow-lg z-10" style={{ minWidth: '110px' }}>
+                  <div className="absolute right-0 mt-1 bg-white border rounded shadow-lg z-10" style={{ minWidth: '120px' }}>
                     <button
                       onClick={() => handleStatusChange('empty')}
                       className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 ${status === 'empty' ? 'font-medium bg-gray-50' : ''}`}
                       style={{ color: STATUS_COLORS.empty.text }}
                     >
-                      Empty
-                    </button>
-                    <button
-                      onClick={() => handleStatusChange('unconfirmed')}
-                      className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 ${status === 'unconfirmed' ? 'font-medium bg-gray-50' : ''}`}
-                      style={{ color: STATUS_COLORS.unconfirmed.text }}
-                    >
-                      Unconfirmed
-                    </button>
-                    <button
-                      onClick={() => handleStatusChange('confirmed')}
-                      className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 ${status === 'confirmed' ? 'font-medium bg-gray-50' : ''}`}
-                      style={{ color: COLORS.deepBlue }}
-                    >
-                      Confirmed
+                      Clear Week
                     </button>
                     <button
                       onClick={() => handleStatusChange('skipped')}
                       className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 ${status === 'skipped' ? 'font-medium bg-gray-50' : ''}`}
                       style={{ color: '#6b7280' }}
                     >
-                      Skipped
+                      Mark Skipped
                     </button>
+                    {/* Only show Plan Menu for confirmed status (eligible for planning) */}
+                    {status === 'confirmed' && (
+                      <button
+                        onClick={() => handleStatusChange('planned')}
+                        className="w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100"
+                        style={{ color: COLORS.deepBlue }}
+                      >
+                        Plan Menu
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -510,8 +540,9 @@ function ScheduleModal({
             </div>
           </div>
 
-          {/* Weekly Menu table - only show for confirmed status */}
-          {status === 'confirmed' ? (
+          {/* Content based on status */}
+          {status === 'planned' ? (
+            /* Weekly Menu table - only show for planned status (menus exist) */
             <div className="px-3 py-2">
               <table className="w-full" style={{ fontSize: '11px' }}>
                 <thead>
@@ -548,10 +579,38 @@ function ScheduleModal({
                 </tbody>
               </table>
             </div>
+          ) : status === 'requested' ? (
+            /* Requested: show confirm button */
+            <div className="px-3 py-4 text-center">
+              <p className="text-gray-600 text-xs mb-3">
+                Client has requested dates. Confirm to approve for menu planning.
+              </p>
+              <button
+                onClick={() => handleConfirmDates(4)}
+                disabled={statusUpdating}
+                className="px-4 py-2 rounded text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                style={{ backgroundColor: COLORS.green }}
+              >
+                {statusUpdating ? 'Confirming...' : `Confirm Next ${Math.min(4, requestedDatesCount)} Date${Math.min(4, requestedDatesCount) !== 1 ? 's' : ''}`}
+              </button>
+              {requestedDatesCount > 0 && (
+                <p className="text-gray-400 text-xs mt-2">
+                  {requestedDatesCount} requested date{requestedDatesCount !== 1 ? 's' : ''} total
+                </p>
+              )}
+            </div>
+          ) : status === 'confirmed' ? (
+            /* Confirmed: ready for menu planning */
+            <div className="px-3 py-4 text-center">
+              <p className="text-green-600 text-xs font-medium mb-1">✓ Confirmed</p>
+              <p className="text-gray-500 text-xs">
+                Ready for menu planning. Use Menu Builder to assign dishes.
+              </p>
+            </div>
           ) : (
+            /* Empty, skipped, or other */
             <div className="px-3 py-4 text-center text-gray-400 text-xs italic">
               {status === 'empty' && 'No planning data for this week'}
-              {status === 'unconfirmed' && 'Week marked as unconfirmed (planning)'}
               {status === 'skipped' && 'Week marked as skipped'}
             </div>
           )}
@@ -574,6 +633,7 @@ export default function TimelineView({
   transitionToPlanning,
   transitionToEmpty,
   getScheduleCellState,
+  confirmClientDates,
   selectedWeekId
 }) {
   const [modalOpen, setModalOpen] = useState(false);
@@ -852,6 +912,7 @@ export default function TimelineView({
         onTransitionToConfirmed={transitionToConfirmed}
         onTransitionToPlanning={transitionToPlanning}
         onTransitionToEmpty={transitionToEmpty}
+        onConfirmDates={confirmClientDates}
       />
     </div>
   );

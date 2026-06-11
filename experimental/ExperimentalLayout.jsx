@@ -36,6 +36,8 @@ import {
   confirmClientWeek,
   deleteMenusForClientWeek,
   clearWeekMenus,
+  confirmNextDates,
+  fetchClients,
   // Base weekly menus (menu-first model)
   fetchBaseWeeklyMenus,
   saveAllBaseWeeklyMenus,
@@ -456,6 +458,30 @@ export default function ExperimentalLayout() {
     }
   }, []);
 
+  // Confirm next N requested dates for a client
+  // Moves dates from deliveryDates (requested) to confirmedDates (paid/approved)
+  // Does NOT create menu rows - that's Menu Builder's job
+  const confirmClientDates = useCallback(async (clientId, count = 4, options = {}) => {
+    if (!isSupabaseMode() || !isConfigured()) {
+      return { success: false, error: 'Supabase not configured' };
+    }
+
+    try {
+      const result = await confirmNextDates(clientId, count, options);
+
+      if (result.success) {
+        // Refresh clients to get updated date arrays
+        const updatedClients = await fetchClients();
+        setClients(updatedClients);
+      }
+
+      return result;
+    } catch (err) {
+      console.error('[Schedule] Error confirming dates:', err);
+      return { success: false, error: err.message };
+    }
+  }, [setClients]);
+
   // ============ BASE WEEKLY MENUS (Menu-First Model) ============
 
   // Load base menus and assignments for a week
@@ -576,9 +602,9 @@ export default function ExperimentalLayout() {
         // Has menu rows - use the date from those rows
         confirmedClients.push({ client, date: clientMenus[0].date });
       } else {
-        // Check delivery dates
-        const deliveryDates = client.deliveryDates || client.delivery_dates || [];
-        const dateInWeek = deliveryDates.find(d => d && d >= weekStart && d <= weekEnd);
+        // Check confirmed dates (paid/approved for service)
+        const confirmedDates = client.confirmedDates || [];
+        const dateInWeek = confirmedDates.find(d => d && d >= weekStart && d <= weekEnd);
 
         if (dateInWeek) {
           confirmedClients.push({ client, date: dateInWeek });
@@ -731,9 +757,9 @@ export default function ExperimentalLayout() {
       if (clientMenus.length > 0) {
         scheduled.add(client.id);
       } else {
-        // Check delivery dates
-        const deliveryDates = client.deliveryDates || client.delivery_dates || [];
-        const dateInWeek = deliveryDates.find(d => d && d >= weekStart && d <= weekEnd);
+        // Check confirmed dates (paid/approved for service)
+        const confirmedDates = client.confirmedDates || [];
+        const dateInWeek = confirmedDates.find(d => d && d >= weekStart && d <= weekEnd);
 
         if (dateInWeek) {
           scheduled.add(client.id);
@@ -744,41 +770,56 @@ export default function ExperimentalLayout() {
     return scheduled;
   }, [clients, scheduleMenus, selectedWeekId]);
 
+  // Helper: check if any dates from array fall within the given weekId
+  const hasDateInWeek = useCallback((dates, weekId) => {
+    if (!dates || dates.length === 0) return false;
+    return dates.some(dateStr => getWeekIdFromDate(dateStr) === weekId);
+  }, []);
+
   // Get menu state for a client + week cell
-  // Display states: empty, unconfirmed, confirmed, skipped
-  // Logic:
-  //   1. menus row exists → confirmed (row = date picked & paid)
-  //   2. client_week_status.status = 'skipped' → skipped
-  //   3. client_week_status.status = 'unconfirmed' → unconfirmed
-  //   4. neither → empty
+  // Display states: empty, requested, confirmed, planned, skipped
+  // Logic (new model separating confirmed from planned):
+  //   1. menus row exists → 'planned' (menu has been generated)
+  //   2. clients.confirmedDates has date in week → 'confirmed' (paid/approved, ready for planning)
+  //   3. clients.deliveryDates has date in week → 'requested' (client selected, not yet confirmed)
+  //   4. client_week_status.status = 'skipped' → 'skipped'
+  //   5. none of above → 'empty'
   const getScheduleCellState = useCallback((clientId, weekId) => {
-    // Check menus first (source of truth for confirmed)
+    // Find the client to access their date arrays
+    const client = clients.find(c => c.id === clientId);
+
+    // 1. Check menus first (source of truth for planned)
     const clientWeekMenus = scheduleMenus.filter(
       m => m.client_id === clientId && m.week_id === weekId
     );
 
     if (clientWeekMenus.length > 0) {
       const firstMenu = clientWeekMenus[0];
-      return { status: 'confirmed', menu: firstMenu, hasRow: true, menus: clientWeekMenus };
+      return { status: 'planned', menu: firstMenu, hasRow: true, menus: clientWeekMenus };
     }
 
-    // Check client_week_status for planning states
+    // 2. Check confirmedDates (paid/approved, eligible for menu planning)
+    if (client && hasDateInWeek(client.confirmedDates, weekId)) {
+      return { status: 'confirmed', menu: null, hasRow: false, confirmedDate: true };
+    }
+
+    // 3. Check deliveryDates (requested by client, not yet confirmed)
+    if (client && hasDateInWeek(client.deliveryDates, weekId)) {
+      return { status: 'requested', menu: null, hasRow: false, requestedDate: true };
+    }
+
+    // 4. Check client_week_status for skipped
     const planningStatus = clientWeekStatuses.find(
       s => s.client_id === clientId && s.week_id === weekId
     );
 
-    if (planningStatus) {
-      if (planningStatus.status === 'skipped') {
-        return { status: 'skipped', menu: null, hasRow: false, planningRow: true };
-      }
-      if (planningStatus.status === 'unconfirmed') {
-        return { status: 'unconfirmed', menu: null, hasRow: false, planningRow: true };
-      }
+    if (planningStatus?.status === 'skipped') {
+      return { status: 'skipped', menu: null, hasRow: false, planningRow: true };
     }
 
-    // No data in either table → empty
+    // 5. No data → empty
     return { status: 'empty', menu: null, hasRow: false, planningRow: false };
-  }, [scheduleMenus, clientWeekStatuses]);
+  }, [scheduleMenus, clientWeekStatuses, clients, hasDateInWeek]);
 
   // Build per-client grocery cost breakdown grouped by week
   const buildClientBreakdown = () => {
@@ -1407,6 +1448,7 @@ export default function ExperimentalLayout() {
     transitionToEmpty,
     setPlanningStatus,
     getScheduleCellState,
+    confirmClientDates,
 
     // Base weekly menus (menu-first model)
     baseWeeklyMenus,
