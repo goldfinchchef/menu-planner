@@ -639,14 +639,20 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
               }`}>
                 {applyResult.success ? (
                   <div className="space-y-2">
-                    {/* Regenerated clients */}
-                    {applyResult.regenerated > 0 && (
+                    {/* Created clients */}
+                    {applyResult.created > 0 && (
                       <div className="flex items-center gap-2 text-green-700">
                         <span className="font-medium">
-                          Regenerated {applyResult.regenerated} client{applyResult.regenerated !== 1 ? 's' : ''}
+                          Created menus for {applyResult.created} client{applyResult.created !== 1 ? 's' : ''}
                         </span>
-                        <span className="text-gray-500 text-xs">
-                          ({applyResult.deleted} deleted, {applyResult.created} created)
+                      </div>
+                    )}
+
+                    {/* Skipped - already have menus */}
+                    {applyResult.skippedExisting > 0 && (
+                      <div className="text-gray-600">
+                        <span className="font-medium">
+                          {applyResult.skippedExisting} skipped (already have menus)
                         </span>
                       </div>
                     )}
@@ -664,7 +670,7 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
                     )}
 
                     {/* Message if no clients eligible */}
-                    {applyResult.regenerated === 0 && applyResult.message && (
+                    {applyResult.created === 0 && applyResult.message && (
                       <div className="text-gray-600 italic">{applyResult.message}</div>
                     )}
 

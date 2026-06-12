@@ -149,9 +149,9 @@ export function useMenuBuilder({ selectedWeekId, clients }) {
     return getDefaultMealAssignment(mealsPerWeek);
   }, [clientMealAssignments, selectedWeekId]);
 
-  // Apply base menu to all confirmed clients (clean regenerate)
+  // Apply base menu to clients WITHOUT existing menus (additive - preserves edits)
   const applyBaseMenu = useCallback(async () => {
-    console.log('[useMenuBuilder] === Apply Base Menu ===');
+    console.log('[useMenuBuilder] === Apply Base Menu (Additive) ===');
     console.log('[useMenuBuilder] weekId:', selectedWeekId);
 
     if (!isSupabaseMode() || !isConfigured()) {
@@ -162,8 +162,9 @@ export function useMenuBuilder({ selectedWeekId, clients }) {
       return { success: false, error: 'No base menus defined for this week' };
     }
 
-    // Find confirmed clients for this week
+    // Find clients who need menus created (skip those who already have menus)
     const confirmedClients = [];
+    const clientsWithMenus = [];  // Clients to skip (already have menus)
     const clientsNoDate = [];
 
     const activeClients = clients.filter(c => c.status === 'active');
@@ -171,37 +172,41 @@ export function useMenuBuilder({ selectedWeekId, clients }) {
     const weekEnd = getWeekEndDate(selectedWeekId);
 
     for (const client of activeClients) {
-      // Check if client has menu rows this week (from Schedule tab confirmation)
+      // Check if client has menu rows this week
       const clientMenus = scheduleMenus.filter(
         m => m.client_id === client.id && m.week_id === selectedWeekId
       );
 
       if (clientMenus.length > 0) {
-        // Has menu rows - use the date from those rows
-        confirmedClients.push({ client, date: clientMenus[0].date });
-      } else {
-        // Check delivery dates
-        const deliveryDates = client.deliveryDates || client.delivery_dates || [];
-        const dateInWeek = deliveryDates.find(d => d && d >= weekStart && d <= weekEnd);
+        // Has menu rows - SKIP to preserve existing menus
+        clientsWithMenus.push(client.name);
+        continue;
+      }
 
-        if (dateInWeek) {
-          confirmedClients.push({ client, date: dateInWeek });
-        } else {
-          clientsNoDate.push(client.name);
-        }
+      // No existing menus - check for delivery date
+      const deliveryDates = client.deliveryDates || client.delivery_dates || [];
+      const dateInWeek = deliveryDates.find(d => d && d >= weekStart && d <= weekEnd);
+
+      if (dateInWeek) {
+        confirmedClients.push({ client, date: dateInWeek });
+      } else {
+        clientsNoDate.push(client.name);
       }
     }
 
-    console.log('[useMenuBuilder] Confirmed clients:', confirmedClients.map(c => c.client.name));
-    console.log('[useMenuBuilder] Clients with no date:', clientsNoDate);
+    console.log('[useMenuBuilder] New clients to create:', confirmedClients.map(c => c.client.name));
+    console.log('[useMenuBuilder] Skipped (have menus):', clientsWithMenus);
+    console.log('[useMenuBuilder] Skipped (no date):', clientsNoDate);
 
     if (confirmedClients.length === 0) {
       return {
         success: true,
-        message: 'No clients with confirmed dates for this week',
-        regenerated: 0,
-        deleted: 0,
+        message: clientsWithMenus.length > 0
+          ? 'All scheduled clients already have menus'
+          : 'No clients with confirmed dates for this week',
         created: 0,
+        skippedExisting: clientsWithMenus.length,
+        clientsWithMenus,
         skippedNoDate: clientsNoDate.length,
         clientsNoDate
       };
@@ -224,9 +229,9 @@ export function useMenuBuilder({ selectedWeekId, clients }) {
 
       return {
         success: true,
-        regenerated: applyResult.regenerated,
-        deleted: applyResult.deleted,
         created: applyResult.created,
+        skippedExisting: clientsWithMenus.length,
+        clientsWithMenus,
         skippedNoDate: clientsNoDate.length,
         clientsNoDate,
         errors: applyResult.errors
