@@ -46,27 +46,52 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
   // LocalStorage key for a client's edit state
   const getStorageKey = (clientId) => `menu-preview-${weekId}-${clientId}`;
 
+  // Generate hash of source menu data to detect changes
+  // When menus are edited, this hash changes, triggering reinitialization
+  function getSourceHash(clientData) {
+    if (!clientData?.meals) return '';
+    return clientData.meals.map(m =>
+      `${m.protein || ''}|${m.veg || ''}|${m.starch || ''}|${(m.extras || []).join(',')}`
+    ).join('::');
+  }
+
   // Load edit state from localStorage or initialize from data
+  // If source menu data has changed, reinitialize but preserve local-only fields
   function loadEditState(clientData) {
-    if (!clientData) return { meals: [], subscriptionEnds: '', clientName: '' };
+    if (!clientData) return { meals: [], subscriptionEnds: '', clientName: '', sourceHash: '' };
 
     const storageKey = getStorageKey(clientData.clientId);
     const saved = localStorage.getItem(storageKey);
+    const currentHash = getSourceHash(clientData);
 
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+
+        // If source data changed, reinitialize but preserve local-only fields
+        if (parsed.sourceHash !== currentHash) {
+          console.log('[Preview] Source menu data changed, refreshing preview');
+          const fresh = initEditState(clientData);
+          return {
+            ...fresh,
+            sourceHash: currentHash,
+            // Preserve local-only fields from cache
+            subscriptionEnds: parsed.subscriptionEnds || ''
+          };
+        }
+
+        return parsed;
       } catch (e) {
         console.error('Failed to parse saved edit state:', e);
       }
     }
 
-    return initEditState(clientData);
+    return { ...initEditState(clientData), sourceHash: currentHash };
   }
 
   // Initialize edit state from client data (fresh, no localStorage)
   function initEditState(clientData) {
-    if (!clientData) return { meals: [], subscriptionEnds: '', clientName: '' };
+    if (!clientData) return { meals: [], subscriptionEnds: '', clientName: '', sourceHash: '' };
 
     const meals = [];
     clientData.meals.forEach((menu, idx) => {
@@ -98,7 +123,8 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
       mealPlan: `${mealsPerWeek} meal${mealsPerWeek !== 1 ? 's' : ''} × ${portions} portion${portions !== 1 ? 's' : ''}`,
       subscriptionEnds: '',
       deliveryDate: clientData.date || '',
-      meals
+      meals,
+      sourceHash: getSourceHash(clientData)
     };
   }
 
@@ -116,7 +142,11 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
   useEffect(() => {
     if (currentClient && editState.clientName) {
       const storageKey = getStorageKey(currentClient.clientId);
-      localStorage.setItem(storageKey, JSON.stringify(editState));
+      const toSave = {
+        ...editState,
+        sourceHash: getSourceHash(currentClient)
+      };
+      localStorage.setItem(storageKey, JSON.stringify(toSave));
     }
   }, [editState, currentClient]);
 
