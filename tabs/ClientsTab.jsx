@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Upload, Download, Edit2, Check, X, Link2, Minus, Users, User, ChevronDown, ChevronUp, Truck, MapPin } from 'lucide-react';
+import { Plus, Trash2, Upload, Download, Edit2, Check, X, Link2, Minus, Users, User, ChevronDown, ChevronUp, Truck, MapPin, DollarSign, AlertCircle, Settings } from 'lucide-react';
 import { ZONES, DAYS, DEFAULT_CONTACT, DEFAULT_NEW_SUBSCRIPTION } from '../constants';
 import { isSupabaseMode } from '../lib/dataMode';
 import { saveClientToSupabase } from '../lib/database';
@@ -16,15 +16,37 @@ const extractCity = (address) => {
   return null;
 };
 
-const FormField = ({ label, children }) => (
+const FormField = ({ label, children, compact }) => (
   <div className="flex flex-col">
-    <label className="text-sm font-medium mb-1" style={{ color: '#423d3c' }}>{label}</label>
+    <label className={`text-sm font-medium ${compact ? 'mb-0.5' : 'mb-1'}`} style={{ color: '#423d3c' }}>{label}</label>
     {children}
   </div>
 );
 
 const inputStyle = "p-2 border-2 rounded-lg";
+const inputStyleCompact = "px-2 py-1.5 border-2 rounded-lg text-sm";
 const borderStyle = { borderColor: '#ebb582' };
+
+// Accordion section for form organization
+const AccordionSection = ({ title, icon: Icon, isOpen, onToggle, children, count }) => (
+  <div className="border-t" style={{ borderColor: '#ebb582' }}>
+    <button
+      type="button"
+      onClick={onToggle}
+      className="w-full flex items-center justify-between py-2 hover:bg-gray-50"
+    >
+      <span className="flex items-center gap-2 font-medium text-sm" style={{ color: '#3d59ab' }}>
+        {Icon && <Icon size={16} />}
+        {title}
+        {count !== undefined && (
+          <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">{count}</span>
+        )}
+      </span>
+      {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+    </button>
+    {isOpen && <div className="pb-3">{children}</div>}
+  </div>
+);
 
 // Contact form component for reuse
 const ContactForm = ({ contact, index, onChange, onRemove, canRemove }) => (
@@ -271,6 +293,26 @@ export default function ClientsTab({
   const [editingClient, setEditingClient] = useState(null);
   const [expandedDeliveries, setExpandedDeliveries] = useState({});
   const [showPausedClients, setShowPausedClients] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addFormSections, setAddFormSections] = useState({
+    basicInfo: true,
+    contacts: false,
+    pricing: false,
+    dietary: false
+  });
+
+  const toggleAddFormSection = (section) => {
+    setAddFormSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  // Wrapper for addClient that collapses form on success
+  const handleAddClient = () => {
+    addClient();
+    // Check if form should close (if addClient was successful, newClient will be reset)
+    // We'll close it optimistically - the parent handles validation
+    setShowAddForm(false);
+    setAddFormSections({ basicInfo: true, contacts: false, pricing: false, dietary: false });
+  };
 
   // Toggle delivery history visibility for a client
   const toggleDeliveryHistory = (subscriptionId) => {
@@ -484,260 +526,341 @@ export default function ClientsTab({
   };
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-lg shadow-lg p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold" style={{ color: '#3d59ab' }}>Add Subscription</h2>
-          <div className="flex gap-2">
-            <button
-              onClick={() => clientsFileRef.current?.click()}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg border-2"
-              style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
-            >
-              <Upload size={18} />Import
-            </button>
-            <button
-              onClick={handleExportCSV}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-white"
-              style={{ backgroundColor: '#3d59ab' }}
-            >
-              <Download size={18} />Export
-            </button>
-          </div>
+    <div className="space-y-4">
+      {/* Page Header with Import/Export */}
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold" style={{ color: '#3d59ab' }}>Clients</h1>
+        <div className="flex gap-2">
+          <button
+            onClick={() => clientsFileRef.current?.click()}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 text-sm"
+            style={{ borderColor: '#3d59ab', color: '#3d59ab' }}
+          >
+            <Upload size={16} />Import
+          </button>
+          <button
+            onClick={handleExportCSV}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white text-sm"
+            style={{ backgroundColor: '#3d59ab' }}
+          >
+            <Download size={16} />Export
+          </button>
         </div>
+      </div>
 
-        {/* Subscription Info Section */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <FormField label="Subscription Name">
-            <input
-              type="text"
-              value={newClient.displayName || ''}
-              onChange={(e) => setNewClient({ ...newClient, displayName: e.target.value })}
-              placeholder="e.g., J.J. and Lauren"
-              className={inputStyle}
-              style={borderStyle}
-            />
-          </FormField>
-          <FormField label="Portions">
-            <input
-              type="number"
-              value={newClient.portions || 1}
-              onChange={(e) => setNewClient({ ...newClient, portions: parseInt(e.target.value) || 1 })}
-              placeholder="Number of portions"
-              className={inputStyle}
-              style={borderStyle}
-            />
-          </FormField>
-          <FormField label="Meals per Week">
-            <input
-              type="number"
-              value={newClient.mealsPerWeek || 0}
-              onChange={(e) => setNewClient({ ...newClient, mealsPerWeek: parseInt(e.target.value) || 0 })}
-              placeholder="Number of meals"
-              className={inputStyle}
-              style={borderStyle}
-            />
-          </FormField>
-          <FormField label="Zone">
-            <select
-              value={newClient.zone || ''}
-              onChange={(e) => setNewClient({ ...newClient, zone: e.target.value })}
-              className={inputStyle}
-              style={borderStyle}
-            >
-              <option value="">Unassigned</option>
-              {ZONES.map(z => <option key={z} value={z}>Zone {z}</option>)}
-            </select>
-          </FormField>
-          <FormField label="Delivery Day">
-            <select
-              value={newClient.deliveryDay || ''}
-              onChange={(e) => setNewClient({ ...newClient, deliveryDay: e.target.value })}
-              className={inputStyle}
-              style={borderStyle}
-            >
-              <option value="">Select day</option>
-              {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
-          </FormField>
-          <FormField label="Frequency">
-            <select
-              value={newClient.frequency || 'weekly'}
-              onChange={(e) => setNewClient({ ...newClient, frequency: e.target.value })}
-              className={inputStyle}
-              style={borderStyle}
-            >
-              <option value="weekly">Weekly</option>
-              <option value="biweekly">Biweekly</option>
-            </select>
-          </FormField>
-          <FormField label="Status">
-            <select
-              value={newClient.status || 'active'}
-              onChange={(e) => setNewClient({ ...newClient, status: e.target.value })}
-              className={inputStyle}
-              style={borderStyle}
-            >
-              <option value="active">Active</option>
-              <option value="paused">Paused</option>
-            </select>
-          </FormField>
-          <FormField label="Client Portal Access Code">
-            <input
-              type="text"
-              value={newClient.accessCode || ''}
-              onChange={(e) => setNewClient({ ...newClient, accessCode: e.target.value })}
-              placeholder="Optional access code"
-              className={inputStyle}
-              style={borderStyle}
-            />
-          </FormField>
-          <div className="flex items-center gap-2 pt-6">
-            <input
-              type="checkbox"
-              id="pickup"
-              checked={newClient.pickup || false}
-              onChange={(e) => setNewClient({ ...newClient, pickup: e.target.checked, serviceFee: e.target.checked ? 0 : newClient.serviceFee })}
-              className="w-5 h-5 rounded border-2"
-              style={{ accentColor: '#3d59ab' }}
-            />
-            <label htmlFor="pickup" className="text-sm font-medium" style={{ color: '#423d3c' }}>
-              Pickup (exclude from delivery routes)
-            </label>
-          </div>
-          <FormField label="Menu Selection">
-            <select
-              value={newClient.chefChoice === false ? 'client' : 'chef'}
-              onChange={(e) => setNewClient({ ...newClient, chefChoice: e.target.value === 'chef' })}
-              className={inputStyle}
-              style={borderStyle}
-            >
-              <option value="chef">Chef Choice (Chef Paula picks)</option>
-              <option value="client">Client Picks (Client selects dishes)</option>
-            </select>
-          </FormField>
-        </div>
-
-        {/* Contacts Section */}
-        <div className="mt-6 pt-6 border-t-2" style={{ borderColor: '#ebb582' }}>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold flex items-center gap-2" style={{ color: '#3d59ab' }}>
-              <Users size={20} />
-              Contacts
-            </h3>
-            <button
-              type="button"
-              onClick={addNewContact}
-              className="flex items-center gap-1 px-3 py-1 rounded-lg text-white text-sm"
-              style={{ backgroundColor: '#3d59ab' }}
-            >
-              <Plus size={16} />Add Contact
-            </button>
-          </div>
-          <p className="text-sm text-gray-500 mb-4">
-            Each contact receives notifications. Different addresses = separate delivery stops.
-          </p>
-          <div className="space-y-4">
-            {(newClient.contacts || [{ ...DEFAULT_CONTACT }]).map((contact, idx) => (
-              <ContactForm
-                key={idx}
-                contact={contact}
-                index={idx}
-                onChange={updateNewContact}
-                onRemove={() => removeNewContact(idx)}
-                canRemove={(newClient.contacts || []).length > 1}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Pricing Section */}
-        <div className="mt-6 pt-6 border-t-2" style={{ borderColor: '#ebb582' }}>
-          <h3 className="text-lg font-bold mb-4" style={{ color: '#3d59ab' }}>Pricing</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <FormField label="Plan Price ($)">
-              <input
-                type="number"
-                step="0.01"
-                value={newClient.planPrice || 0}
-                onChange={(e) => setNewClient({ ...newClient, planPrice: parseFloat(e.target.value) || 0 })}
-                placeholder="0.00"
-                className={inputStyle}
-                style={borderStyle}
-              />
-            </FormField>
-            <FormField label="Service Fee ($)">
-              <input
-                type="number"
-                step="0.01"
-                value={newClient.pickup ? 0 : (newClient.serviceFee || 0)}
-                onChange={(e) => setNewClient({ ...newClient, serviceFee: parseFloat(e.target.value) || 0 })}
-                placeholder="0.00"
-                className={inputStyle}
-                style={borderStyle}
-                disabled={newClient.pickup}
-              />
-            </FormField>
-            <div className="flex items-center gap-2 pt-6">
-              <input
-                type="checkbox"
-                id="prepayDiscount"
-                checked={newClient.prepayDiscount || false}
-                onChange={(e) => setNewClient({ ...newClient, prepayDiscount: e.target.checked })}
-                className="w-5 h-5 rounded border-2"
-                style={{ accentColor: '#3d59ab' }}
-              />
-              <label htmlFor="prepayDiscount" className="text-sm font-medium" style={{ color: '#423d3c' }}>
-                Pre-pay Discount (10% off)
-              </label>
-            </div>
-            <div className="flex items-center gap-2 pt-6">
-              <input
-                type="checkbox"
-                id="paysOwnGroceries"
-                checked={newClient.paysOwnGroceries || false}
-                onChange={(e) => setNewClient({ ...newClient, paysOwnGroceries: e.target.checked })}
-                className="w-5 h-5 rounded border-2"
-                style={{ accentColor: '#3d59ab' }}
-              />
-              <label htmlFor="paysOwnGroceries" className="text-sm font-medium" style={{ color: '#423d3c' }}>
-                Pays Own Groceries
-              </label>
-            </div>
-          </div>
-          <div className="mt-4">
-            <FormField label="Billing Notes">
-              <textarea
-                value={newClient.billingNotes || ''}
-                onChange={(e) => setNewClient({ ...newClient, billingNotes: e.target.value })}
-                placeholder="Any billing notes"
-                className={inputStyle + " w-full"}
-                style={borderStyle}
-                rows="2"
-              />
-            </FormField>
-          </div>
-          <div className="mt-4">
-            <FormField label="Dietary Restrictions">
-              <textarea
-                value={newClient.dietaryRestrictions || ''}
-                onChange={(e) => setNewClient({ ...newClient, dietaryRestrictions: e.target.value })}
-                placeholder="Allergies, preferences, dietary needs..."
-                className={inputStyle + " w-full"}
-                style={borderStyle}
-                rows="2"
-              />
-            </FormField>
-          </div>
-        </div>
-
+      {/* Collapsible Add Subscription Form */}
+      <div className="bg-white rounded-lg shadow-lg overflow-hidden">
         <button
-          onClick={addClient}
-          className="mt-6 px-6 py-2 rounded-lg text-white"
-          style={{ backgroundColor: '#3d59ab' }}
+          onClick={() => setShowAddForm(!showAddForm)}
+          className="w-full flex items-center justify-between p-4 hover:bg-gray-50"
         >
-          <Plus size={20} className="inline mr-2" />Add Subscription
+          <span className="flex items-center gap-2 font-bold" style={{ color: '#3d59ab' }}>
+            <Plus size={20} />
+            Add Subscription
+          </span>
+          {showAddForm ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
         </button>
+
+        {showAddForm && (
+          <div className="px-4 pb-4 border-t" style={{ borderColor: '#ebb582' }}>
+            {/* Basic Info Section - Open by default */}
+            <AccordionSection
+              title="Basic Info"
+              icon={Settings}
+              isOpen={addFormSections.basicInfo}
+              onToggle={() => toggleAddFormSection('basicInfo')}
+            >
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                <FormField label="Name" compact>
+                  <input
+                    type="text"
+                    value={newClient.displayName || ''}
+                    onChange={(e) => setNewClient({ ...newClient, displayName: e.target.value })}
+                    placeholder="e.g., J.J. and Lauren"
+                    className={inputStyleCompact}
+                    style={borderStyle}
+                  />
+                </FormField>
+                <FormField label="Portions" compact>
+                  <input
+                    type="number"
+                    value={newClient.portions || 1}
+                    onChange={(e) => setNewClient({ ...newClient, portions: parseInt(e.target.value) || 1 })}
+                    className={inputStyleCompact}
+                    style={borderStyle}
+                  />
+                </FormField>
+                <FormField label="Meals/Week" compact>
+                  <input
+                    type="number"
+                    value={newClient.mealsPerWeek || 0}
+                    onChange={(e) => setNewClient({ ...newClient, mealsPerWeek: parseInt(e.target.value) || 0 })}
+                    className={inputStyleCompact}
+                    style={borderStyle}
+                  />
+                </FormField>
+                <FormField label="Zone" compact>
+                  <select
+                    value={newClient.zone || ''}
+                    onChange={(e) => setNewClient({ ...newClient, zone: e.target.value })}
+                    className={inputStyleCompact}
+                    style={borderStyle}
+                  >
+                    <option value="">Unassigned</option>
+                    {ZONES.map(z => <option key={z} value={z}>Zone {z}</option>)}
+                  </select>
+                </FormField>
+                <FormField label="Delivery Day" compact>
+                  <select
+                    value={newClient.deliveryDay || ''}
+                    onChange={(e) => setNewClient({ ...newClient, deliveryDay: e.target.value })}
+                    className={inputStyleCompact}
+                    style={borderStyle}
+                  >
+                    <option value="">Select day</option>
+                    {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </FormField>
+                <FormField label="Frequency" compact>
+                  <select
+                    value={newClient.frequency || 'weekly'}
+                    onChange={(e) => setNewClient({ ...newClient, frequency: e.target.value })}
+                    className={inputStyleCompact}
+                    style={borderStyle}
+                  >
+                    <option value="weekly">Weekly</option>
+                    <option value="biweekly">Biweekly</option>
+                  </select>
+                </FormField>
+                <FormField label="Status" compact>
+                  <select
+                    value={newClient.status || 'active'}
+                    onChange={(e) => setNewClient({ ...newClient, status: e.target.value })}
+                    className={inputStyleCompact}
+                    style={borderStyle}
+                  >
+                    <option value="active">Active</option>
+                    <option value="paused">Paused</option>
+                  </select>
+                </FormField>
+                <FormField label="Menu Selection" compact>
+                  <select
+                    value={newClient.chefChoice === false ? 'client' : 'chef'}
+                    onChange={(e) => setNewClient({ ...newClient, chefChoice: e.target.value === 'chef' })}
+                    className={inputStyleCompact}
+                    style={borderStyle}
+                  >
+                    <option value="chef">Chef Choice</option>
+                    <option value="client">Client Picks</option>
+                  </select>
+                </FormField>
+              </div>
+              <div className="flex items-center gap-4 mt-2">
+                <label className="flex items-center gap-1.5 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={newClient.pickup || false}
+                    onChange={(e) => setNewClient({ ...newClient, pickup: e.target.checked, serviceFee: e.target.checked ? 0 : newClient.serviceFee })}
+                    className="w-4 h-4 rounded"
+                    style={{ accentColor: '#3d59ab' }}
+                  />
+                  Pickup
+                </label>
+                <FormField label="Access Code" compact>
+                  <input
+                    type="text"
+                    value={newClient.accessCode || ''}
+                    onChange={(e) => setNewClient({ ...newClient, accessCode: e.target.value })}
+                    placeholder="Optional"
+                    className={inputStyleCompact + " w-32"}
+                    style={borderStyle}
+                  />
+                </FormField>
+              </div>
+            </AccordionSection>
+
+            {/* Contacts Section */}
+            <AccordionSection
+              title="Contacts"
+              icon={Users}
+              isOpen={addFormSections.contacts}
+              onToggle={() => toggleAddFormSection('contacts')}
+              count={(newClient.contacts || []).length || 1}
+            >
+              <div className="flex justify-between items-center mb-2">
+                <p className="text-xs text-gray-500">
+                  Each contact receives notifications. Different addresses = separate stops.
+                </p>
+                <button
+                  type="button"
+                  onClick={addNewContact}
+                  className="flex items-center gap-1 px-2 py-1 rounded text-white text-xs"
+                  style={{ backgroundColor: '#3d59ab' }}
+                >
+                  <Plus size={14} />Add
+                </button>
+              </div>
+              <div className="space-y-3">
+                {(newClient.contacts || [{ ...DEFAULT_CONTACT }]).map((contact, idx) => (
+                  <div key={idx} className="p-3 rounded-lg border" style={{ borderColor: '#d9a87a', backgroundColor: '#fff' }}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-bold" style={{ color: '#3d59ab' }}>Contact {idx + 1}</span>
+                      {(newClient.contacts || []).length > 1 && (
+                        <button onClick={() => removeNewContact(idx)} className="text-red-500 hover:text-red-700">
+                          <Minus size={14} />
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      <FormField label="Full Name" compact>
+                        <input
+                          type="text"
+                          value={contact.fullName || ''}
+                          onChange={(e) => updateNewContact(idx, 'fullName', e.target.value)}
+                          className={inputStyleCompact}
+                          style={borderStyle}
+                        />
+                      </FormField>
+                      <FormField label="Display Name" compact>
+                        <input
+                          type="text"
+                          value={contact.displayName || ''}
+                          onChange={(e) => updateNewContact(idx, 'displayName', e.target.value)}
+                          placeholder="e.g., Jennifer"
+                          className={inputStyleCompact}
+                          style={borderStyle}
+                        />
+                      </FormField>
+                      <FormField label="Email" compact>
+                        <input
+                          type="email"
+                          value={contact.email || ''}
+                          onChange={(e) => updateNewContact(idx, 'email', e.target.value)}
+                          className={inputStyleCompact}
+                          style={borderStyle}
+                        />
+                      </FormField>
+                      <FormField label="Phone" compact>
+                        <input
+                          type="tel"
+                          value={contact.phone || ''}
+                          onChange={(e) => updateNewContact(idx, 'phone', e.target.value)}
+                          className={inputStyleCompact}
+                          style={borderStyle}
+                        />
+                      </FormField>
+                      <div className="col-span-2 md:col-span-4">
+                        <FormField label="Delivery Address" compact>
+                          <input
+                            type="text"
+                            value={contact.address || ''}
+                            onChange={(e) => updateNewContact(idx, 'address', e.target.value)}
+                            className={inputStyleCompact + " w-full"}
+                            style={borderStyle}
+                          />
+                        </FormField>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </AccordionSection>
+
+            {/* Pricing & Billing Section */}
+            <AccordionSection
+              title="Pricing & Billing"
+              icon={DollarSign}
+              isOpen={addFormSections.pricing}
+              onToggle={() => toggleAddFormSection('pricing')}
+            >
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <FormField label="Plan Price ($)" compact>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={newClient.planPrice || 0}
+                    onChange={(e) => setNewClient({ ...newClient, planPrice: parseFloat(e.target.value) || 0 })}
+                    className={inputStyleCompact}
+                    style={borderStyle}
+                  />
+                </FormField>
+                <FormField label="Service Fee ($)" compact>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={newClient.pickup ? 0 : (newClient.serviceFee || 0)}
+                    onChange={(e) => setNewClient({ ...newClient, serviceFee: parseFloat(e.target.value) || 0 })}
+                    className={inputStyleCompact}
+                    style={borderStyle}
+                    disabled={newClient.pickup}
+                  />
+                </FormField>
+                <label className="flex items-center gap-1.5 text-sm pt-5">
+                  <input
+                    type="checkbox"
+                    checked={newClient.prepayDiscount || false}
+                    onChange={(e) => setNewClient({ ...newClient, prepayDiscount: e.target.checked })}
+                    className="w-4 h-4 rounded"
+                    style={{ accentColor: '#3d59ab' }}
+                  />
+                  Pre-pay (10% off)
+                </label>
+                <label className="flex items-center gap-1.5 text-sm pt-5">
+                  <input
+                    type="checkbox"
+                    checked={newClient.paysOwnGroceries || false}
+                    onChange={(e) => setNewClient({ ...newClient, paysOwnGroceries: e.target.checked })}
+                    className="w-4 h-4 rounded"
+                    style={{ accentColor: '#3d59ab' }}
+                  />
+                  Pays Own Groceries
+                </label>
+              </div>
+              <div className="mt-2">
+                <FormField label="Billing Notes" compact>
+                  <textarea
+                    value={newClient.billingNotes || ''}
+                    onChange={(e) => setNewClient({ ...newClient, billingNotes: e.target.value })}
+                    placeholder="Any billing notes"
+                    className={inputStyleCompact + " w-full"}
+                    style={borderStyle}
+                    rows="2"
+                  />
+                </FormField>
+              </div>
+            </AccordionSection>
+
+            {/* Dietary Notes Section */}
+            <AccordionSection
+              title="Dietary Notes"
+              icon={AlertCircle}
+              isOpen={addFormSections.dietary}
+              onToggle={() => toggleAddFormSection('dietary')}
+            >
+              <FormField label="Dietary Restrictions & Preferences" compact>
+                <textarea
+                  value={newClient.dietaryRestrictions || ''}
+                  onChange={(e) => setNewClient({ ...newClient, dietaryRestrictions: e.target.value })}
+                  placeholder="Allergies, preferences, dietary needs..."
+                  className={inputStyleCompact + " w-full"}
+                  style={borderStyle}
+                  rows="2"
+                />
+              </FormField>
+            </AccordionSection>
+
+            {/* Submit Button */}
+            <div className="pt-3 border-t mt-2" style={{ borderColor: '#ebb582' }}>
+              <button
+                onClick={handleAddClient}
+                className="px-4 py-2 rounded-lg text-white text-sm font-medium"
+                style={{ backgroundColor: '#3d59ab' }}
+              >
+                <Plus size={16} className="inline mr-1" />Add Subscription
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Active Clients Section */}
