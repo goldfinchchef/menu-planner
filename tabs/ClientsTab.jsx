@@ -1,8 +1,20 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Upload, Download, Edit2, Check, X, Link2, Minus, Users, User, ChevronDown, ChevronUp, Truck } from 'lucide-react';
+import { Plus, Trash2, Upload, Download, Edit2, Check, X, Link2, Minus, Users, User, ChevronDown, ChevronUp, Truck, MapPin } from 'lucide-react';
 import { ZONES, DAYS, DEFAULT_CONTACT, DEFAULT_NEW_SUBSCRIPTION } from '../constants';
 import { isSupabaseMode } from '../lib/dataMode';
 import { saveClientToSupabase } from '../lib/database';
+
+// Extract city from address string
+const extractCity = (address) => {
+  if (!address) return null;
+  // Try to match "City, State ZIP" or "City, State" pattern
+  const match = address.match(/,\s*([^,]+),\s*[A-Z]{2}(?:\s+\d{5})?/i);
+  if (match) return match[1].trim();
+  // Fallback: split by comma and take second-to-last part
+  const parts = address.split(',').map(p => p.trim());
+  if (parts.length >= 2) return parts[parts.length - 2];
+  return null;
+};
 
 const FormField = ({ label, children }) => (
   <div className="flex flex-col">
@@ -89,6 +101,106 @@ const ContactForm = ({ contact, index, onChange, onRemove, canRemove }) => (
   </div>
 );
 
+// Compact Client Card Component
+const ClientCard = ({ subscription, onEdit, onDelete, onCopyLink }) => {
+  const contacts = subscription.contacts || [];
+  const uniqueAddresses = [...new Set(contacts.filter(c => c.address).map(c => c.address.toLowerCase().trim()))];
+  const primaryCity = extractCity(contacts[0]?.address);
+
+  return (
+    <div
+      className={`border-2 rounded-lg p-3 flex flex-col h-full ${subscription.status === 'paused' ? 'opacity-70' : ''}`}
+      style={{ borderColor: subscription.status === 'paused' ? '#9ca3af' : '#ebb582', backgroundColor: '#fff' }}
+    >
+      {/* Header: Name + Status */}
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <h3 className="font-bold text-base leading-tight" style={{ color: '#3d59ab' }}>
+          {subscription.displayName || 'Unnamed'}
+        </h3>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {subscription.status === 'paused' ? (
+            <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 text-gray-600">Paused</span>
+          ) : (
+            <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700">Active</span>
+          )}
+          {subscription.pickup && (
+            <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">Pickup</span>
+          )}
+        </div>
+      </div>
+
+      {/* Compact Info Grid */}
+      <div className="text-sm text-gray-600 space-y-1 flex-1">
+        {/* Portions & Meals */}
+        <p className="font-medium">
+          {subscription.portions} portions • {subscription.mealsPerWeek} meals
+        </p>
+
+        {/* Frequency & Day */}
+        <p>
+          {subscription.frequency === 'biweekly' ? 'Biweekly' : 'Weekly'}
+          {subscription.deliveryDay && ` • ${subscription.deliveryDay}`}
+        </p>
+
+        {/* Zone & Location */}
+        <p className="flex items-center gap-1">
+          {subscription.zone && (
+            <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: '#f0f0ff', color: '#3d59ab' }}>
+              Zone {subscription.zone}
+            </span>
+          )}
+          {primaryCity && (
+            <span className="text-gray-500 flex items-center gap-0.5">
+              <MapPin size={12} />{primaryCity}
+            </span>
+          )}
+        </p>
+
+        {/* Contacts & Stops Summary */}
+        <p className="text-purple-600 text-xs">
+          <Users size={12} className="inline mr-1" />
+          {contacts.length} contact{contacts.length !== 1 ? 's' : ''} • {uniqueAddresses.length} stop{uniqueAddresses.length !== 1 ? 's' : ''}
+        </p>
+
+        {/* Dietary Notes (line-clamped) */}
+        {subscription.dietaryRestrictions && (
+          <p
+            className="text-xs text-red-700 bg-red-50 px-1.5 py-1 rounded line-clamp-2"
+            title={subscription.dietaryRestrictions}
+          >
+            {subscription.dietaryRestrictions}
+          </p>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="flex justify-end gap-2 mt-2 pt-2 border-t" style={{ borderColor: '#ebb582' }}>
+        <button
+          onClick={onCopyLink}
+          className="p-1.5 rounded hover:bg-purple-50 text-purple-600"
+          title="Copy portal link"
+        >
+          <Link2 size={16} />
+        </button>
+        <button
+          onClick={onEdit}
+          className="p-1.5 rounded hover:bg-blue-50 text-blue-600"
+          title="Edit"
+        >
+          <Edit2 size={16} />
+        </button>
+        <button
+          onClick={onDelete}
+          className="p-1.5 rounded hover:bg-red-50 text-red-600"
+          title="Delete"
+        >
+          <Trash2 size={16} />
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // Helper to migrate old client format to new subscription format
 const migrateToSubscription = (client) => {
   if (client.subscriptionId) {
@@ -158,6 +270,7 @@ export default function ClientsTab({
   const [editingIndex, setEditingIndex] = useState(null);
   const [editingClient, setEditingClient] = useState(null);
   const [expandedDeliveries, setExpandedDeliveries] = useState({});
+  const [showPausedClients, setShowPausedClients] = useState(false);
 
   // Toggle delivery history visibility for a client
   const toggleDeliveryHistory = (subscriptionId) => {
@@ -627,401 +740,427 @@ export default function ClientsTab({
         </button>
       </div>
 
-      {/* Subscriptions List */}
-      <div className="bg-white rounded-lg shadow-lg p-6">
-        <h2 className="text-2xl font-bold mb-4" style={{ color: '#3d59ab' }}>Subscriptions ({clients.length})</h2>
-        <div className="space-y-3">
-          {clients.map((client, i) => {
-            const subscription = migrateToSubscription(client);
-            return (
-              <div key={subscription.subscriptionId || i}>
-                {editingIndex === i ? (
-                  <div className="border-2 rounded-lg p-4" style={{ borderColor: '#3d59ab', backgroundColor: '#f9f9ed' }}>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      <FormField label="Subscription Name">
-                        <input
-                          type="text"
-                          value={editingClient.displayName || ''}
-                          onChange={(e) => setEditingClient({ ...editingClient, displayName: e.target.value })}
-                          className={inputStyle}
-                          style={borderStyle}
+      {/* Active Clients Section */}
+      {(() => {
+        const activeClients = clients
+          .map((c, i) => ({ ...migrateToSubscription(c), originalIndex: i }))
+          .filter(c => c.status !== 'paused');
+        const pausedClients = clients
+          .map((c, i) => ({ ...migrateToSubscription(c), originalIndex: i }))
+          .filter(c => c.status === 'paused');
+
+        return (
+          <>
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-2xl font-bold mb-4" style={{ color: '#3d59ab' }}>
+                Active Clients ({activeClients.length})
+              </h2>
+
+              {/* Edit Modal (full width, above grid when editing) */}
+              {editingIndex !== null && clients[editingIndex]?.status !== 'paused' && (
+                <div className="border-2 rounded-lg p-4 mb-4" style={{ borderColor: '#3d59ab', backgroundColor: '#f9f9ed' }}>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <FormField label="Subscription Name">
+                      <input
+                        type="text"
+                        value={editingClient.displayName || ''}
+                        onChange={(e) => setEditingClient({ ...editingClient, displayName: e.target.value })}
+                        className={inputStyle}
+                        style={borderStyle}
+                      />
+                    </FormField>
+                    <FormField label="Portions">
+                      <input
+                        type="number"
+                        value={editingClient.portions || 1}
+                        onChange={(e) => setEditingClient({ ...editingClient, portions: parseInt(e.target.value) || 1 })}
+                        className={inputStyle}
+                        style={borderStyle}
+                      />
+                    </FormField>
+                    <FormField label="Meals per Week">
+                      <input
+                        type="number"
+                        value={editingClient.mealsPerWeek || 0}
+                        onChange={(e) => setEditingClient({ ...editingClient, mealsPerWeek: parseInt(e.target.value) || 0 })}
+                        className={inputStyle}
+                        style={borderStyle}
+                      />
+                    </FormField>
+                    <FormField label="Zone">
+                      <select
+                        value={editingClient.zone || ''}
+                        onChange={(e) => setEditingClient({ ...editingClient, zone: e.target.value })}
+                        className={inputStyle}
+                        style={borderStyle}
+                      >
+                        <option value="">Unassigned</option>
+                        {ZONES.map(z => <option key={z} value={z}>Zone {z}</option>)}
+                      </select>
+                    </FormField>
+                    <FormField label="Delivery Day">
+                      <select
+                        value={editingClient.deliveryDay || ''}
+                        onChange={(e) => setEditingClient({ ...editingClient, deliveryDay: e.target.value })}
+                        className={inputStyle}
+                        style={borderStyle}
+                      >
+                        <option value="">Select day</option>
+                        {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
+                      </select>
+                    </FormField>
+                    <FormField label="Frequency">
+                      <select
+                        value={editingClient.frequency || 'weekly'}
+                        onChange={(e) => setEditingClient({ ...editingClient, frequency: e.target.value })}
+                        className={inputStyle}
+                        style={borderStyle}
+                      >
+                        <option value="weekly">Weekly</option>
+                        <option value="biweekly">Biweekly</option>
+                      </select>
+                    </FormField>
+                    <FormField label="Status">
+                      <select
+                        value={editingClient.status || 'active'}
+                        onChange={(e) => setEditingClient({ ...editingClient, status: e.target.value })}
+                        className={inputStyle}
+                        style={borderStyle}
+                      >
+                        <option value="active">Active</option>
+                        <option value="paused">Paused</option>
+                      </select>
+                    </FormField>
+                    <FormField label="Access Code">
+                      <input
+                        type="text"
+                        value={editingClient.accessCode || ''}
+                        onChange={(e) => setEditingClient({ ...editingClient, accessCode: e.target.value })}
+                        className={inputStyle}
+                        style={borderStyle}
+                      />
+                    </FormField>
+                    <div className="flex items-center gap-2 pt-6">
+                      <input
+                        type="checkbox"
+                        id={`pickup-edit-${editingIndex}`}
+                        checked={editingClient.pickup || false}
+                        onChange={(e) => setEditingClient({ ...editingClient, pickup: e.target.checked, serviceFee: e.target.checked ? 0 : editingClient.serviceFee })}
+                        className="w-5 h-5 rounded border-2"
+                        style={{ accentColor: '#3d59ab' }}
+                      />
+                      <label htmlFor={`pickup-edit-${editingIndex}`} className="text-sm font-medium" style={{ color: '#423d3c' }}>
+                        Pickup
+                      </label>
+                    </div>
+                    <FormField label="Menu Selection">
+                      <select
+                        value={editingClient.chefChoice === false ? 'client' : 'chef'}
+                        onChange={(e) => setEditingClient({ ...editingClient, chefChoice: e.target.value === 'chef' })}
+                        className={inputStyle}
+                        style={borderStyle}
+                      >
+                        <option value="chef">Chef Choice (Chef Paula picks)</option>
+                        <option value="client">Client Picks (Client selects dishes)</option>
+                      </select>
+                    </FormField>
+                  </div>
+
+                  {/* Contacts Section for Edit */}
+                  <div className="mt-4 pt-4 border-t-2" style={{ borderColor: '#ebb582' }}>
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-md font-bold flex items-center gap-2" style={{ color: '#3d59ab' }}>
+                        <Users size={18} />
+                        Contacts ({editingClient.contacts?.length || 1})
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={addEditingContact}
+                        className="flex items-center gap-1 px-3 py-1 rounded-lg text-white text-sm"
+                        style={{ backgroundColor: '#3d59ab' }}
+                      >
+                        <Plus size={16} />Add Contact
+                      </button>
+                    </div>
+                    <div className="space-y-4">
+                      {(editingClient.contacts || []).map((contact, idx) => (
+                        <ContactForm
+                          key={idx}
+                          contact={contact}
+                          index={idx}
+                          onChange={updateEditingContact}
+                          onRemove={() => removeEditingContact(idx)}
+                          canRemove={editingClient.contacts.length > 1}
                         />
-                      </FormField>
-                      <FormField label="Portions">
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Pricing Section for Edit */}
+                  <div className="mt-4 pt-4 border-t-2" style={{ borderColor: '#ebb582' }}>
+                    <h4 className="text-md font-bold mb-3" style={{ color: '#3d59ab' }}>Pricing</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <FormField label="Plan Price ($)">
                         <input
                           type="number"
-                          value={editingClient.portions || 1}
-                          onChange={(e) => setEditingClient({ ...editingClient, portions: parseInt(e.target.value) || 1 })}
+                          step="0.01"
+                          value={editingClient.planPrice || 0}
+                          onChange={(e) => setEditingClient({ ...editingClient, planPrice: parseFloat(e.target.value) || 0 })}
                           className={inputStyle}
                           style={borderStyle}
                         />
                       </FormField>
-                      <FormField label="Meals per Week">
+                      <FormField label="Service Fee ($)">
                         <input
                           type="number"
-                          value={editingClient.mealsPerWeek || 0}
-                          onChange={(e) => setEditingClient({ ...editingClient, mealsPerWeek: parseInt(e.target.value) || 0 })}
+                          step="0.01"
+                          value={editingClient.pickup ? 0 : (editingClient.serviceFee || 0)}
+                          onChange={(e) => setEditingClient({ ...editingClient, serviceFee: parseFloat(e.target.value) || 0 })}
                           className={inputStyle}
                           style={borderStyle}
-                        />
-                      </FormField>
-                      <FormField label="Zone">
-                        <select
-                          value={editingClient.zone || ''}
-                          onChange={(e) => setEditingClient({ ...editingClient, zone: e.target.value })}
-                          className={inputStyle}
-                          style={borderStyle}
-                        >
-                          <option value="">Unassigned</option>
-                          {ZONES.map(z => <option key={z} value={z}>Zone {z}</option>)}
-                        </select>
-                      </FormField>
-                      <FormField label="Delivery Day">
-                        <select
-                          value={editingClient.deliveryDay || ''}
-                          onChange={(e) => setEditingClient({ ...editingClient, deliveryDay: e.target.value })}
-                          className={inputStyle}
-                          style={borderStyle}
-                        >
-                          <option value="">Select day</option>
-                          {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
-                        </select>
-                      </FormField>
-                      <FormField label="Frequency">
-                        <select
-                          value={editingClient.frequency || 'weekly'}
-                          onChange={(e) => setEditingClient({ ...editingClient, frequency: e.target.value })}
-                          className={inputStyle}
-                          style={borderStyle}
-                        >
-                          <option value="weekly">Weekly</option>
-                          <option value="biweekly">Biweekly</option>
-                        </select>
-                      </FormField>
-                      <FormField label="Status">
-                        <select
-                          value={editingClient.status || 'active'}
-                          onChange={(e) => setEditingClient({ ...editingClient, status: e.target.value })}
-                          className={inputStyle}
-                          style={borderStyle}
-                        >
-                          <option value="active">Active</option>
-                          <option value="paused">Paused</option>
-                        </select>
-                      </FormField>
-                      <FormField label="Access Code">
-                        <input
-                          type="text"
-                          value={editingClient.accessCode || ''}
-                          onChange={(e) => setEditingClient({ ...editingClient, accessCode: e.target.value })}
-                          className={inputStyle}
-                          style={borderStyle}
+                          disabled={editingClient.pickup}
                         />
                       </FormField>
                       <div className="flex items-center gap-2 pt-6">
                         <input
                           type="checkbox"
-                          id={`pickup-edit-${i}`}
-                          checked={editingClient.pickup || false}
-                          onChange={(e) => setEditingClient({ ...editingClient, pickup: e.target.checked, serviceFee: e.target.checked ? 0 : editingClient.serviceFee })}
+                          id={`prepayDiscount-edit-${editingIndex}`}
+                          checked={editingClient.prepayDiscount || false}
+                          onChange={(e) => setEditingClient({ ...editingClient, prepayDiscount: e.target.checked })}
                           className="w-5 h-5 rounded border-2"
                           style={{ accentColor: '#3d59ab' }}
                         />
-                        <label htmlFor={`pickup-edit-${i}`} className="text-sm font-medium" style={{ color: '#423d3c' }}>
-                          Pickup
+                        <label htmlFor={`prepayDiscount-edit-${editingIndex}`} className="text-sm font-medium" style={{ color: '#423d3c' }}>
+                          Pre-pay (10% off)
                         </label>
                       </div>
-                      <FormField label="Menu Selection">
-                        <select
-                          value={editingClient.chefChoice === false ? 'client' : 'chef'}
-                          onChange={(e) => setEditingClient({ ...editingClient, chefChoice: e.target.value === 'chef' })}
-                          className={inputStyle}
+                      <div className="flex items-center gap-2 pt-6">
+                        <input
+                          type="checkbox"
+                          id={`paysOwnGroceries-edit-${editingIndex}`}
+                          checked={editingClient.paysOwnGroceries || false}
+                          onChange={(e) => setEditingClient({ ...editingClient, paysOwnGroceries: e.target.checked })}
+                          className="w-5 h-5 rounded border-2"
+                          style={{ accentColor: '#3d59ab' }}
+                        />
+                        <label htmlFor={`paysOwnGroceries-edit-${editingIndex}`} className="text-sm font-medium" style={{ color: '#423d3c' }}>
+                          Pays Own Groceries
+                        </label>
+                      </div>
+                    </div>
+                    <div className="mt-4">
+                      <FormField label="Billing Notes">
+                        <textarea
+                          value={editingClient.billingNotes || ''}
+                          onChange={(e) => setEditingClient({ ...editingClient, billingNotes: e.target.value })}
+                          className={inputStyle + " w-full"}
                           style={borderStyle}
-                        >
-                          <option value="chef">Chef Choice (Chef Paula picks)</option>
-                          <option value="client">Client Picks (Client selects dishes)</option>
-                        </select>
+                          rows="2"
+                        />
                       </FormField>
                     </div>
-
-                    {/* Contacts Section for Edit */}
-                    <div className="mt-4 pt-4 border-t-2" style={{ borderColor: '#ebb582' }}>
-                      <div className="flex items-center justify-between mb-4">
-                        <h4 className="text-md font-bold flex items-center gap-2" style={{ color: '#3d59ab' }}>
-                          <Users size={18} />
-                          Contacts ({editingClient.contacts?.length || 1})
-                        </h4>
-                        <button
-                          type="button"
-                          onClick={addEditingContact}
-                          className="flex items-center gap-1 px-3 py-1 rounded-lg text-white text-sm"
-                          style={{ backgroundColor: '#3d59ab' }}
-                        >
-                          <Plus size={16} />Add Contact
-                        </button>
-                      </div>
-                      <div className="space-y-4">
-                        {(editingClient.contacts || []).map((contact, idx) => (
-                          <ContactForm
-                            key={idx}
-                            contact={contact}
-                            index={idx}
-                            onChange={updateEditingContact}
-                            onRemove={() => removeEditingContact(idx)}
-                            canRemove={editingClient.contacts.length > 1}
-                          />
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Pricing Section for Edit */}
-                    <div className="mt-4 pt-4 border-t-2" style={{ borderColor: '#ebb582' }}>
-                      <h4 className="text-md font-bold mb-3" style={{ color: '#3d59ab' }}>Pricing</h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <FormField label="Plan Price ($)">
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={editingClient.planPrice || 0}
-                            onChange={(e) => setEditingClient({ ...editingClient, planPrice: parseFloat(e.target.value) || 0 })}
-                            className={inputStyle}
-                            style={borderStyle}
-                          />
-                        </FormField>
-                        <FormField label="Service Fee ($)">
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={editingClient.pickup ? 0 : (editingClient.serviceFee || 0)}
-                            onChange={(e) => setEditingClient({ ...editingClient, serviceFee: parseFloat(e.target.value) || 0 })}
-                            className={inputStyle}
-                            style={borderStyle}
-                            disabled={editingClient.pickup}
-                          />
-                        </FormField>
-                        <div className="flex items-center gap-2 pt-6">
-                          <input
-                            type="checkbox"
-                            id={`prepayDiscount-edit-${i}`}
-                            checked={editingClient.prepayDiscount || false}
-                            onChange={(e) => setEditingClient({ ...editingClient, prepayDiscount: e.target.checked })}
-                            className="w-5 h-5 rounded border-2"
-                            style={{ accentColor: '#3d59ab' }}
-                          />
-                          <label htmlFor={`prepayDiscount-edit-${i}`} className="text-sm font-medium" style={{ color: '#423d3c' }}>
-                            Pre-pay (10% off)
-                          </label>
-                        </div>
-                        <div className="flex items-center gap-2 pt-6">
-                          <input
-                            type="checkbox"
-                            id={`paysOwnGroceries-edit-${i}`}
-                            checked={editingClient.paysOwnGroceries || false}
-                            onChange={(e) => setEditingClient({ ...editingClient, paysOwnGroceries: e.target.checked })}
-                            className="w-5 h-5 rounded border-2"
-                            style={{ accentColor: '#3d59ab' }}
-                          />
-                          <label htmlFor={`paysOwnGroceries-edit-${i}`} className="text-sm font-medium" style={{ color: '#423d3c' }}>
-                            Pays Own Groceries
-                          </label>
-                        </div>
-                      </div>
-                      <div className="mt-4">
-                        <FormField label="Billing Notes">
-                          <textarea
-                            value={editingClient.billingNotes || ''}
-                            onChange={(e) => setEditingClient({ ...editingClient, billingNotes: e.target.value })}
-                            className={inputStyle + " w-full"}
-                            style={borderStyle}
-                            rows="2"
-                          />
-                        </FormField>
-                      </div>
-                      <div className="mt-4">
-                        <FormField label="Dietary Restrictions">
-                          <textarea
-                            value={editingClient.dietaryRestrictions || ''}
-                            onChange={(e) => setEditingClient({ ...editingClient, dietaryRestrictions: e.target.value })}
-                            placeholder="Allergies, preferences, dietary needs..."
-                            className={inputStyle + " w-full"}
-                            style={borderStyle}
-                            rows="2"
-                          />
-                        </FormField>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2 mt-4">
-                      <button
-                        onClick={saveEditing}
-                        className="flex items-center gap-1 px-4 py-2 rounded-lg text-white"
-                        style={{ backgroundColor: '#3d59ab' }}
-                      >
-                        <Check size={18} />Save
-                      </button>
-                      <button
-                        onClick={cancelEditing}
-                        className="flex items-center gap-1 px-4 py-2 rounded-lg bg-gray-200"
-                      >
-                        <X size={18} />Cancel
-                      </button>
+                    <div className="mt-4">
+                      <FormField label="Dietary Restrictions">
+                        <textarea
+                          value={editingClient.dietaryRestrictions || ''}
+                          onChange={(e) => setEditingClient({ ...editingClient, dietaryRestrictions: e.target.value })}
+                          placeholder="Allergies, preferences, dietary needs..."
+                          className={inputStyle + " w-full"}
+                          style={borderStyle}
+                          rows="2"
+                        />
+                      </FormField>
                     </div>
                   </div>
-                ) : (
-                  <div
-                    className={`border-2 rounded-lg p-4 ${subscription.status === 'paused' ? 'opacity-60' : ''}`}
-                    style={{ borderColor: subscription.status === 'paused' ? '#9ca3af' : '#ebb582' }}
-                  >
-                    <div className="flex justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-bold text-lg">{subscription.displayName || 'Unnamed'}</h3>
-                          {subscription.status === 'paused' && (
-                            <span className="text-xs px-2 py-1 rounded bg-gray-200 text-gray-600">Paused</span>
-                          )}
-                          {subscription.status === 'active' && (
-                            <span className="text-xs px-2 py-1 rounded bg-green-100 text-green-700">Active</span>
-                          )}
-                          {subscription.pickup && (
-                            <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700">Pickup</span>
-                          )}
-                        </div>
-                        <p className="text-sm text-gray-600">
-                          {subscription.portions} portions • {subscription.mealsPerWeek} meals/week • {subscription.frequency === 'biweekly' ? 'Biweekly' : 'Weekly'}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          {subscription.zone ? `Zone ${subscription.zone}` : 'No zone'}
-                          {subscription.deliveryDay && ` • ${subscription.deliveryDay}`}
-                        </p>
 
-                        {/* Contacts Display */}
-                        {(() => {
-                          const { count, uniqueAddresses, contacts } = getContactsSummary(subscription);
-                          return (
-                            <div className="mt-2">
-                              <div className="text-sm">
-                                <span className="text-purple-600 font-medium">
-                                  <Users size={14} className="inline mr-1" />
-                                  {count} contact{count !== 1 ? 's' : ''} • {uniqueAddresses} delivery stop{uniqueAddresses !== 1 ? 's' : ''}
-                                </span>
-                                <div className="mt-1 space-y-1">
-                                  {contacts.map((contact, idx) => (
-                                    <div key={idx} className="text-gray-500 pl-4 border-l-2" style={{ borderColor: '#d9a87a' }}>
-                                      <span className="font-medium">{contact.fullName || contact.displayName || `Contact ${idx + 1}`}</span>
-                                      {contact.displayName && contact.displayName !== contact.fullName && (
-                                        <span className="text-xs text-gray-400 ml-1">"{contact.displayName}"</span>
-                                      )}
-                                      {contact.address && <span className="block text-xs">{contact.address}</span>}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })()}
-
-                        {subscription.billingNotes && (
-                          <p className="text-sm text-amber-700 mt-2 bg-amber-50 px-2 py-1 rounded">
-                            Billing: {subscription.billingNotes}
-                          </p>
-                        )}
-
-                        {subscription.dietaryRestrictions && (
-                          <p className="text-sm text-red-700 mt-2 bg-red-50 px-2 py-1 rounded">
-                            Diet: {subscription.dietaryRestrictions}
-                          </p>
-                        )}
-
-                        {/* Recent Deliveries Section */}
-                        {(() => {
-                          const subId = subscription.subscriptionId || subscription.displayName || i;
-                          const clientName = subscription.displayName || subscription.name;
-                          const recentDeliveries = getRecentDeliveries(clientName);
-                          const isExpanded = expandedDeliveries[subId];
-
-                          if (recentDeliveries.length === 0) return null;
-
-                          return (
-                            <div className="mt-3">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleDeliveryHistory(subId);
-                                }}
-                                className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-800"
-                              >
-                                <Truck size={14} />
-                                <span>Recent Deliveries ({recentDeliveries.length})</span>
-                                {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                              </button>
-
-                              {isExpanded && (
-                                <div className="mt-2 pl-4 border-l-2 space-y-2" style={{ borderColor: '#3d59ab' }}>
-                                  {recentDeliveries.map((delivery, idx) => (
-                                    <div
-                                      key={idx}
-                                      className="text-sm p-2 rounded"
-                                      style={{ backgroundColor: '#f9f9ed' }}
-                                    >
-                                      <div className="flex items-center gap-2">
-                                        <span className="font-medium">
-                                          {new Date(delivery.date + 'T12:00:00').toLocaleDateString('en-US', {
-                                            month: 'short',
-                                            day: 'numeric'
-                                          })}
-                                        </span>
-                                        {delivery.status === 'problem' && (
-                                          <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700">
-                                            {delivery.problem}
-                                          </span>
-                                        )}
-                                        {delivery.status === 'delivered' && !delivery.problem && (
-                                          <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700">
-                                            Delivered
-                                          </span>
-                                        )}
-                                        {delivery.bagsReturned === false && (
-                                          <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
-                                            No bags
-                                          </span>
-                                        )}
-                                      </div>
-                                      {delivery.dishes && delivery.dishes.length > 0 && (
-                                        <p className="text-xs text-gray-500 mt-1">
-                                          {delivery.dishes.join(', ')}
-                                        </p>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
-                      </div>
-                      <div className="flex gap-2 self-start ml-4">
-                        <button
-                          onClick={() => copyPortalLink(subscription)}
-                          className="text-purple-600"
-                          title="Copy portal link"
-                        >
-                          <Link2 size={18} />
-                        </button>
-                        <button onClick={() => startEditing(i)} className="text-blue-600" title="Edit">
-                          <Edit2 size={18} />
-                        </button>
-                        <button onClick={() => deleteClient(i)} className="text-red-600" title="Delete">
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                    </div>
+                  <div className="flex gap-2 mt-4">
+                    <button
+                      onClick={saveEditing}
+                      className="flex items-center gap-1 px-4 py-2 rounded-lg text-white"
+                      style={{ backgroundColor: '#3d59ab' }}
+                    >
+                      <Check size={18} />Save
+                    </button>
+                    <button
+                      onClick={cancelEditing}
+                      className="flex items-center gap-1 px-4 py-2 rounded-lg bg-gray-200"
+                    >
+                      <X size={18} />Cancel
+                    </button>
                   </div>
+                </div>
+              )}
+
+              {/* Active Clients Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {activeClients.map((subscription) => (
+                  editingIndex !== subscription.originalIndex && (
+                    <ClientCard
+                      key={subscription.subscriptionId || subscription.originalIndex}
+                      subscription={subscription}
+                      onEdit={() => startEditing(subscription.originalIndex)}
+                      onDelete={() => deleteClient(subscription.originalIndex)}
+                      onCopyLink={() => copyPortalLink(subscription)}
+                    />
+                  )
+                ))}
+              </div>
+
+              {activeClients.length === 0 && (
+                <p className="text-gray-500 text-center py-8">No active clients</p>
+              )}
+            </div>
+
+            {/* Paused Clients Section */}
+            {pausedClients.length > 0 && (
+              <div className="bg-white rounded-lg shadow-lg p-6">
+                <button
+                  onClick={() => setShowPausedClients(!showPausedClients)}
+                  className="flex items-center justify-between w-full"
+                >
+                  <h2 className="text-xl font-bold" style={{ color: '#6b7280' }}>
+                    Paused Clients ({pausedClients.length})
+                  </h2>
+                  {showPausedClients ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                </button>
+
+                {showPausedClients && (
+                  <>
+                    {/* Edit Modal for Paused Clients */}
+                    {editingIndex !== null && clients[editingIndex]?.status === 'paused' && (
+                      <div className="border-2 rounded-lg p-4 mt-4 mb-4" style={{ borderColor: '#9ca3af', backgroundColor: '#f9f9ed' }}>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          <FormField label="Subscription Name">
+                            <input
+                              type="text"
+                              value={editingClient.displayName || ''}
+                              onChange={(e) => setEditingClient({ ...editingClient, displayName: e.target.value })}
+                              className={inputStyle}
+                              style={borderStyle}
+                            />
+                          </FormField>
+                          <FormField label="Status">
+                            <select
+                              value={editingClient.status || 'paused'}
+                              onChange={(e) => setEditingClient({ ...editingClient, status: e.target.value })}
+                              className={inputStyle}
+                              style={borderStyle}
+                            >
+                              <option value="active">Active</option>
+                              <option value="paused">Paused</option>
+                            </select>
+                          </FormField>
+                          <FormField label="Portions">
+                            <input
+                              type="number"
+                              value={editingClient.portions || 1}
+                              onChange={(e) => setEditingClient({ ...editingClient, portions: parseInt(e.target.value) || 1 })}
+                              className={inputStyle}
+                              style={borderStyle}
+                            />
+                          </FormField>
+                          <FormField label="Meals per Week">
+                            <input
+                              type="number"
+                              value={editingClient.mealsPerWeek || 0}
+                              onChange={(e) => setEditingClient({ ...editingClient, mealsPerWeek: parseInt(e.target.value) || 0 })}
+                              className={inputStyle}
+                              style={borderStyle}
+                            />
+                          </FormField>
+                          <FormField label="Zone">
+                            <select
+                              value={editingClient.zone || ''}
+                              onChange={(e) => setEditingClient({ ...editingClient, zone: e.target.value })}
+                              className={inputStyle}
+                              style={borderStyle}
+                            >
+                              <option value="">Unassigned</option>
+                              {ZONES.map(z => <option key={z} value={z}>Zone {z}</option>)}
+                            </select>
+                          </FormField>
+                          <FormField label="Delivery Day">
+                            <select
+                              value={editingClient.deliveryDay || ''}
+                              onChange={(e) => setEditingClient({ ...editingClient, deliveryDay: e.target.value })}
+                              className={inputStyle}
+                              style={borderStyle}
+                            >
+                              <option value="">Select day</option>
+                              {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
+                            </select>
+                          </FormField>
+                        </div>
+
+                        {/* Contacts Section for Edit */}
+                        <div className="mt-4 pt-4 border-t-2" style={{ borderColor: '#ebb582' }}>
+                          <div className="flex items-center justify-between mb-4">
+                            <h4 className="text-md font-bold flex items-center gap-2" style={{ color: '#3d59ab' }}>
+                              <Users size={18} />
+                              Contacts ({editingClient.contacts?.length || 1})
+                            </h4>
+                            <button
+                              type="button"
+                              onClick={addEditingContact}
+                              className="flex items-center gap-1 px-3 py-1 rounded-lg text-white text-sm"
+                              style={{ backgroundColor: '#3d59ab' }}
+                            >
+                              <Plus size={16} />Add Contact
+                            </button>
+                          </div>
+                          <div className="space-y-4">
+                            {(editingClient.contacts || []).map((contact, idx) => (
+                              <ContactForm
+                                key={idx}
+                                contact={contact}
+                                index={idx}
+                                onChange={updateEditingContact}
+                                onRemove={() => removeEditingContact(idx)}
+                                canRemove={editingClient.contacts.length > 1}
+                              />
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2 mt-4">
+                          <button
+                            onClick={saveEditing}
+                            className="flex items-center gap-1 px-4 py-2 rounded-lg text-white"
+                            style={{ backgroundColor: '#3d59ab' }}
+                          >
+                            <Check size={18} />Save
+                          </button>
+                          <button
+                            onClick={cancelEditing}
+                            className="flex items-center gap-1 px-4 py-2 rounded-lg bg-gray-200"
+                          >
+                            <X size={18} />Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Paused Clients Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+                      {pausedClients.map((subscription) => (
+                        editingIndex !== subscription.originalIndex && (
+                          <ClientCard
+                            key={subscription.subscriptionId || subscription.originalIndex}
+                            subscription={subscription}
+                            onEdit={() => startEditing(subscription.originalIndex)}
+                            onDelete={() => deleteClient(subscription.originalIndex)}
+                            onCopyLink={() => copyPortalLink(subscription)}
+                          />
+                        )
+                      ))}
+                    </div>
+                  </>
                 )}
               </div>
-            );
-          })}
-        </div>
-      </div>
+            )}
+          </>
+        );
+      })()}
     </div>
   );
 }
