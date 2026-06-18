@@ -793,25 +793,11 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
                       <span className={`font-medium text-sm truncate ${!isScheduled ? 'text-gray-400' : ''}`}>
                         {client.name}
                       </span>
-                      <div className="flex items-center gap-1">
-                        {assignmentDiffersFromPlanned && !isRebuilding && (
-                          <button
-                            onClick={() => handleRebuildClientMenus(client.id)}
-                            className="p-0.5 rounded hover:bg-green-100 text-green-600"
-                            title="Update planned menu"
-                          >
-                            <Check size={14} />
-                          </button>
-                        )}
-                        {isRebuilding && (
-                          <Loader2 size={14} className="animate-spin text-gray-400" />
-                        )}
-                        {!isScheduled ? (
-                          <span className="text-xs text-gray-400 italic">Not Scheduled</span>
-                        ) : (
-                          <span className="text-xs text-gray-500">{mealsPerWeek} meals</span>
-                        )}
-                      </div>
+                      {!isScheduled ? (
+                        <span className="text-xs text-gray-400 italic">Not Scheduled</span>
+                      ) : (
+                        <span className="text-xs text-gray-500">{mealsPerWeek} meals</span>
+                      )}
                     </div>
                     <div className={`flex items-center gap-1 ${!isScheduled ? 'pointer-events-none' : ''}`}>
                       <span className="text-xs text-gray-500">Gets:</span>
@@ -855,13 +841,29 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
                           );
                         })}
                       </div>
+                      {/* Sync checkmark - shows when assignment differs from planned */}
+                      {assignmentDiffersFromPlanned && !isRebuilding && (
+                        <button
+                          onClick={() => handleRebuildClientMenus(client.id)}
+                          className="ml-1 w-6 h-6 flex items-center justify-center rounded hover:bg-green-100 text-green-600"
+                          title="Update planned menu"
+                        >
+                          <Check size={18} />
+                        </button>
+                      )}
+                      {isRebuilding && (
+                        <span className="ml-1 w-6 h-6 flex items-center justify-center">
+                          <Loader2 size={18} className="animate-spin text-gray-400" />
+                        </span>
+                      )}
+                      {/* Reset to default */}
                       {isOverride && isScheduled && (
                         <button
                           onClick={() => deleteMealAssignment(client.id)}
-                          className="ml-1 text-xs text-gray-400 hover:text-red-500"
+                          className="ml-0.5 w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-red-500 hover:bg-red-50"
                           title="Reset to default"
                         >
-                          ×
+                          <X size={16} />
                         </button>
                       )}
                     </div>
