@@ -120,10 +120,11 @@ function DateSlotPicker({ value, onChange, minDate, slotIndex }) {
 export default function BillingTab({ clients, updateClients, blockedDates, updateBlockedDates, saveDeliveryDatesToSupabase }) {
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [showCalendar, setShowCalendar] = useState(false);
+  const [showPausedClients, setShowPausedClients] = useState(false);
   const today = new Date();
 
   const activeClients = clients.filter(c => c.status === 'active');
-  const pausedClients = clients.filter(c => c.status === 'paused');
+  const pausedClients = clients.filter(c => c.status === 'paused' || c.status === 'inactive');
 
   const updateClientField = (clientName, field, value) => {
     const updated = clients.map(c =>
@@ -211,11 +212,11 @@ export default function BillingTab({ clients, updateClients, blockedDates, updat
 
   return (
     <div className="space-y-6">
-      {/* All Clients - Billing & Dates */}
+      {/* Active Clients - Delivery Scheduling */}
       <div className="bg-white rounded-lg shadow-lg p-6">
         <h2 className="text-xl font-bold mb-1" style={{ color: '#3d59ab' }}>
           <Calendar className="inline mr-2" size={24} />
-          Delivery Scheduling
+          Active Clients ({activeClients.length})
         </h2>
         <p className="text-gray-500 text-sm mb-3">
           Set the next 4 upcoming delivery dates for each client
@@ -265,35 +266,44 @@ export default function BillingTab({ clients, updateClients, blockedDates, updat
         </div>
       </div>
 
-      {/* Paused Clients */}
+      {/* Paused/Inactive Clients - Collapsible */}
       {pausedClients.length > 0 && (
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-xl font-bold mb-2" style={{ color: '#3d59ab' }}>
-            Paused Clients ({pausedClients.length})
-          </h2>
-          <div className="space-y-2">
-            {pausedClients.map((client, idx) => (
-              <div
-                key={idx}
-                className="p-3 rounded-lg flex items-center justify-between bg-gray-50 border border-gray-200"
-              >
-                <div>
-                  <h3 className="font-medium">{client.displayName || client.name}</h3>
-                  {client.pausedDate && (
-                    <p className="text-sm text-gray-500">
-                      Paused: {new Date(client.pausedDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </p>
-                  )}
-                  {client.billingNotes && (
-                    <p className="text-sm text-gray-500">{client.billingNotes}</p>
-                  )}
+        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+          <button
+            onClick={() => setShowPausedClients(!showPausedClients)}
+            className="w-full p-4 flex items-center justify-between hover:bg-gray-50"
+          >
+            <span className="font-bold text-gray-500">
+              Paused/Inactive Clients ({pausedClients.length})
+            </span>
+            {showPausedClients ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+          </button>
+
+          {showPausedClients && (
+            <div className="px-4 pb-4 space-y-2">
+              {pausedClients.map((client, idx) => (
+                <div
+                  key={idx}
+                  className="p-3 rounded-lg flex items-center justify-between bg-gray-50 border border-gray-200"
+                >
+                  <div>
+                    <h3 className="font-medium text-gray-700">{client.displayName || client.name}</h3>
+                    {client.pausedDate && (
+                      <p className="text-sm text-gray-500">
+                        Paused: {new Date(client.pausedDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </p>
+                    )}
+                    {client.billingNotes && (
+                      <p className="text-sm text-gray-500">{client.billingNotes}</p>
+                    )}
+                  </div>
+                  <span className="text-xs px-2 py-1 rounded bg-gray-200 text-gray-600">
+                    {client.status === 'inactive' ? 'Inactive' : 'Paused'}
+                  </span>
                 </div>
-                <span className="text-xs px-2 py-1 rounded bg-gray-200 text-gray-600">
-                  Paused
-                </span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
