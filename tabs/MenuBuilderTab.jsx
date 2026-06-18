@@ -138,6 +138,7 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
     deleteMealAssignment,
     getClientAssignedMeals,
     applyBaseMenu,
+    rebuildClientMenus,
     updateClientMeal,
     confirmClientMenus,
     clearWeekMenus,
@@ -176,6 +177,9 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
 
   // Removing client from week state
   const [removingClient, setRemovingClient] = useState(null);
+
+  // Rebuilding single client state
+  const [rebuildingClient, setRebuildingClient] = useState(null);
 
   // Styled menu preview state
   const [showPreview, setShowPreview] = useState(false);
@@ -291,6 +295,16 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
     const result = await applyBaseMenu();
     setApplyResult(result);
     setApplying(false);
+  };
+
+  // Handle rebuild single client menus
+  const handleRebuildClientMenus = async (clientId) => {
+    setRebuildingClient(clientId);
+    const result = await rebuildClientMenus(clientId);
+    setRebuildingClient(null);
+    if (!result.success) {
+      alert(`Failed to update menu: ${result.error}`);
+    }
   };
 
   // Handle assignment change
@@ -751,26 +765,53 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
                 const isOverride = JSON.stringify(assignedMeals) !== JSON.stringify(defaultMeals);
                 const isScheduled = scheduledClientIds.has(client.id);
 
+                // Check if client has menus and if assignment differs from planned
+                const clientMenuRows = weekMenus.filter(m => m.client_id === client.id);
+                const hasMenus = clientMenuRows.length > 0;
+                const plannedMealIndices = clientMenuRows
+                  .map(m => m.base_meal_index)
+                  .filter(Boolean)
+                  .sort((a, b) => a - b);
+                const assignmentDiffersFromPlanned = hasMenus &&
+                  JSON.stringify(assignedMeals) !== JSON.stringify(plannedMealIndices);
+                const isRebuilding = rebuildingClient === client.id;
+
                 return (
                   <div
                     key={client.id}
                     className={`p-2 rounded border ${
                       !isScheduled
                         ? 'border-gray-200 bg-gray-100 opacity-50'
-                        : isOverride
-                          ? 'border-yellow-400 bg-yellow-50'
-                          : 'border-gray-200'
+                        : assignmentDiffersFromPlanned
+                          ? 'border-orange-400 bg-orange-50'
+                          : isOverride
+                            ? 'border-yellow-400 bg-yellow-50'
+                            : 'border-gray-200'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1">
                       <span className={`font-medium text-sm truncate ${!isScheduled ? 'text-gray-400' : ''}`}>
                         {client.name}
                       </span>
-                      {!isScheduled ? (
-                        <span className="text-xs text-gray-400 italic">Not Scheduled</span>
-                      ) : (
-                        <span className="text-xs text-gray-500">{mealsPerWeek} meals</span>
-                      )}
+                      <div className="flex items-center gap-1">
+                        {assignmentDiffersFromPlanned && !isRebuilding && (
+                          <button
+                            onClick={() => handleRebuildClientMenus(client.id)}
+                            className="p-0.5 rounded hover:bg-green-100 text-green-600"
+                            title="Update planned menu"
+                          >
+                            <Check size={14} />
+                          </button>
+                        )}
+                        {isRebuilding && (
+                          <Loader2 size={14} className="animate-spin text-gray-400" />
+                        )}
+                        {!isScheduled ? (
+                          <span className="text-xs text-gray-400 italic">Not Scheduled</span>
+                        ) : (
+                          <span className="text-xs text-gray-500">{mealsPerWeek} meals</span>
+                        )}
+                      </div>
                     </div>
                     <div className={`flex items-center gap-1 ${!isScheduled ? 'pointer-events-none' : ''}`}>
                       <span className="text-xs text-gray-500">Gets:</span>

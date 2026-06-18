@@ -18,6 +18,7 @@ import {
   deleteClientMealAssignment,
   getDefaultMealAssignment,
   applyBaseMenuToClients,
+  rebuildSingleClientMenus,
   ensureWeeksExist,
   saveClientMeal,
   confirmClientMenusForWeek,
@@ -259,6 +260,55 @@ export function useMenuBuilder({ selectedWeekId, clients }) {
     }
   }, []);
 
+  // Rebuild a single client's menus from their current assignment
+  // Does NOT affect other clients
+  const rebuildClientMenus = useCallback(async (clientId) => {
+    if (!isSupabaseMode() || !isConfigured()) {
+      return { success: false, error: 'Supabase not configured' };
+    }
+
+    const client = clients.find(c => c.id === clientId);
+    if (!client) {
+      return { success: false, error: 'Client not found' };
+    }
+
+    // Get client's delivery date for this week
+    const todayStr = new Date().toISOString().split('T')[0];
+    const clientDates = (client.deliveryDates || client.delivery_dates || [])
+      .filter(d => d && d >= todayStr);
+    const deliveryDate = clientDates[0] || todayStr;
+
+    // Get assigned meals (from saved assignment or default)
+    const mealsPerWeek = client.meals_per_week || client.mealsPerWeek || 3;
+    const savedAssignment = clientMealAssignments.find(
+      a => a.client_id === clientId && a.week_id === selectedWeekId
+    );
+    const assignedMeals = savedAssignment?.assigned_meals || getDefaultMealAssignment(mealsPerWeek);
+
+    console.log('[useMenuBuilder] Rebuilding', client.name, 'with assignment:', assignedMeals);
+
+    try {
+      const result = await rebuildSingleClientMenus(
+        selectedWeekId,
+        baseWeeklyMenus,
+        client,
+        deliveryDate,
+        assignedMeals
+      );
+
+      if (result.success) {
+        // Refresh scheduleMenus to show updated data
+        const menus = await fetchMenusForWeekRange([selectedWeekId]);
+        setScheduleMenus(menus);
+      }
+
+      return result;
+    } catch (err) {
+      console.error('[useMenuBuilder] Error rebuilding client menus:', err);
+      return { success: false, error: err.message };
+    }
+  }, [clients, clientMealAssignments, baseWeeklyMenus, selectedWeekId]);
+
   // Confirm/approve all menus for a client + week
   const confirmClientMenus = useCallback(async (clientId, weekId) => {
     try {
@@ -372,6 +422,7 @@ export function useMenuBuilder({ selectedWeekId, clients }) {
     deleteMealAssignment,
     getClientAssignedMeals,
     applyBaseMenu,
+    rebuildClientMenus,
     updateClientMeal,
     confirmClientMenus,
     clearWeekMenus: clearWeekMenusHandler,
