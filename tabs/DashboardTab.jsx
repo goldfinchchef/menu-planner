@@ -7,6 +7,10 @@ import React, { useState, useRef } from 'react';
 import { DollarSign, Receipt, TrendingUp, X, Upload, ChevronDown, ChevronUp, Users } from 'lucide-react';
 import Papa from 'papaparse';
 
+// Pantry/consumables markup (15%) applied to projected ingredient costs
+// This accounts for oils, spices, packaging, and other consumables not tracked per-recipe
+const PANTRY_MARKUP = 0.15;
+
 // Format date for display
 function formatDate(date) {
   if (!date) return '';
@@ -258,7 +262,9 @@ export default function DashboardTab({
       totalCost: entry.totalPortions * entry.costPerPortion
     }));
 
-    const projectedTotal = entries.reduce((sum, e) => sum + e.totalCost, 0);
+    // Apply pantry markup to get total projected grocery cost
+    const ingredientTotal = entries.reduce((sum, e) => sum + e.totalCost, 0);
+    const projectedTotal = ingredientTotal * (1 + PANTRY_MARKUP);
     return { entries, projectedTotal };
   };
 
@@ -384,11 +390,14 @@ export default function DashboardTab({
         });
       }
 
-      const mealTotal = mealCostPerPortion * portions;
+      // Apply pantry markup to meal costs
+      const mealIngredientCost = mealCostPerPortion * portions;
+      const mealTotal = mealIngredientCost * (1 + PANTRY_MARKUP);
+      const costPerPortionWithPantry = mealCostPerPortion * (1 + PANTRY_MARKUP);
       weekData[weekId].clients[clientName].meals.push({
         dishes: mealDishes,
         portions,
-        costPerPortion: mealCostPerPortion,
+        costPerPortion: costPerPortionWithPantry,
         total: mealTotal
       });
       weekData[weekId].clients[clientName].total += mealTotal;
@@ -397,37 +406,16 @@ export default function DashboardTab({
     return weekData;
   };
 
-  // Get scheduled clients - those with a delivery date within this week
-  const getScheduledClients = () => {
-    if (!weekStart || !weekEnd) return [];
-
-    return clients.filter(client => {
-      if (client.status !== 'active') return false;
-      // Check confirmedDates first (migrated data), fall back to deliveryDates
-      const dates = client.confirmedDates?.length > 0
-        ? client.confirmedDates
-        : (client.deliveryDates || []);
-      // Check if any date falls within this week
-      return dates.some(dateStr => {
-        if (!dateStr) return false;
-        return dateStr >= weekStart && dateStr <= weekEnd;
-      });
-    });
-  };
-
-  const scheduledClients = getScheduledClients();
-
-  // Count total delivery dates in the selected week (not unique clients)
-  // A client with 2 delivery dates = 2 deliveries
-  const getDeliveryCount = () => {
+  // Count CONFIRMED deliveries only (for Expected Cash In)
+  // This excludes requested/unconfirmed dates
+  const getConfirmedDeliveryCount = () => {
     if (!weekStart || !weekEnd) return 0;
 
     let count = 0;
     clients.forEach(client => {
       if (client.status !== 'active') return;
-      const dates = client.confirmedDates?.length > 0
-        ? client.confirmedDates
-        : (client.deliveryDates || []);
+      // Only use confirmedDates - no fallback to deliveryDates
+      const dates = client.confirmedDates || [];
       dates.forEach(dateStr => {
         if (dateStr && dateStr >= weekStart && dateStr <= weekEnd) {
           count++;
@@ -437,31 +425,62 @@ export default function DashboardTab({
     return count;
   };
 
-  const deliveryCount = getDeliveryCount();
+  const confirmedDeliveryCount = getConfirmedDeliveryCount();
 
-  // Calculate value of orders from scheduled clients
-  const valueOfOrders = scheduledClients.reduce((total, client) => {
-    const planPrice = parseFloat(client.planPrice) || 0;
-    const serviceFee = client.pickup ? 0 : (parseFloat(client.serviceFee) || 0);
-    const subtotal = planPrice + serviceFee;
-    const discount = client.prepayDiscount ? subtotal * 0.1 : 0;
-    return total + (subtotal - discount);
-  }, 0);
+  // Calculate Expected Cash In from CONFIRMED deliveries only
+  // TODO: Add billing_type field (preferred | ad_hoc) to clients
+  // - preferred: planPrice spread across cycle deliveries (planPrice / deliveries_in_cycle)
+  // - ad_hoc: planPrice per delivery (current behavior)
+  // For now, treat all clients as ad_hoc: planPrice + serviceFee per delivery
+  const getExpectedCashIn = () => {
+    if (!weekStart || !weekEnd) return 0;
+
+    let total = 0;
+    clients.forEach(client => {
+      if (client.status !== 'active') return;
+      // Only use confirmedDates - no fallback to deliveryDates
+      const dates = client.confirmedDates || [];
+      const confirmedThisWeek = dates.filter(
+        dateStr => dateStr && dateStr >= weekStart && dateStr <= weekEnd
+      ).length;
+
+      if (confirmedThisWeek > 0) {
+        const planPrice = parseFloat(client.planPrice) || 0;
+        const serviceFee = client.pickup ? 0 : (parseFloat(client.serviceFee) || 0);
+        // Per-delivery revenue = planPrice + serviceFee
+        total += confirmedThisWeek * (planPrice + serviceFee);
+      }
+    });
+    return total;
+  };
+
+  const expectedCashIn = getExpectedCashIn();
 
   // Calculate client profitability (revenue - grocery cost per client)
+  // Only includes clients with CONFIRMED deliveries this week
   const getClientProfitability = () => {
     const weekData = buildClientBreakdown();
     const clientProfits = [];
 
-    scheduledClients.forEach(client => {
+    clients.forEach(client => {
+      if (client.status !== 'active') return;
       const clientName = client.name;
+
+      // Only count confirmed deliveries for revenue
+      const confirmedDates = client.confirmedDates || [];
+      const confirmedThisWeek = confirmedDates.filter(
+        dateStr => dateStr && dateStr >= weekStart && dateStr <= weekEnd
+      ).length;
+
+      // Skip clients with no confirmed deliveries this week
+      if (confirmedThisWeek === 0) return;
+
       const planPrice = parseFloat(client.planPrice) || 0;
       const serviceFee = client.pickup ? 0 : (parseFloat(client.serviceFee) || 0);
-      const subtotal = planPrice + serviceFee;
-      const discount = client.prepayDiscount ? subtotal * 0.1 : 0;
-      const revenue = subtotal - discount;
+      // Revenue = confirmed deliveries × (planPrice + serviceFee)
+      const revenue = confirmedThisWeek * (planPrice + serviceFee);
 
-      // Find grocery cost for this client this week
+      // Find grocery cost for this client this week (already includes pantry markup)
       let groceryCost = 0;
       Object.values(weekData).forEach(week => {
         if (week.clients[clientName]) {
@@ -498,9 +517,9 @@ export default function DashboardTab({
 
   const profitability = getClientProfitability();
 
-  // Average revenue per delivery
-  const avgPerDelivery = deliveryCount > 0
-    ? valueOfOrders / deliveryCount
+  // Average revenue per confirmed delivery
+  const avgPerDelivery = confirmedDeliveryCount > 0
+    ? expectedCashIn / confirmedDeliveryCount
     : 0;
 
   // Get last 6 weeks of grocery spending for mini chart
@@ -554,19 +573,19 @@ export default function DashboardTab({
 
       {/* Top Row: 3 Executive Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Expected Cash In */}
+        {/* Expected Cash In - based on CONFIRMED deliveries only */}
         <div className="bg-white rounded-lg shadow-lg p-6">
           <div className="flex items-center gap-2 mb-4">
             <DollarSign size={24} className="text-green-600" />
             <h3 className="text-lg font-bold text-gray-700">Expected Cash In</h3>
           </div>
           <p className="text-4xl font-bold text-green-600 mb-4">
-            ${valueOfOrders.toFixed(2)}
+            ${expectedCashIn.toFixed(2)}
           </p>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-gray-500">Deliveries</span>
-              <span className="font-medium">{deliveryCount}</span>
+              <span className="text-gray-500">Confirmed Deliveries</span>
+              <span className="font-medium">{confirmedDeliveryCount}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">Avg per Delivery</span>
