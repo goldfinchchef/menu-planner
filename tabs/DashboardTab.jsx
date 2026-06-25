@@ -417,6 +417,28 @@ export default function DashboardTab({
 
   const scheduledClients = getScheduledClients();
 
+  // Count total delivery dates in the selected week (not unique clients)
+  // A client with 2 delivery dates = 2 deliveries
+  const getDeliveryCount = () => {
+    if (!weekStart || !weekEnd) return 0;
+
+    let count = 0;
+    clients.forEach(client => {
+      if (client.status !== 'active') return;
+      const dates = client.confirmedDates?.length > 0
+        ? client.confirmedDates
+        : (client.deliveryDates || []);
+      dates.forEach(dateStr => {
+        if (dateStr && dateStr >= weekStart && dateStr <= weekEnd) {
+          count++;
+        }
+      });
+    });
+    return count;
+  };
+
+  const deliveryCount = getDeliveryCount();
+
   // Calculate value of orders from scheduled clients
   const valueOfOrders = scheduledClients.reduce((total, client) => {
     const planPrice = parseFloat(client.planPrice) || 0;
@@ -477,8 +499,8 @@ export default function DashboardTab({
   const profitability = getClientProfitability();
 
   // Average revenue per delivery
-  const avgPerDelivery = scheduledClients.length > 0
-    ? valueOfOrders / scheduledClients.length
+  const avgPerDelivery = deliveryCount > 0
+    ? valueOfOrders / deliveryCount
     : 0;
 
   // Get last 6 weeks of grocery spending for mini chart
@@ -544,7 +566,7 @@ export default function DashboardTab({
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-500">Deliveries</span>
-              <span className="font-medium">{scheduledClients.length}</span>
+              <span className="font-medium">{deliveryCount}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">Avg per Delivery</span>
