@@ -272,11 +272,13 @@ export function useMenuBuilder({ selectedWeekId, clients }) {
       return { success: false, error: 'Client not found' };
     }
 
-    // Get client's delivery date for this week
-    const todayStr = new Date().toISOString().split('T')[0];
+    // Get client's delivery date for the SELECTED week (not today)
+    const weekStart = getWeekStartDate(selectedWeekId);
+    const weekEnd = getWeekEndDate(selectedWeekId);
     const clientDates = (client.deliveryDates || client.delivery_dates || [])
-      .filter(d => d && d >= todayStr);
-    const deliveryDate = clientDates[0] || todayStr;
+      .filter(d => d && d >= weekStart && d <= weekEnd);
+    // Use first date in selected week, or fallback to week start
+    const deliveryDate = clientDates[0] || weekStart;
 
     // Get assigned meals (from saved assignment or default)
     const mealsPerWeek = client.meals_per_week || client.mealsPerWeek || 3;
