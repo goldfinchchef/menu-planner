@@ -206,12 +206,16 @@ export default function RecipesTab(props) {
     };
 
     // Pass recipe data directly to saveRecipe (avoids state timing issues)
-    await saveRecipe(recipeToSave);
-    setIsModalOpen(false);
-    setModalRecipe(null);
-    // Refresh selected recipe if we were editing it
-    if (selectedRecipe && selectedRecipe.recipe.id === recipeToSave.id) {
-      setSelectedRecipe(null);
+    const success = await saveRecipe(recipeToSave);
+
+    // Only close modal if save was successful
+    if (success) {
+      setIsModalOpen(false);
+      setModalRecipe(null);
+      // Refresh selected recipe if we were editing it
+      if (selectedRecipe && selectedRecipe.recipe.id === recipeToSave.id) {
+        setSelectedRecipe(null);
+      }
     }
   };
 

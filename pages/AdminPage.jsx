@@ -3323,49 +3323,58 @@ export default function AdminPage() {
   };
 
   // Recipe functions
-  const saveRecipe = async () => {
+  const saveRecipe = async (recipeArg) => {
     console.log('[AdminPage.saveRecipe] START');
     console.log('[AdminPage.saveRecipe] dataMode:', getDataMode(), 'isSupabaseMode:', isSupabaseMode());
 
-    if (!newRecipe.name) { alert('Please enter a recipe name'); return; }
-    const validIngredients = newRecipe.ingredients.filter(ing => ing.name && ing.quantity);
-    if (validIngredients.length === 0) { alert('Please add at least one ingredient with name and quantity'); return; }
+    // Use passed recipe argument if provided, otherwise use newRecipe state
+    const recipe = recipeArg || newRecipe;
+    const category = recipe.category || newRecipe.category;
+
+    if (!recipe.name) { alert('Please enter a recipe name'); return false; }
+    const validIngredients = recipe.ingredients.filter(ing => ing.name && ing.quantity);
+    if (validIngredients.length === 0) { alert('Please add at least one ingredient with name and quantity'); return false; }
 
     // Check for duplicate ingredients
     const duplicates = findDuplicateIngredients(validIngredients);
     if (duplicates.length > 0) {
       alert(`Error: ${duplicates.join(', ')} is entered twice. Please combine or remove duplicates.`);
-      return;
+      return false;
     }
 
     // Save new ingredients to master list and await completion
     await Promise.all(validIngredients.map(ing => addToMasterIngredients(ing)));
 
     const recipeToSave = {
-      name: newRecipe.name,
-      instructions: newRecipe.instructions,
+      id: recipe.id,
+      name: recipe.name,
+      subcategory: recipe.subcategory,
+      instructions: recipe.instructions,
       ingredients: validIngredients
     };
-    console.log('[AdminPage.saveRecipe] recipeToSave:', recipeToSave.name, 'category:', newRecipe.category);
+    console.log('[AdminPage.saveRecipe] recipeToSave:', recipeToSave.name, 'category:', category);
 
     if (isConfigured()) {
       console.log('[AdminPage.saveRecipe] calling saveRecipeToSupabase...');
-      const result = await saveRecipeToSupabase(recipeToSave, newRecipe.category);
+      const result = await saveRecipeToSupabase(recipeToSave, category);
       console.log('[AdminPage.saveRecipe] result:', result.success, result.error || '');
       if (result.success) {
         // Update both React state AND localStorage for persistence on refresh
         setRecipes(result.recipes);
         saveData({ recipes: result.recipes });
-        setNewRecipe(DEFAULT_NEW_RECIPE);
+        if (!recipeArg) setNewRecipe(DEFAULT_NEW_RECIPE);
         alert('Recipe saved!');
+        return true;
       } else {
         alert(`Save failed: ${result.error}`);
+        return false;
       }
     } else {
       console.log('[AdminPage.saveRecipe] LOCAL MODE - not calling Supabase');
-      updateRecipes({ ...recipes, [newRecipe.category]: [...recipes[newRecipe.category], recipeToSave] });
-      setNewRecipe(DEFAULT_NEW_RECIPE);
+      updateRecipes({ ...recipes, [category]: [...recipes[category], recipeToSave] });
+      if (!recipeArg) setNewRecipe(DEFAULT_NEW_RECIPE);
       alert('Recipe saved (local only)!');
+      return true;
     }
   };
 
