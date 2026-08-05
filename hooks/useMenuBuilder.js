@@ -243,6 +243,84 @@ export function useMenuBuilder({ selectedWeekId, clients }) {
     }
   }, [baseWeeklyMenus, clients, scheduleMenus, selectedWeekId, clientMealAssignments]);
 
+  // Reset ALL client menus to base (overwrites existing menus)
+  // Unlike applyBaseMenu, this does NOT skip clients with existing menus
+  const resetAllClientMenus = useCallback(async () => {
+    console.log('[useMenuBuilder] === Reset All Client Menus to Base ===');
+    console.log('[useMenuBuilder] weekId:', selectedWeekId);
+
+    if (!isSupabaseMode() || !isConfigured()) {
+      return { success: false, error: 'Supabase not configured' };
+    }
+
+    if (baseWeeklyMenus.length === 0) {
+      return { success: false, error: 'No base menus defined for this week' };
+    }
+
+    // Find ALL active clients with confirmed dates (don't skip existing menus)
+    const confirmedClients = [];
+    const clientsNoDate = [];
+
+    const activeClients = clients.filter(c => c.status === 'active');
+    const weekStart = getWeekStartDate(selectedWeekId);
+    const weekEnd = getWeekEndDate(selectedWeekId);
+
+    for (const client of activeClients) {
+      // Check for delivery date in the selected week
+      const deliveryDates = client.deliveryDates || client.delivery_dates || [];
+      const dateInWeek = deliveryDates.find(d => d && d >= weekStart && d <= weekEnd);
+
+      if (dateInWeek) {
+        confirmedClients.push({ client, date: dateInWeek });
+      } else {
+        clientsNoDate.push(client.name);
+      }
+    }
+
+    console.log('[useMenuBuilder] Clients to reset:', confirmedClients.map(c => c.client.name));
+    console.log('[useMenuBuilder] Skipped (no date in week):', clientsNoDate);
+
+    if (confirmedClients.length === 0) {
+      return {
+        success: true,
+        message: 'No clients with confirmed dates for this week',
+        reset: 0,
+        created: 0,
+        skippedNoDate: clientsNoDate.length,
+        clientsNoDate
+      };
+    }
+
+    try {
+      await ensureWeeksExist([selectedWeekId]);
+
+      // applyBaseMenuToClients already does DELETE + INSERT for each client
+      const applyResult = await applyBaseMenuToClients(
+        selectedWeekId,
+        baseWeeklyMenus,
+        confirmedClients,
+        clientMealAssignments
+      );
+
+      // Refresh scheduleMenus to show updated data
+      const menus = await fetchMenusForWeekRange([selectedWeekId]);
+      console.log('[useMenuBuilder] Refreshed menus:', menus?.length, 'rows');
+      setScheduleMenus(menus);
+
+      return {
+        success: true,
+        reset: confirmedClients.length,
+        created: applyResult.created,
+        skippedNoDate: clientsNoDate.length,
+        clientsNoDate,
+        errors: applyResult.errors
+      };
+    } catch (err) {
+      console.error('[useMenuBuilder] Error resetting client menus:', err);
+      return { success: false, error: err.message };
+    }
+  }, [baseWeeklyMenus, clients, selectedWeekId, clientMealAssignments]);
+
   // Save individual client menu edit (override from base)
   const updateClientMeal = useCallback(async (menuId, updates) => {
     try {
@@ -424,6 +502,7 @@ export function useMenuBuilder({ selectedWeekId, clients }) {
     deleteMealAssignment,
     getClientAssignedMeals,
     applyBaseMenu,
+    resetAllClientMenus,
     rebuildClientMenus,
     updateClientMeal,
     confirmClientMenus,

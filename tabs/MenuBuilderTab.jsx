@@ -138,6 +138,7 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
     deleteMealAssignment,
     getClientAssignedMeals,
     applyBaseMenu,
+    resetAllClientMenus,
     rebuildClientMenus,
     updateClientMeal,
     confirmClientMenus,
@@ -157,6 +158,11 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
   // Local state for applying
   const [applying, setApplying] = useState(false);
   const [applyResult, setApplyResult] = useState(null);
+
+  // Local state for reset all
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetResult, setResetResult] = useState(null);
 
   // Sections expand/collapse
   const [showBaseMenu, setShowBaseMenu] = useState(true);
@@ -295,6 +301,17 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
     const result = await applyBaseMenu();
     setApplyResult(result);
     setApplying(false);
+  };
+
+  // Handle reset all client menus
+  const handleResetAllMenus = async () => {
+    setResetting(true);
+    setResetResult(null);
+
+    const result = await resetAllClientMenus();
+    setResetResult(result);
+    setResetting(false);
+    setShowResetModal(false);
   };
 
   // Handle rebuild single client menus
@@ -703,6 +720,48 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
                 ) : (
                   <span>{applyResult.error}</span>
                 )}
+              </div>
+            )}
+
+            {/* Reset result feedback */}
+            {resetResult && (
+              <div className={`mt-3 p-3 rounded text-sm ${
+                resetResult.success ? 'bg-amber-50 border border-amber-200' : 'bg-red-50 text-red-700'
+              }`}>
+                {resetResult.success ? (
+                  <div className="space-y-1">
+                    {resetResult.reset > 0 && (
+                      <div className="text-amber-700">
+                        <span className="font-medium">Reset menus for {resetResult.reset} client{resetResult.reset !== 1 ? 's' : ''}</span>
+                      </div>
+                    )}
+                    {resetResult.created > 0 && (
+                      <div className="text-green-700">
+                        Created {resetResult.created} menu row{resetResult.created !== 1 ? 's' : ''}
+                      </div>
+                    )}
+                    {resetResult.skippedNoDate > 0 && (
+                      <div className="text-gray-600">
+                        Skipped {resetResult.skippedNoDate} client{resetResult.skippedNoDate !== 1 ? 's' : ''} (no confirmed date)
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <span>{resetResult.error}</span>
+                )}
+              </div>
+            )}
+
+            {/* Secondary action: Reset All Menus */}
+            {!editingBase && hasBaseMenu && clientCards.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <button
+                  onClick={() => setShowResetModal(true)}
+                  disabled={resetting}
+                  className="text-sm text-amber-600 hover:text-amber-700 hover:underline"
+                >
+                  {resetting ? 'Resetting...' : 'Reset all client menus to base...'}
+                </button>
               </div>
             )}
           </div>
@@ -1174,6 +1233,50 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
           weekId={selectedWeekId}
           onClose={() => setShowPreview(false)}
         />
+      )}
+
+      {/* Reset All Menus Confirmation Modal */}
+      {showResetModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-amber-100 rounded-full">
+                  <AlertCircle className="w-6 h-6 text-amber-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Reset All Client Menus
+                </h3>
+              </div>
+
+              <p className="text-gray-700 mb-4">
+                Reset all client menus for <strong>{selectedWeekId}</strong> to the current base menu?
+              </p>
+
+              <p className="text-gray-600 text-sm mb-6">
+                This will overwrite client-specific swaps and manual menu edits for this week.
+                It will not affect other weeks.
+              </p>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setShowResetModal(false)}
+                  disabled={resetting}
+                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleResetAllMenus}
+                  disabled={resetting}
+                  className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
+                >
+                  {resetting ? 'Resetting...' : 'Reset All Menus'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
