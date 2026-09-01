@@ -1032,6 +1032,14 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
                               No Date
                             </span>
                           )}
+                          {client.dietaryRestrictions && (
+                            <span
+                              className="text-xs text-gray-500 truncate max-w-[200px]"
+                              title={client.dietaryRestrictions}
+                            >
+                              {client.dietaryRestrictions}
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-gray-500 text-sm">
