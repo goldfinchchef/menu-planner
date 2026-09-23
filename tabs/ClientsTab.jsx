@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Upload, Download, Edit2, Check, X, Link2, Minus, Users, User, ChevronDown, ChevronUp, Truck, MapPin, DollarSign, AlertCircle, Settings } from 'lucide-react';
+import { Plus, Trash2, Upload, Download, Edit2, Check, X, Link2, Minus, Users, User, ChevronDown, ChevronUp, Truck, MapPin, DollarSign, AlertCircle, Settings, LayoutGrid, List } from 'lucide-react';
 import { ZONES, DAYS, DEFAULT_CONTACT, DEFAULT_NEW_SUBSCRIPTION } from '../constants';
 import { isSupabaseMode } from '../lib/dataMode';
 import { saveClientToSupabase } from '../lib/database';
@@ -223,6 +223,97 @@ const ClientCard = ({ subscription, onEdit, onDelete, onCopyLink }) => {
   );
 };
 
+// Compact List Row Component for list view
+const ClientListRow = ({ subscription, onEdit, onDelete, onCopyLink }) => {
+  const contacts = subscription.contacts || [];
+  const primaryCity = extractCity(contacts[0]?.address);
+  const isPaused = subscription.status === 'paused';
+
+  return (
+    <tr className={`border-b hover:bg-gray-50 ${isPaused ? 'opacity-70' : ''}`} style={{ borderColor: '#ebb582' }}>
+      {/* Client Name */}
+      <td className="py-2 px-3">
+        <span className="font-medium" style={{ color: '#3d59ab' }}>
+          {subscription.displayName || 'Unnamed'}
+        </span>
+      </td>
+      {/* Plan: portions × meals */}
+      <td className="py-2 px-3 text-sm text-gray-600">
+        {subscription.portions} × {subscription.mealsPerWeek}
+      </td>
+      {/* Frequency */}
+      <td className="py-2 px-3 text-sm text-gray-600">
+        {subscription.frequency === 'biweekly' ? 'Biweekly' : 'Weekly'}
+      </td>
+      {/* Delivery Day */}
+      <td className="py-2 px-3 text-sm text-gray-600">
+        {subscription.deliveryDay || '—'}
+      </td>
+      {/* Zone · City */}
+      <td className="py-2 px-3 text-sm">
+        <span className="flex items-center gap-1">
+          {subscription.zone && (
+            <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: '#f0f0ff', color: '#3d59ab' }}>
+              {subscription.zone}
+            </span>
+          )}
+          {primaryCity && (
+            <span className="text-gray-500">{primaryCity}</span>
+          )}
+          {!subscription.zone && !primaryCity && '—'}
+        </span>
+      </td>
+      {/* Dietary Notes (truncated with hover) */}
+      <td className="py-2 px-3 text-sm max-w-[200px]">
+        {subscription.dietaryRestrictions ? (
+          <span
+            className="text-red-700 truncate block"
+            title={subscription.dietaryRestrictions}
+          >
+            {subscription.dietaryRestrictions}
+          </span>
+        ) : (
+          <span className="text-gray-400">—</span>
+        )}
+      </td>
+      {/* Status */}
+      <td className="py-2 px-3">
+        {isPaused ? (
+          <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 text-gray-600">Paused</span>
+        ) : (
+          <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700">Active</span>
+        )}
+      </td>
+      {/* Actions */}
+      <td className="py-2 px-3">
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onCopyLink}
+            className="p-1 rounded hover:bg-purple-50 text-purple-600"
+            title="Copy portal link"
+          >
+            <Link2 size={14} />
+          </button>
+          <button
+            onClick={onEdit}
+            className="p-1 rounded hover:bg-blue-50 text-blue-600"
+            title="Edit"
+          >
+            <Edit2 size={14} />
+          </button>
+          <button
+            onClick={onDelete}
+            className="p-1 rounded hover:bg-red-50 text-red-600"
+            title="Delete"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+};
+
 // Helper to migrate old client format to new subscription format
 const migrateToSubscription = (client) => {
   if (client.subscriptionId) {
@@ -294,6 +385,7 @@ export default function ClientsTab({
   const [expandedDeliveries, setExpandedDeliveries] = useState({});
   const [showPausedClients, setShowPausedClients] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [viewMode, setViewMode] = useState('cards'); // 'cards' or 'list'
   const [addFormSections, setAddFormSections] = useState({
     basicInfo: true,
     contacts: false,
@@ -530,7 +622,32 @@ export default function ClientsTab({
       {/* Page Header with Import/Export */}
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold" style={{ color: '#3d59ab' }}>Clients</h1>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          {/* View Mode Toggle */}
+          <div className="flex border-2 rounded-lg overflow-hidden" style={{ borderColor: '#ebb582' }}>
+            <button
+              onClick={() => setViewMode('cards')}
+              className={`flex items-center gap-1 px-2 py-1.5 text-sm ${
+                viewMode === 'cards'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+              title="Card view"
+            >
+              <LayoutGrid size={16} />
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`flex items-center gap-1 px-2 py-1.5 text-sm ${
+                viewMode === 'list'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+              title="List view"
+            >
+              <List size={16} />
+            </button>
+          </div>
           <button
             onClick={() => clientsFileRef.current?.click()}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 text-sm"
@@ -1114,20 +1231,52 @@ export default function ClientsTab({
                 </div>
               )}
 
-              {/* Active Clients Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {activeClients.map((subscription) => (
-                  editingIndex !== subscription.originalIndex && (
-                    <ClientCard
-                      key={subscription.subscriptionId || subscription.originalIndex}
-                      subscription={subscription}
-                      onEdit={() => startEditing(subscription.originalIndex)}
-                      onDelete={() => deleteClient(subscription.originalIndex)}
-                      onCopyLink={() => copyPortalLink(subscription)}
-                    />
-                  )
-                ))}
-              </div>
+              {/* Active Clients - Cards or List View */}
+              {viewMode === 'cards' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {activeClients.map((subscription) => (
+                    editingIndex !== subscription.originalIndex && (
+                      <ClientCard
+                        key={subscription.subscriptionId || subscription.originalIndex}
+                        subscription={subscription}
+                        onEdit={() => startEditing(subscription.originalIndex)}
+                        onDelete={() => deleteClient(subscription.originalIndex)}
+                        onCopyLink={() => copyPortalLink(subscription)}
+                      />
+                    )
+                  ))}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b-2 text-left" style={{ borderColor: '#3d59ab' }}>
+                        <th className="py-2 px-3 font-semibold" style={{ color: '#3d59ab' }}>Client</th>
+                        <th className="py-2 px-3 font-semibold" style={{ color: '#3d59ab' }}>Plan</th>
+                        <th className="py-2 px-3 font-semibold" style={{ color: '#3d59ab' }}>Frequency</th>
+                        <th className="py-2 px-3 font-semibold" style={{ color: '#3d59ab' }}>Day</th>
+                        <th className="py-2 px-3 font-semibold" style={{ color: '#3d59ab' }}>Zone / Location</th>
+                        <th className="py-2 px-3 font-semibold" style={{ color: '#3d59ab' }}>Dietary Notes</th>
+                        <th className="py-2 px-3 font-semibold" style={{ color: '#3d59ab' }}>Status</th>
+                        <th className="py-2 px-3 font-semibold" style={{ color: '#3d59ab' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activeClients.map((subscription) => (
+                        editingIndex !== subscription.originalIndex && (
+                          <ClientListRow
+                            key={subscription.subscriptionId || subscription.originalIndex}
+                            subscription={subscription}
+                            onEdit={() => startEditing(subscription.originalIndex)}
+                            onDelete={() => deleteClient(subscription.originalIndex)}
+                            onCopyLink={() => copyPortalLink(subscription)}
+                          />
+                        )
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
               {activeClients.length === 0 && (
                 <p className="text-gray-500 text-center py-8">No active clients</p>
@@ -1263,20 +1412,52 @@ export default function ClientsTab({
                       </div>
                     )}
 
-                    {/* Paused Clients Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
-                      {pausedClients.map((subscription) => (
-                        editingIndex !== subscription.originalIndex && (
-                          <ClientCard
-                            key={subscription.subscriptionId || subscription.originalIndex}
-                            subscription={subscription}
-                            onEdit={() => startEditing(subscription.originalIndex)}
-                            onDelete={() => deleteClient(subscription.originalIndex)}
-                            onCopyLink={() => copyPortalLink(subscription)}
-                          />
-                        )
-                      ))}
-                    </div>
+                    {/* Paused Clients - Cards or List View */}
+                    {viewMode === 'cards' ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+                        {pausedClients.map((subscription) => (
+                          editingIndex !== subscription.originalIndex && (
+                            <ClientCard
+                              key={subscription.subscriptionId || subscription.originalIndex}
+                              subscription={subscription}
+                              onEdit={() => startEditing(subscription.originalIndex)}
+                              onDelete={() => deleteClient(subscription.originalIndex)}
+                              onCopyLink={() => copyPortalLink(subscription)}
+                            />
+                          )
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto mt-4">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b-2 text-left" style={{ borderColor: '#9ca3af' }}>
+                              <th className="py-2 px-3 font-semibold text-gray-500">Client</th>
+                              <th className="py-2 px-3 font-semibold text-gray-500">Plan</th>
+                              <th className="py-2 px-3 font-semibold text-gray-500">Frequency</th>
+                              <th className="py-2 px-3 font-semibold text-gray-500">Day</th>
+                              <th className="py-2 px-3 font-semibold text-gray-500">Zone / Location</th>
+                              <th className="py-2 px-3 font-semibold text-gray-500">Dietary Notes</th>
+                              <th className="py-2 px-3 font-semibold text-gray-500">Status</th>
+                              <th className="py-2 px-3 font-semibold text-gray-500">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pausedClients.map((subscription) => (
+                              editingIndex !== subscription.originalIndex && (
+                                <ClientListRow
+                                  key={subscription.subscriptionId || subscription.originalIndex}
+                                  subscription={subscription}
+                                  onEdit={() => startEditing(subscription.originalIndex)}
+                                  onDelete={() => deleteClient(subscription.originalIndex)}
+                                  onCopyLink={() => copyPortalLink(subscription)}
+                                />
+                              )
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </>
                 )}
               </div>

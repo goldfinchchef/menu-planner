@@ -962,7 +962,7 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
                 No client menus yet. Use "Apply to Clients" after defining the base menu.
               </div>
             ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3">
                 {clientCards.map(({ clientId, client, meals }) => {
                   const mealsPerWeek = client.meals_per_week || client.mealsPerWeek || 4;
                   const allComplete = meals.every(m => m.protein && m.veg && m.starch);
@@ -1183,25 +1183,25 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
                                       <span className="text-xs text-blue-500 ml-1">{baseMealLabel}</span>
                                     )}
                                   </td>
-                                  <td className="py-1 max-w-[100px]">
-                                    <span className="truncate inline-block max-w-[85px] align-middle">
-                                      {truncate(meal.protein, 15)}
+                                  <td className="py-1">
+                                    <span className="align-middle">
+                                      {meal.protein || '—'}
                                     </span>
                                     <RotationWarning componentName={meal.protein} usageHistory={usageHistory} />
                                   </td>
-                                  <td className="py-1 max-w-[100px]">
-                                    <span className="truncate inline-block max-w-[85px] align-middle">
-                                      {truncate(meal.veg, 15)}
+                                  <td className="py-1">
+                                    <span className="align-middle">
+                                      {meal.veg || '—'}
                                     </span>
                                     <RotationWarning componentName={meal.veg} usageHistory={usageHistory} />
                                   </td>
-                                  <td className="py-1 max-w-[100px]">
-                                    <span className="truncate inline-block max-w-[85px] align-middle">
-                                      {truncate(meal.starch, 15)}
+                                  <td className="py-1">
+                                    <span className="align-middle">
+                                      {meal.starch || '—'}
                                     </span>
                                     <RotationWarning componentName={meal.starch} usageHistory={usageHistory} />
                                   </td>
-                                  <td className="py-1 truncate max-w-[100px]">
+                                  <td className="py-1">
                                     {(meal.extras || []).length > 0 ? (
                                       <span className="text-purple-600 text-xs">
                                         +{meal.extras.length}
