@@ -442,12 +442,6 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
       .sort();
   }, [clients, scheduledClientIds]);
 
-  // Truncate text
-  const truncate = (str, len) => {
-    if (!str) return '—';
-    return str.length > len ? str.slice(0, len) + '…' : str;
-  };
-
   return (
     <div className="space-y-4" style={{ fontSize: '12px' }}>
       {/* Header */}
