@@ -174,6 +174,9 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
   const [editingMealIdx, setEditingMealIdx] = useState(null);
   const [editForm, setEditForm] = useState({});
 
+  // Add-on editing state
+  const [savingAddon, setSavingAddon] = useState(null); // tracks which add-on is being saved
+
   // Confirming state (tracks which client is being confirmed)
   const [confirmingClient, setConfirmingClient] = useState(null);
 
@@ -231,7 +234,7 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
     return scheduleMenus.filter(m => m.week_id === selectedWeekId);
   }, [scheduleMenus, selectedWeekId]);
 
-  // Group menus by client
+  // Group menus by client, separating dinner meals from add-ons
   const clientCards = useMemo(() => {
     const groups = {};
 
@@ -242,15 +245,24 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
         groups[clientId] = {
           clientId,
           client: client || { name: menu.client_name, id: clientId },
-          meals: []
+          meals: [],
+          addons: []
         };
       }
-      groups[clientId].meals.push(menu);
+
+      // Separate dinner meals from add-ons
+      if (menu.is_addon) {
+        groups[clientId].addons.push(menu);
+      } else {
+        groups[clientId].meals.push(menu);
+      }
     });
 
     // Sort meals by meal_index within each client
     Object.values(groups).forEach(g => {
       g.meals.sort((a, b) => (a.meal_index || 1) - (b.meal_index || 1));
+      // Add-ons don't have meal_index, keep insertion order or sort by type
+      g.addons.sort((a, b) => (a.addon_type || '').localeCompare(b.addon_type || ''));
     });
 
     // Sort clients alphabetically
@@ -281,6 +293,18 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
       ...(recipes.breakfast || []),
       ...(recipes.soups || [])
     ];
+  }, [recipes]);
+
+  // Get all recipes for add-on selection (all categories)
+  const allRecipes = useMemo(() => {
+    return [
+      ...(recipes.protein || []),
+      ...(recipes.veg || []),
+      ...(recipes.starch || []),
+      ...(recipes.sauces || []),
+      ...(recipes.breakfast || []),
+      ...(recipes.soups || [])
+    ].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   }, [recipes]);
 
   // Handle save base menus
@@ -374,8 +398,34 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
     cancelEditing();
   };
 
+  // Save add-on recipe selection
+  const saveAddonRecipe = async (menuId, recipeName) => {
+    setSavingAddon(menuId);
+    const result = await updateClientMeal(menuId, {
+      addon_recipe: recipeName || null
+    });
+
+    if (!result.success) {
+      alert(`Failed to save add-on: ${result.error}`);
+    }
+    setSavingAddon(null);
+  };
+
   // Handle confirm menu for a client
   const handleConfirmMenu = async (clientId) => {
+    // Check for incomplete add-ons
+    const clientMenuRows = weekMenus.filter(m => m.client_id === clientId);
+    const incompleteAddons = clientMenuRows.filter(m => m.is_addon && !m.addon_recipe);
+
+    if (incompleteAddons.length > 0) {
+      const addonTypes = incompleteAddons.map(a => a.addon_type).join(', ');
+      alert(
+        `Cannot confirm menu: Add-ons incomplete.\n\n` +
+        `Please select recipes for: ${addonTypes}`
+      );
+      return;
+    }
+
     setConfirmingClient(clientId);
     try {
       const result = await confirmClientMenus(clientId, selectedWeekId);
@@ -951,10 +1001,15 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-3">
-                {clientCards.map(({ clientId, client, meals }) => {
+                {clientCards.map(({ clientId, client, meals, addons }) => {
                   const mealsPerWeek = client.meals_per_week || client.mealsPerWeek || 4;
-                  const allComplete = meals.every(m => m.protein && m.veg && m.starch);
-                  const allApproved = meals.every(m => m.approved);
+
+                  // Check completion for both meals and add-ons
+                  const dinnerComplete = meals.every(m => m.protein && m.veg && m.starch);
+                  const addonsComplete = addons.every(a => a.addon_recipe);
+                  const allComplete = dinnerComplete && addonsComplete;
+
+                  const allApproved = meals.every(m => m.approved) && addons.every(a => a.approved);
                   const isConfirming = confirmingClient === clientId;
                   const isRemoving = removingClient === clientId;
 
@@ -1068,8 +1123,11 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
                         </div>
                       </div>
 
-                      {/* Meals table */}
+                      {/* Dinner meals table */}
                       <div className="px-3 py-2">
+                        {addons.length > 0 && (
+                          <div className="text-xs font-semibold text-gray-600 mb-2">DINNER MEALS</div>
+                        )}
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="text-gray-400 text-left">
@@ -1209,6 +1267,58 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
                           </tbody>
                         </table>
                       </div>
+
+                      {/* Add-ons section */}
+                      {addons.length > 0 && (
+                        <div className="px-3 py-2 border-t bg-purple-50">
+                          <div className="text-xs font-semibold text-purple-700 mb-2">ADD-ONS</div>
+                          <div className="space-y-2">
+                            {addons.map((addon, idx) => {
+                              const isIncomplete = !addon.addon_recipe;
+                              const isSaving = savingAddon === addon.id;
+
+                              return (
+                                <div
+                                  key={addon.id || idx}
+                                  className="flex items-center gap-2 text-sm"
+                                >
+                                  {/* Add-on type label */}
+                                  <div className="flex items-center gap-1 min-w-[80px]">
+                                    <span className="font-medium text-purple-800">
+                                      {addon.addon_type}
+                                    </span>
+                                    {isIncomplete && (
+                                      <span className="text-red-500" title="Recipe not selected">⚠</span>
+                                    )}
+                                  </div>
+
+                                  {/* Recipe selection dropdown */}
+                                  <select
+                                    value={addon.addon_recipe || ''}
+                                    onChange={(e) => saveAddonRecipe(addon.id, e.target.value)}
+                                    disabled={isSaving}
+                                    className={`flex-1 px-2 py-1 border rounded text-xs ${
+                                      isIncomplete
+                                        ? 'border-red-300 bg-red-50'
+                                        : 'border-purple-300 bg-white'
+                                    } ${isSaving ? 'opacity-50 cursor-wait' : ''}`}
+                                  >
+                                    <option value="">Select Recipe...</option>
+                                    {allRecipes.map(r => (
+                                      <option key={r.name} value={r.name}>{r.name}</option>
+                                    ))}
+                                  </select>
+
+                                  {/* Portions display */}
+                                  <span className="text-xs text-gray-500 min-w-[60px]">
+                                    {addon.portions} × ${addon.addon_price?.toFixed(2) || '0.00'}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
