@@ -1021,10 +1021,7 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
                             </span>
                           )}
                           {client.dietaryRestrictions && (
-                            <span
-                              className="text-xs text-gray-500 truncate max-w-[200px]"
-                              title={client.dietaryRestrictions}
-                            >
+                            <span className="text-sm text-red-800 font-medium">
                               {client.dietaryRestrictions}
                             </span>
                           )}
