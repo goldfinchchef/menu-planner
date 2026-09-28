@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, Trash2, Upload, Download, Edit2, Check, X, Link2, Minus, Users, User, ChevronDown, ChevronUp, Truck, MapPin, DollarSign, AlertCircle, Settings, LayoutGrid, List } from 'lucide-react';
-import { ZONES, DAYS, DEFAULT_CONTACT, DEFAULT_NEW_SUBSCRIPTION } from '../constants';
+import { ZONES, DAYS, DEFAULT_CONTACT, DEFAULT_NEW_SUBSCRIPTION, ADDON_TYPES, DEFAULT_ADDON } from '../constants';
 import { isSupabaseMode } from '../lib/dataMode';
 import { saveClientToSupabase } from '../lib/database';
 
@@ -367,6 +367,7 @@ const migrateToSubscription = (client) => {
     deliveryDates: client.deliveryDates || [],
     confirmedDates: client.confirmedDates || [],
     billDueDate: client.billDueDate || '',
+    recurringAddons: client.recurringAddons || [],
     contacts
   };
 };
@@ -775,6 +776,59 @@ export default function ClientsTab({
                   </select>
                 </FormField>
               </div>
+
+              {/* Recurring Add-ons */}
+              <div className="mt-3">
+                <FormField label="Recurring Add-ons" compact>
+                  <div className="flex flex-wrap gap-2">
+                    {(newClient.recurringAddons || []).map((addon, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center gap-1 px-2 py-1 rounded text-sm"
+                        style={{ backgroundColor: '#f9f9ed', border: '1px solid #ebb582', color: '#3d59ab' }}
+                      >
+                        <span className="font-medium">{addon.type}</span>
+                        <button
+                          onClick={() => {
+                            const updated = newClient.recurringAddons.filter((_, i) => i !== idx);
+                            setNewClient({ ...newClient, recurringAddons: updated });
+                          }}
+                          className="ml-1 text-gray-400 hover:text-red-600"
+                          title="Remove add-on"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+
+                    {/* Add-on selector */}
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        if (!e.target.value) return;
+                        const existingTypes = (newClient.recurringAddons || []).map(a => a.type);
+                        if (existingTypes.includes(e.target.value)) {
+                          alert(`${e.target.value} add-on already exists`);
+                          return;
+                        }
+                        const newAddon = { ...DEFAULT_ADDON, type: e.target.value };
+                        setNewClient({
+                          ...newClient,
+                          recurringAddons: [...(newClient.recurringAddons || []), newAddon]
+                        });
+                      }}
+                      className="px-2 py-1 rounded text-sm border"
+                      style={{ borderColor: '#ebb582', color: '#3d59ab' }}
+                    >
+                      <option value="">+ Add-on</option>
+                      {ADDON_TYPES.map(type => (
+                        <option key={type} value={type}>{type}</option>
+                      ))}
+                    </select>
+                  </div>
+                </FormField>
+              </div>
+
               <div className="flex items-center gap-4 mt-2">
                 <label className="flex items-center gap-1.5 text-sm">
                   <input
@@ -1212,6 +1266,58 @@ export default function ClientsTab({
                           style={borderStyle}
                           rows="2"
                         />
+                      </FormField>
+                    </div>
+
+                    {/* Recurring Add-ons */}
+                    <div className="mt-4">
+                      <FormField label="Recurring Add-ons">
+                        <div className="flex flex-wrap gap-2">
+                          {(editingClient.recurringAddons || []).map((addon, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-center gap-1 px-2 py-1 rounded text-sm"
+                              style={{ backgroundColor: '#f9f9ed', border: '1px solid #ebb582', color: '#3d59ab' }}
+                            >
+                              <span className="font-medium">{addon.type}</span>
+                              <button
+                                onClick={() => {
+                                  const updated = editingClient.recurringAddons.filter((_, i) => i !== idx);
+                                  setEditingClient({ ...editingClient, recurringAddons: updated });
+                                }}
+                                className="ml-1 text-gray-400 hover:text-red-600"
+                                title="Remove add-on"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          ))}
+
+                          {/* Add-on selector */}
+                          <select
+                            value=""
+                            onChange={(e) => {
+                              if (!e.target.value) return;
+                              const existingTypes = (editingClient.recurringAddons || []).map(a => a.type);
+                              if (existingTypes.includes(e.target.value)) {
+                                alert(`${e.target.value} add-on already exists`);
+                                return;
+                              }
+                              const newAddon = { ...DEFAULT_ADDON, type: e.target.value };
+                              setEditingClient({
+                                ...editingClient,
+                                recurringAddons: [...(editingClient.recurringAddons || []), newAddon]
+                              });
+                            }}
+                            className="px-2 py-1 rounded text-sm border"
+                            style={{ borderColor: '#ebb582', color: '#3d59ab' }}
+                          >
+                            <option value="">+ Add-on</option>
+                            {ADDON_TYPES.map(type => (
+                              <option key={type} value={type}>{type}</option>
+                            ))}
+                          </select>
+                        </div>
                       </FormField>
                     </div>
                   </div>

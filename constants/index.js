@@ -76,7 +76,8 @@ export const DEFAULT_NEW_SUBSCRIPTION = {
   deliveryDates: [],  // Next 4 delivery dates
   billDueDate: '',    // When payment is due
   chefChoice: true,   // true = Chef picks menu, false = client picks dishes
-  dietaryRestrictions: ''  // Allergies, preferences, restrictions
+  dietaryRestrictions: '',  // Allergies, preferences, restrictions
+  recurringAddons: []  // Recurring add-on dishes (salad, breakfast, soup, etc.)
 };
 
 // Legacy alias for backwards compatibility
@@ -110,4 +111,18 @@ export const DEFAULT_NEW_INGREDIENT = {
   unit: 'oz',
   source: '',
   section: 'Produce'
+};
+
+// ============================================================
+// RECURRING ADD-ONS
+// ============================================================
+
+// Available add-on types
+export const ADDON_TYPES = ['Salad', 'Breakfast', 'Soup', 'Other'];
+
+// Default add-on when adding new
+export const DEFAULT_ADDON = {
+  type: 'Salad',
+  portions: 4,
+  price: 50.00
 };
