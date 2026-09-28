@@ -811,7 +811,7 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
             )}
 
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
-              {activeClients.slice(0, 12).map(client => {
+              {activeClients.map(client => {
                 const mealsPerWeek = client.meals_per_week || client.mealsPerWeek || 3;
                 const assignedMeals = getClientAssignedMeals(client.id, mealsPerWeek);
                 const defaultMeals = getDefaultMealAssignment(mealsPerWeek);
@@ -924,12 +924,6 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
                 );
               })}
             </div>
-
-            {activeClients.length > 12 && (
-              <p className="text-gray-400 text-xs mt-2">
-                Showing first 12 clients. {activeClients.length - 12} more not shown.
-              </p>
-            )}
           </div>
         )}
       </div>
