@@ -377,8 +377,37 @@ export function useMenuBuilder({ selectedWeekId, clients }) {
       );
 
       if (result.success) {
-        // Refresh scheduleMenus to show updated data
+        // ============================================================
+        // DIAGNOSTIC 7: UI FETCH AFTER REBUILD
+        // ============================================================
+        console.log('🔍 [DIAGNOSTIC] UI FETCH AFTER REBUILD:');
         const menus = await fetchMenusForWeekRange([selectedWeekId]);
+        console.log('  Total menus fetched:', menus?.length || 0);
+
+        // Filter to Julie's menus only for clearer logging
+        const julieMenus = menus.filter(m => m.client_id === client.id);
+        console.log('  Julie menus fetched:', julieMenus.length);
+        julieMenus.forEach((menu, idx) => {
+          console.log(`  Fetched Menu ${idx + 1}:`, {
+            id: menu.id,
+            client_name: menu.client_name,
+            week_id: menu.week_id,
+            date: menu.date,
+            meal_index: menu.meal_index,
+            base_meal_index: menu.base_meal_index,
+            is_addon: menu.is_addon,
+            isAddon: menu.isAddon, // Check both snake_case and camelCase
+            addon_type: menu.addon_type,
+            addonType: menu.addonType,
+            addon_recipe: menu.addon_recipe,
+            addonRecipe: menu.addonRecipe,
+            addon_price: menu.addon_price,
+            addonPrice: menu.addonPrice,
+            portions: menu.portions,
+            approved: menu.approved
+          });
+        });
+
         setScheduleMenus(menus);
       }
 

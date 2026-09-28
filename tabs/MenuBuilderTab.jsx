@@ -236,6 +236,9 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
 
   // Group menus by client, separating dinner meals from add-ons
   const clientCards = useMemo(() => {
+    console.log('🔍 [DIAGNOSTIC] MenuBuilder clientCards calculation:');
+    console.log('  weekMenus count:', weekMenus.length);
+
     const groups = {};
 
     weekMenus.forEach(menu => {
@@ -252,6 +255,13 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
 
       // Separate dinner meals from add-ons
       if (menu.is_addon) {
+        console.log('  Found add-on menu:', {
+          client_name: menu.client_name,
+          is_addon: menu.is_addon,
+          addon_type: menu.addon_type,
+          addon_recipe: menu.addon_recipe,
+          addon_price: menu.addon_price
+        });
         groups[clientId].addons.push(menu);
       } else {
         groups[clientId].meals.push(menu);
@@ -263,12 +273,19 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
       g.meals.sort((a, b) => (a.meal_index || 1) - (b.meal_index || 1));
       // Add-ons don't have meal_index, keep insertion order or sort by type
       g.addons.sort((a, b) => (a.addon_type || '').localeCompare(b.addon_type || ''));
+
+      if (g.addons.length > 0) {
+        console.log(`  Client ${g.client.name} has ${g.addons.length} add-ons:`, g.addons);
+      }
     });
 
     // Sort clients alphabetically
-    return Object.values(groups).sort((a, b) =>
+    const result = Object.values(groups).sort((a, b) =>
       (a.client.name || '').localeCompare(b.client.name || '')
     );
+
+    console.log('  Total clientCards:', result.length);
+    return result;
   }, [weekMenus, clients]);
 
   // Active clients for assignment section
