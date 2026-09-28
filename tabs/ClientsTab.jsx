@@ -364,6 +364,9 @@ const migrateToSubscription = (client) => {
     accessCode: client.accessCode || '',
     honeyBookLink: client.honeyBookLink || '',
     dietaryRestrictions: client.dietaryRestrictions || '',
+    deliveryDates: client.deliveryDates || [],
+    confirmedDates: client.confirmedDates || [],
+    billDueDate: client.billDueDate || '',
     contacts
   };
 };
