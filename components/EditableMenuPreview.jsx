@@ -77,11 +77,15 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
             sourceHash: currentHash,
             // Preserve local-only fields from cache
             subscriptionEnds: parsed.subscriptionEnds || '',
-            additionalItems: parsed.additionalItems || []
+            additionalItems: Array.isArray(parsed.additionalItems) ? parsed.additionalItems : []
           };
         }
 
-        return parsed;
+        // Migrate old localStorage records to include additionalItems
+        return {
+          ...parsed,
+          additionalItems: Array.isArray(parsed.additionalItems) ? parsed.additionalItems : []
+        };
       } catch (e) {
         console.error('Failed to parse saved edit state:', e);
       }
@@ -190,31 +194,40 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
 
   // Add additional item
   const addAdditionalItem = () => {
-    setEditState(prev => ({
-      ...prev,
-      additionalItems: [
-        ...prev.additionalItems,
-        { id: `additional-${Date.now()}`, text: '' }
-      ]
-    }));
+    setEditState(prev => {
+      const existingItems = Array.isArray(prev.additionalItems) ? prev.additionalItems : [];
+      return {
+        ...prev,
+        additionalItems: [
+          ...existingItems,
+          { id: `additional-${Date.now()}`, text: '' }
+        ]
+      };
+    });
   };
 
   // Remove additional item
   const removeAdditionalItem = (itemId) => {
-    setEditState(prev => ({
-      ...prev,
-      additionalItems: prev.additionalItems.filter(item => item.id !== itemId)
-    }));
+    setEditState(prev => {
+      const existingItems = Array.isArray(prev.additionalItems) ? prev.additionalItems : [];
+      return {
+        ...prev,
+        additionalItems: existingItems.filter(item => item.id !== itemId)
+      };
+    });
   };
 
   // Update additional item text
   const updateAdditionalItem = (itemId, newText) => {
-    setEditState(prev => ({
-      ...prev,
-      additionalItems: prev.additionalItems.map(item =>
-        item.id === itemId ? { ...item, text: newText } : item
-      )
-    }));
+    setEditState(prev => {
+      const existingItems = Array.isArray(prev.additionalItems) ? prev.additionalItems : [];
+      return {
+        ...prev,
+        additionalItems: existingItems.map(item =>
+          item.id === itemId ? { ...item, text: newText } : item
+        )
+      };
+    });
   };
 
   // Download as JPG
@@ -477,7 +490,7 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
                   </div>
 
                   {/* Additional Items section - only show if items exist */}
-                  {editState.additionalItems && editState.additionalItems.length > 0 && (
+                  {Array.isArray(editState.additionalItems) && editState.additionalItems.length > 0 && (
                     <div className="mt-6 pt-4 border-t border-white/20">
                       <h4
                         className="text-center mb-3"
@@ -493,7 +506,7 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
                         Additional Items
                       </h4>
                       <div className="space-y-2">
-                        {editState.additionalItems.filter(item => item.text.trim()).map((item) => (
+                        {(editState.additionalItems || []).filter(item => item.text && item.text.trim()).map((item) => (
                           <p
                             key={item.id}
                             className="text-center"
@@ -641,9 +654,9 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
                     Add Item
                   </button>
                 </div>
-                {editState.additionalItems && editState.additionalItems.length > 0 && (
+                {Array.isArray(editState.additionalItems) && editState.additionalItems.length > 0 && (
                   <div className="space-y-2">
-                    {editState.additionalItems.map((item) => (
+                    {(editState.additionalItems || []).map((item) => (
                       <div key={item.id} className="flex items-center gap-2">
                         <input
                           type="text"
