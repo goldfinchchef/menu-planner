@@ -12,7 +12,7 @@
  */
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { X, Download, ChevronLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
+import { X, Download, ChevronLeft, ChevronRight, Eye, EyeOff, Plus } from 'lucide-react';
 import html2canvas from 'html2canvas';
 
 export default function EditableMenuPreview({ clients, menus, weekId, onClose }) {
@@ -58,7 +58,7 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
   // Load edit state from localStorage or initialize from data
   // If source menu data has changed, reinitialize but preserve local-only fields
   function loadEditState(clientData) {
-    if (!clientData) return { meals: [], subscriptionEnds: '', clientName: '', sourceHash: '' };
+    if (!clientData) return { meals: [], subscriptionEnds: '', clientName: '', sourceHash: '', additionalItems: [] };
 
     const storageKey = getStorageKey(clientData.clientId);
     const saved = localStorage.getItem(storageKey);
@@ -76,7 +76,8 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
             ...fresh,
             sourceHash: currentHash,
             // Preserve local-only fields from cache
-            subscriptionEnds: parsed.subscriptionEnds || ''
+            subscriptionEnds: parsed.subscriptionEnds || '',
+            additionalItems: parsed.additionalItems || []
           };
         }
 
@@ -91,7 +92,7 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
 
   // Initialize edit state from client data (fresh, no localStorage)
   function initEditState(clientData) {
-    if (!clientData) return { meals: [], subscriptionEnds: '', clientName: '', sourceHash: '' };
+    if (!clientData) return { meals: [], subscriptionEnds: '', clientName: '', sourceHash: '', additionalItems: [] };
 
     const meals = [];
     clientData.meals.forEach((menu, idx) => {
@@ -124,6 +125,7 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
       subscriptionEnds: '',
       deliveryDate: clientData.date || '',
       meals,
+      additionalItems: [],
       sourceHash: getSourceHash(clientData)
     };
   }
@@ -182,6 +184,35 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
       ...prev,
       meals: prev.meals.map(m =>
         m.id === mealId ? { ...m, subtitle: newSubtitle } : m
+      )
+    }));
+  };
+
+  // Add additional item
+  const addAdditionalItem = () => {
+    setEditState(prev => ({
+      ...prev,
+      additionalItems: [
+        ...prev.additionalItems,
+        { id: `additional-${Date.now()}`, text: '' }
+      ]
+    }));
+  };
+
+  // Remove additional item
+  const removeAdditionalItem = (itemId) => {
+    setEditState(prev => ({
+      ...prev,
+      additionalItems: prev.additionalItems.filter(item => item.id !== itemId)
+    }));
+  };
+
+  // Update additional item text
+  const updateAdditionalItem = (itemId, newText) => {
+    setEditState(prev => ({
+      ...prev,
+      additionalItems: prev.additionalItems.map(item =>
+        item.id === itemId ? { ...item, text: newText } : item
       )
     }));
   };
@@ -444,6 +475,41 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
                       <p className="text-center text-white/70 italic text-sm">No menu items</p>
                     )}
                   </div>
+
+                  {/* Additional Items section - only show if items exist */}
+                  {editState.additionalItems && editState.additionalItems.length > 0 && (
+                    <div className="mt-6 pt-4 border-t border-white/20">
+                      <h4
+                        className="text-center mb-3"
+                        style={{
+                          color: '#ffffff',
+                          fontFamily: '"Glacial Indifference", sans-serif',
+                          fontSize: '0.85rem',
+                          fontWeight: 'bold',
+                          letterSpacing: '0.15em',
+                          textTransform: 'uppercase'
+                        }}
+                      >
+                        Additional Items
+                      </h4>
+                      <div className="space-y-2">
+                        {editState.additionalItems.filter(item => item.text.trim()).map((item) => (
+                          <p
+                            key={item.id}
+                            className="text-center"
+                            style={{
+                              color: '#f5e6d3',
+                              fontFamily: '"Glacial Indifference", sans-serif',
+                              fontSize: '0.75rem',
+                              letterSpacing: '0.08em'
+                            }}
+                          >
+                            {item.text}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Footer section */}
@@ -561,6 +627,45 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
                     </div>
                   ))}
                 </div>
+              </div>
+
+              {/* Additional Items */}
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs text-gray-500">Additional Items</label>
+                  <button
+                    onClick={addAdditionalItem}
+                    className="flex items-center gap-1 px-2 py-1 text-xs bg-purple-50 text-purple-600 rounded hover:bg-purple-100 border border-purple-200"
+                  >
+                    <Plus size={12} />
+                    Add Item
+                  </button>
+                </div>
+                {editState.additionalItems && editState.additionalItems.length > 0 && (
+                  <div className="space-y-2">
+                    {editState.additionalItems.map((item) => (
+                      <div key={item.id} className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={item.text}
+                          onChange={(e) => updateAdditionalItem(item.id, e.target.value)}
+                          className="flex-1 px-2 py-1.5 border rounded text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          placeholder="e.g., Chicken Caesar Salad — 4 portions"
+                        />
+                        <button
+                          onClick={() => removeAdditionalItem(item.id)}
+                          className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                          title="Remove item"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="text-xs text-gray-400 mt-2 italic">
+                  Display-only items for client preview
+                </p>
               </div>
 
               <p className="text-xs text-gray-400 mt-4 italic">
