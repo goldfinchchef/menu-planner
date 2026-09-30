@@ -9,8 +9,8 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Check, Edit2, X, ChevronDown, ChevronUp, Wand2, Save, Users, Loader2, Trash2, AlertCircle, Plus, Image } from 'lucide-react';
 import EditableMenuPreview from '../components/EditableMenuPreview';
 import { useMenuBuilder } from '../hooks/useMenuBuilder';
-import { fetchComponentUsageHistory } from '../lib/database';
-import { getDefaultMealAssignment } from '../lib/database';
+import { fetchComponentUsageHistory, getDefaultMealAssignment, insertAddonMenuRow } from '../lib/database';
+import { getWeekStartDate, getWeekEndDate } from '../utils/weekUtils';
 
 // Rotation warning dot with tooltip
 function RotationWarning({ componentName, usageHistory }) {
@@ -268,6 +268,40 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
       }
     });
 
+    // MERGE: Add placeholders for recurring add-ons that don't have weekly rows yet
+    Object.values(groups).forEach(g => {
+      if (g.client && Array.isArray(g.client.recurringAddons)) {
+        g.client.recurringAddons.forEach(recurring => {
+          // Check if add-on row already exists for this type
+          const exists = g.addons.some(a => a.addon_type === recurring.type);
+          if (!exists) {
+            // Get client's delivery date for current week
+            const weekStart = getWeekStartDate(selectedWeekId);
+            const weekEnd = getWeekEndDate(selectedWeekId);
+            const clientDates = (g.client.deliveryDates || [])
+              .filter(d => d && d >= weekStart && d <= weekEnd);
+            const deliveryDate = clientDates[0] || weekStart;
+
+            // Create placeholder for UI rendering (not a database row yet)
+            g.addons.push({
+              id: null,  // No database ID yet - signals this is a placeholder
+              client_id: g.clientId,
+              client_name: g.client.name,
+              week_id: selectedWeekId,
+              date: deliveryDate,
+              is_addon: true,
+              addon_type: recurring.type,
+              addon_recipe: null,
+              addon_price: recurring.price,
+              portions: recurring.portions,
+              approved: false,
+              _isPlaceholder: true  // Flag for INSERT vs UPDATE logic
+            });
+          }
+        });
+      }
+    });
+
     // Sort meals by meal_index within each client
     Object.values(groups).forEach(g => {
       g.meals.sort((a, b) => (a.meal_index || 1) - (b.meal_index || 1));
@@ -286,7 +320,7 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
 
     console.log('  Total clientCards:', result.length);
     return result;
-  }, [weekMenus, clients]);
+  }, [weekMenus, clients, selectedWeekId]);
 
   // Active clients for assignment section
   const activeClients = useMemo(() => {
@@ -416,16 +450,48 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
   };
 
   // Save add-on recipe selection
-  const saveAddonRecipe = async (menuId, recipeName) => {
-    setSavingAddon(menuId);
-    const result = await updateClientMeal(menuId, {
-      addon_recipe: recipeName || null
-    });
+  // Handles both INSERT (placeholder) and UPDATE (existing row)
+  const saveAddonRecipe = async (addon, recipeName) => {
+    const savingId = addon.id || `placeholder-${addon.addon_type}`;
+    setSavingAddon(savingId);
 
-    if (!result.success) {
-      alert(`Failed to save add-on: ${result.error}`);
+    try {
+      // PLACEHOLDER: Insert new row to database
+      if (addon._isPlaceholder || addon.id === null) {
+        console.log('[saveAddonRecipe] Inserting new add-on row:', addon.addon_type, 'recipe:', recipeName);
+
+        await insertAddonMenuRow({
+          client_id: addon.client_id,
+          client_name: addon.client_name,
+          week_id: addon.week_id,
+          date: addon.date,
+          addon_type: addon.addon_type,
+          addon_recipe: recipeName || null,
+          addon_price: addon.addon_price,
+          portions: addon.portions
+        });
+
+        // Refresh schedule data to replace placeholder with real row
+        await loadScheduleData([selectedWeekId]);
+      }
+      // EXISTING ROW: Update recipe only
+      else {
+        console.log('[saveAddonRecipe] Updating existing add-on row:', addon.id, 'recipe:', recipeName);
+
+        const result = await updateClientMeal(addon.id, {
+          addon_recipe: recipeName || null
+        });
+
+        if (!result.success) {
+          alert(`Failed to save add-on: ${result.error}`);
+        }
+      }
+    } catch (err) {
+      console.error('[saveAddonRecipe] Error:', err);
+      alert(`Failed to save add-on: ${err.message}`);
+    } finally {
+      setSavingAddon(null);
     }
-    setSavingAddon(null);
   };
 
   // Handle confirm menu for a client
@@ -1292,11 +1358,12 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
                           <div className="space-y-2">
                             {addons.map((addon, idx) => {
                               const isIncomplete = !addon.addon_recipe;
-                              const isSaving = savingAddon === addon.id;
+                              const savingId = addon.id || `placeholder-${addon.addon_type}`;
+                              const isSaving = savingAddon === savingId;
 
                               return (
                                 <div
-                                  key={addon.id || idx}
+                                  key={addon.id || `placeholder-${addon.addon_type}-${idx}`}
                                   className="flex items-center gap-2 text-sm"
                                 >
                                   {/* Add-on type label */}
@@ -1312,7 +1379,7 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
                                   {/* Recipe selection dropdown */}
                                   <select
                                     value={addon.addon_recipe || ''}
-                                    onChange={(e) => saveAddonRecipe(addon.id, e.target.value)}
+                                    onChange={(e) => saveAddonRecipe(addon, e.target.value)}
                                     disabled={isSaving}
                                     className={`flex-1 px-2 py-1 border rounded text-xs ${
                                       isIncomplete
