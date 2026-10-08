@@ -186,6 +186,7 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
   // Portions editing state
   const [editingPortionsClient, setEditingPortionsClient] = useState(null);
   const [editingPortionsValue, setEditingPortionsValue] = useState('');
+  const [savingPortions, setSavingPortions] = useState(false);
   const [showNoDateClients, setShowNoDateClients] = useState(false);
 
   // Removing client from week state
@@ -500,9 +501,13 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
 
   // Update portions for all dinner meals of a client
   const updateClientPortions = async (clientId, newPortions) => {
+    if (savingPortions) return; // Prevent duplicate saves
+
     const portionsNum = parseInt(newPortions, 10);
     if (isNaN(portionsNum) || portionsNum < 1) {
       alert('Portions must be a positive number');
+      setEditingPortionsClient(null);
+      setEditingPortionsValue('');
       return;
     }
 
@@ -511,11 +516,14 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
 
     if (dinnerMeals.length === 0) {
       alert('No dinner meals found for this client');
+      setEditingPortionsClient(null);
+      setEditingPortionsValue('');
       return;
     }
 
     console.log('[updateClientPortions] Updating', dinnerMeals.length, 'dinner meals to', portionsNum, 'portions');
 
+    setSavingPortions(true);
     try {
       // Update each dinner meal row
       await Promise.all(dinnerMeals.map(meal =>
@@ -530,6 +538,8 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
     } catch (err) {
       console.error('[updateClientPortions] Error:', err);
       alert(`Failed to update portions: ${err.message}`);
+    } finally {
+      setSavingPortions(false);
     }
   };
 
@@ -1219,21 +1229,25 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
                                 onChange={(e) => setEditingPortionsValue(e.target.value)}
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter') {
-                                    updateClientPortions(clientId, editingPortionsValue);
+                                    e.preventDefault();
+                                    e.target.blur(); // Trigger blur which will save
                                   } else if (e.key === 'Escape') {
                                     setEditingPortionsClient(null);
                                     setEditingPortionsValue('');
                                   }
                                 }}
                                 onBlur={() => {
+                                  if (savingPortions) return; // Already saving
                                   if (editingPortionsValue !== actualPortions.toString()) {
                                     updateClientPortions(clientId, editingPortionsValue);
                                   } else {
                                     setEditingPortionsClient(null);
+                                    setEditingPortionsValue('');
                                   }
                                 }}
                                 autoFocus
-                                className="w-16 px-2 py-1 border-2 border-blue-500 rounded text-sm text-center font-medium"
+                                disabled={savingPortions}
+                                className="w-16 px-2 py-1 border-2 border-blue-500 rounded text-sm text-center font-medium disabled:opacity-50"
                               />
                             ) : (
                               <button
