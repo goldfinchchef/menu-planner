@@ -255,6 +255,25 @@ export default function DashboardTab({
           cookList[key].totalPortions += portions;
         });
       }
+
+      // Add-ons (salad, breakfast, soup, other)
+      if (item.addon_recipe) {
+        const category = ['sauces', 'breakfast', 'soups'].find(cat =>
+          recipes[cat]?.find(r => r.name === item.addon_recipe)
+        );
+        const recipe = category ? recipes[category].find(r => r.name === item.addon_recipe) : null;
+        const key = item.addon_recipe.toLowerCase().trim();
+
+        if (!cookList[key]) {
+          cookList[key] = {
+            name: item.addon_recipe,
+            category: category || 'addons',
+            totalPortions: 0,
+            costPerPortion: recipe && getRecipeCost ? getRecipeCost(recipe) : 0
+          };
+        }
+        cookList[key].totalPortions += portions;
+      }
     });
 
     const entries = Object.values(cookList).map(entry => ({
@@ -388,6 +407,17 @@ export default function DashboardTab({
           mealDishes.push({ name: extra, type: 'extra', costPerPortion });
           mealCostPerPortion += costPerPortion;
         });
+      }
+
+      // Add-ons (salad, breakfast, soup, other)
+      if (item.addon_recipe) {
+        const category = ['sauces', 'breakfast', 'soups'].find(cat =>
+          recipes[cat]?.find(r => r.name === item.addon_recipe)
+        );
+        const recipe = category ? recipes[category].find(r => r.name === item.addon_recipe) : null;
+        const costPerPortion = recipe && getRecipeCost ? getRecipeCost(recipe) : 0;
+        mealDishes.push({ name: item.addon_recipe, type: 'addon', costPerPortion });
+        mealCostPerPortion += costPerPortion;
       }
 
       // Apply pantry markup to meal costs

@@ -1045,6 +1045,17 @@ export default function ExperimentalLayout() {
           kds[productionDay].extras[extra].clients.push({ name: item.clientName, portions: item.portions, date: item.date });
         });
       }
+
+      // Add-ons (salad, breakfast, soup, other)
+      if (item.addon_recipe) {
+        const category = recipes.sauces?.find(r => r.name === item.addon_recipe) ? 'sauces'
+          : recipes.breakfast?.find(r => r.name === item.addon_recipe) ? 'breakfast' : 'soups';
+        if (!kds[productionDay].extras[item.addon_recipe]) {
+          kds[productionDay].extras[item.addon_recipe] = { totalPortions: 0, category, clients: [] };
+        }
+        kds[productionDay].extras[item.addon_recipe].totalPortions += item.portions;
+        kds[productionDay].extras[item.addon_recipe].clients.push({ name: item.clientName, portions: item.portions, date: item.date });
+      }
     });
 
     return kds;
@@ -1106,7 +1117,7 @@ export default function ExperimentalLayout() {
       if (deliveryDay === 'Tuesday') shopDay = 'Tuesday';
       else if (deliveryDay === 'Thursday') shopDay = 'Thursday';
 
-      const dishes = [item.protein, item.veg, item.starch, ...(item.extras || [])].filter(Boolean);
+      const dishes = [item.protein, item.veg, item.starch, ...(item.extras || []), item.addon_recipe].filter(Boolean);
 
       dishes.forEach(dishName => {
         const category = ['protein', 'veg', 'starch', 'sauces', 'breakfast', 'soups'].find(

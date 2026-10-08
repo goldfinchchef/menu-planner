@@ -118,6 +118,17 @@ export default function EditableMenuPreview({ clients, menus, weekId, onClose })
           isExtra: true
         });
       });
+
+      // Add-ons (salad, breakfast, soup, other)
+      if (menu.addon_recipe) {
+        meals.push({
+          id: `addon-${idx}`,
+          title: `+ ${menu.addon_recipe}`,
+          subtitle: menu.addon_type ? `(${menu.addon_type})` : '',
+          visible: true,
+          isExtra: true
+        });
+      }
     });
 
     const portions = clientData.client.portions || 1;

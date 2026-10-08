@@ -732,6 +732,17 @@ export default function App() {
           kds[productionDay].extras[extra].clients.push({ name: item.clientName, portions: item.portions, date: item.date });
         });
       }
+
+      // Add-ons (salad, breakfast, soup, other)
+      if (item.addon_recipe) {
+        const category = recipes.sauces?.find(r => r.name === item.addon_recipe) ? 'sauces'
+          : recipes.breakfast?.find(r => r.name === item.addon_recipe) ? 'breakfast' : 'soups';
+        if (!kds[productionDay].extras[item.addon_recipe]) {
+          kds[productionDay].extras[item.addon_recipe] = { totalPortions: 0, category, clients: [] };
+        }
+        kds[productionDay].extras[item.addon_recipe].totalPortions += item.portions;
+        kds[productionDay].extras[item.addon_recipe].clients.push({ name: item.clientName, portions: item.portions, date: item.date });
+      }
     });
 
     return kds;
@@ -804,7 +815,7 @@ export default function App() {
 
     Object.entries(ordersByClient).forEach(([clientName, orders]) => {
       orders.forEach(order => {
-        const dishes = [order.protein, order.veg, order.starch, ...(order.extras || [])].filter(Boolean);
+        const dishes = [order.protein, order.veg, order.starch, ...(order.extras || []), order.addon_recipe].filter(Boolean);
         let totalCost = 0;
         dishes.forEach(dishName => {
           const category = ['protein', 'veg', 'starch', 'sauces', 'breakfast', 'soups'].find(cat => recipes[cat]?.find(r => r.name === dishName));
@@ -874,8 +885,8 @@ export default function App() {
         shopDay = 'Thursday';
       }
 
-      // Get all dishes from this menu item
-      const dishes = [item.protein, item.veg, item.starch, ...(item.extras || [])].filter(Boolean);
+      // Get all dishes from this menu item (including add-on recipes)
+      const dishes = [item.protein, item.veg, item.starch, ...(item.extras || []), item.addon_recipe].filter(Boolean);
 
       dishes.forEach(dishName => {
         // Find the recipe
@@ -961,8 +972,8 @@ export default function App() {
     };
 
     approvedItems.forEach(item => {
-      // Get all dishes from this menu item
-      const dishes = [item.protein, item.veg, item.starch, ...(item.extras || [])].filter(Boolean);
+      // Get all dishes from this menu item (including add-on recipes)
+      const dishes = [item.protein, item.veg, item.starch, ...(item.extras || []), item.addon_recipe].filter(Boolean);
 
       dishes.forEach(dishName => {
         // Find the recipe
