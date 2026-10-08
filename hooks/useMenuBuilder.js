@@ -71,12 +71,23 @@ export function useMenuBuilder({ selectedWeekId, clients }) {
       return;
     }
 
+    console.log('[loadScheduleData] FETCHING data for weeks:', weekIds);
     setScheduleMenusLoading(true);
     try {
       const [menus, statuses] = await Promise.all([
         fetchMenusForWeekRange(weekIds),
         fetchClientWeekStatuses(weekIds)
       ]);
+
+      console.log('[loadScheduleData] FETCHED', menus.length, 'menu rows');
+
+      // Log David Riller's portions for debugging
+      const davidMenus = menus.filter(m => m.client_name === 'David Riller' && !m.is_addon);
+      console.log('[loadScheduleData] David Riller dinner meals:', davidMenus.length);
+      davidMenus.forEach((m, i) => {
+        console.log(`  [${i}] id=${m.id}, portions=${m.portions}, protein=${m.protein}`);
+      });
+
       setScheduleMenus(menus);
       setClientWeekStatuses(statuses);
     } catch (err) {
@@ -323,8 +334,10 @@ export function useMenuBuilder({ selectedWeekId, clients }) {
 
   // Save individual client menu edit (override from base)
   const updateClientMeal = useCallback(async (menuId, updates) => {
+    console.log('[updateClientMeal] Updating menu', menuId, 'with:', updates);
     try {
       const updatedRow = await saveClientMeal(menuId, updates);
+      console.log('[updateClientMeal] Database returned:', updatedRow);
 
       // Update scheduleMenus state with the new values
       setScheduleMenus(prev => prev.map(menu =>
