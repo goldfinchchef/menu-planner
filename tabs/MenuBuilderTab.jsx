@@ -182,6 +182,10 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
 
   // Clear week state
   const [clearing, setClearing] = useState(false);
+
+  // Portions editing state
+  const [editingPortionsClient, setEditingPortionsClient] = useState(null);
+  const [editingPortionsValue, setEditingPortionsValue] = useState('');
   const [showNoDateClients, setShowNoDateClients] = useState(false);
 
   // Removing client from week state
@@ -491,6 +495,41 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
       alert(`Failed to save add-on: ${err.message}`);
     } finally {
       setSavingAddon(null);
+    }
+  };
+
+  // Update portions for all dinner meals of a client
+  const updateClientPortions = async (clientId, newPortions) => {
+    const portionsNum = parseInt(newPortions, 10);
+    if (isNaN(portionsNum) || portionsNum < 1) {
+      alert('Portions must be a positive number');
+      return;
+    }
+
+    // Get all DINNER meal rows for this client (NOT add-ons)
+    const dinnerMeals = weekMenus.filter(m => m.client_id === clientId && !m.is_addon);
+
+    if (dinnerMeals.length === 0) {
+      alert('No dinner meals found for this client');
+      return;
+    }
+
+    console.log('[updateClientPortions] Updating', dinnerMeals.length, 'dinner meals to', portionsNum, 'portions');
+
+    try {
+      // Update each dinner meal row
+      await Promise.all(dinnerMeals.map(meal =>
+        updateClientMeal(meal.id, { portions: portionsNum })
+      ));
+
+      // Refresh schedule data to show updated values
+      await loadScheduleData([selectedWeekId]);
+
+      setEditingPortionsClient(null);
+      setEditingPortionsValue('');
+    } catch (err) {
+      console.error('[updateClientPortions] Error:', err);
+      alert(`Failed to update portions: ${err.message}`);
     }
   };
 
@@ -1087,6 +1126,10 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
                 {clientCards.map(({ clientId, client, meals, addons }) => {
                   const mealsPerWeek = client.meals_per_week || client.mealsPerWeek || 4;
 
+                  // Get ACTUAL weekly portions from menu rows (source of truth)
+                  // Use first dinner meal's portions (all dinner meals should have same portions)
+                  const actualPortions = meals.length > 0 ? (meals[0].portions || 1) : (client.portions || 1);
+
                   // Check completion for both meals and add-ons
                   const dinnerComplete = meals.every(m => m.protein && m.veg && m.starch);
                   const addonsComplete = addons.every(a => a.addon_recipe);
@@ -1165,9 +1208,47 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
                           )}
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-gray-500 text-sm">
-                            {mealsPerWeek} × {client.portions || 1}
-                          </span>
+                          {/* Editable portions - shows ACTUAL weekly menu portions */}
+                          <div className="flex items-center gap-1">
+                            <span className="text-gray-500 text-sm">{mealsPerWeek} ×</span>
+                            {editingPortionsClient === clientId ? (
+                              <input
+                                type="number"
+                                min="1"
+                                value={editingPortionsValue}
+                                onChange={(e) => setEditingPortionsValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    updateClientPortions(clientId, editingPortionsValue);
+                                  } else if (e.key === 'Escape') {
+                                    setEditingPortionsClient(null);
+                                    setEditingPortionsValue('');
+                                  }
+                                }}
+                                onBlur={() => {
+                                  if (editingPortionsValue !== actualPortions.toString()) {
+                                    updateClientPortions(clientId, editingPortionsValue);
+                                  } else {
+                                    setEditingPortionsClient(null);
+                                  }
+                                }}
+                                autoFocus
+                                className="w-16 px-2 py-1 border-2 border-blue-500 rounded text-sm text-center font-medium"
+                              />
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  setEditingPortionsClient(clientId);
+                                  setEditingPortionsValue(actualPortions.toString());
+                                }}
+                                className="px-2 py-1 border border-gray-300 rounded text-sm font-medium hover:border-blue-500 hover:bg-blue-50 bg-white"
+                                title="Click to edit weekly portions"
+                              >
+                                {actualPortions}
+                              </button>
+                            )}
+                            <span className="text-gray-500 text-sm">portions</span>
+                          </div>
                           {!hasWarning && allApproved ? (
                             <span className="px-2 py-0.5 rounded text-xs bg-green-600 text-white">
                               Confirmed
