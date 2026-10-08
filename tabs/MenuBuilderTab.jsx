@@ -501,9 +501,16 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
 
   // Update portions for all dinner meals of a client
   const updateClientPortions = async (clientId, newPortions) => {
-    if (savingPortions) return; // Prevent duplicate saves
+    console.log('[updateClientPortions] CALLED with clientId:', clientId, 'newPortions:', newPortions);
+
+    if (savingPortions) {
+      console.log('[updateClientPortions] Already saving, skipping');
+      return; // Prevent duplicate saves
+    }
 
     const portionsNum = parseInt(newPortions, 10);
+    console.log('[updateClientPortions] Parsed portionsNum:', portionsNum);
+
     if (isNaN(portionsNum) || portionsNum < 1) {
       alert('Portions must be a positive number');
       setEditingPortionsClient(null);
@@ -513,6 +520,8 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
 
     // Get all DINNER meal rows for this client (NOT add-ons)
     const dinnerMeals = weekMenus.filter(m => m.client_id === clientId && !m.is_addon);
+    console.log('[updateClientPortions] Found', dinnerMeals.length, 'dinner meals for client:', clientId);
+    console.log('[updateClientPortions] Meal IDs:', dinnerMeals.map(m => m.id));
 
     if (dinnerMeals.length === 0) {
       alert('No dinner meals found for this client');
@@ -521,22 +530,30 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
       return;
     }
 
-    console.log('[updateClientPortions] Updating', dinnerMeals.length, 'dinner meals to', portionsNum, 'portions');
-
+    console.log('[updateClientPortions] Starting update to', portionsNum, 'portions');
     setSavingPortions(true);
+
     try {
       // Update each dinner meal row
-      await Promise.all(dinnerMeals.map(meal =>
-        updateClientMeal(meal.id, { portions: portionsNum })
-      ));
+      const updateResults = await Promise.all(dinnerMeals.map(async (meal) => {
+        console.log('[updateClientPortions] Updating meal', meal.id, 'from', meal.portions, 'to', portionsNum);
+        const result = await updateClientMeal(meal.id, { portions: portionsNum });
+        console.log('[updateClientPortions] Update result for meal', meal.id, ':', result);
+        return result;
+      }));
+
+      console.log('[updateClientPortions] All updates complete:', updateResults);
 
       // Refresh schedule data to show updated values
+      console.log('[updateClientPortions] Refreshing schedule data for week:', selectedWeekId);
       await loadScheduleData([selectedWeekId]);
+      console.log('[updateClientPortions] Refresh complete');
 
       setEditingPortionsClient(null);
       setEditingPortionsValue('');
+      console.log('[updateClientPortions] SUCCESS - Portions updated to', portionsNum);
     } catch (err) {
-      console.error('[updateClientPortions] Error:', err);
+      console.error('[updateClientPortions] ERROR:', err);
       alert(`Failed to update portions: ${err.message}`);
     } finally {
       setSavingPortions(false);
@@ -1140,6 +1157,15 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
                   // Use first dinner meal's portions (all dinner meals should have same portions)
                   const actualPortions = meals.length > 0 ? (meals[0].portions || 1) : (client.portions || 1);
 
+                  // Diagnostic logging
+                  if (client.name === 'David Riller') {
+                    console.log('[MenuBuilder RENDER] David Riller portions:');
+                    console.log('  - meals.length:', meals.length);
+                    console.log('  - meals[0]?.portions:', meals[0]?.portions);
+                    console.log('  - client.portions:', client.portions);
+                    console.log('  - actualPortions (displayed):', actualPortions);
+                  }
+
                   // Check completion for both meals and add-ons
                   const dinnerComplete = meals.every(m => m.protein && m.veg && m.starch);
                   const addonsComplete = addons.every(a => a.addon_recipe);
@@ -1226,21 +1252,38 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
                                 type="number"
                                 min="1"
                                 value={editingPortionsValue}
-                                onChange={(e) => setEditingPortionsValue(e.target.value)}
+                                onChange={(e) => {
+                                  console.log('[INPUT] onChange:', e.target.value);
+                                  setEditingPortionsValue(e.target.value);
+                                }}
                                 onKeyDown={(e) => {
+                                  console.log('[INPUT] onKeyDown:', e.key);
                                   if (e.key === 'Enter') {
+                                    console.log('[INPUT] Enter pressed, preventing default and blurring');
                                     e.preventDefault();
                                     e.target.blur(); // Trigger blur which will save
                                   } else if (e.key === 'Escape') {
+                                    console.log('[INPUT] Escape pressed, canceling edit');
                                     setEditingPortionsClient(null);
                                     setEditingPortionsValue('');
                                   }
                                 }}
                                 onBlur={() => {
-                                  if (savingPortions) return; // Already saving
+                                  console.log('[INPUT] onBlur fired');
+                                  console.log('[INPUT] savingPortions:', savingPortions);
+                                  console.log('[INPUT] editingPortionsValue:', editingPortionsValue);
+                                  console.log('[INPUT] actualPortions:', actualPortions);
+                                  console.log('[INPUT] comparison:', editingPortionsValue, '!==', actualPortions.toString(), '=', editingPortionsValue !== actualPortions.toString());
+
+                                  if (savingPortions) {
+                                    console.log('[INPUT] Already saving, skipping');
+                                    return; // Already saving
+                                  }
                                   if (editingPortionsValue !== actualPortions.toString()) {
+                                    console.log('[INPUT] Value changed, calling updateClientPortions');
                                     updateClientPortions(clientId, editingPortionsValue);
                                   } else {
+                                    console.log('[INPUT] Value unchanged, just closing editor');
                                     setEditingPortionsClient(null);
                                     setEditingPortionsValue('');
                                   }
@@ -1252,8 +1295,12 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
                             ) : (
                               <button
                                 onClick={() => {
+                                  console.log('[BUTTON] Portions button clicked');
+                                  console.log('[BUTTON] clientId:', clientId);
+                                  console.log('[BUTTON] actualPortions:', actualPortions);
                                   setEditingPortionsClient(clientId);
                                   setEditingPortionsValue(actualPortions.toString());
+                                  console.log('[BUTTON] Edit mode activated');
                                 }}
                                 className="px-2 py-1 border border-gray-300 rounded text-sm font-medium hover:border-blue-500 hover:bg-blue-50 bg-white"
                                 title="Click to edit weekly portions"
