@@ -1051,6 +1051,11 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
                         <span className="text-xs text-gray-500">{mealsPerWeek} meals</span>
                       )}
                     </div>
+                    {client.dietaryRestrictions && (
+                      <div className="text-xs text-red-700 bg-red-50 px-1.5 py-0.5 rounded mb-1 line-clamp-2" title={client.dietaryRestrictions}>
+                        {client.dietaryRestrictions}
+                      </div>
+                    )}
                     <div className={`flex items-center gap-1 ${!isScheduled ? 'pointer-events-none' : ''}`}>
                       <span className="text-xs text-gray-500">Gets:</span>
                       <div className="flex gap-1">
@@ -1191,12 +1196,12 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
                   return (
                     <div
                       key={clientId}
-                      className={`border-2 rounded overflow-hidden ${hasWarning ? 'bg-red-50' : ''}`}
+                      className={`border-2 rounded ${hasWarning ? 'bg-red-50' : ''}`}
                       style={{ borderColor: getBorderColor() }}
                     >
                       {/* Warning banner for paused/no-date clients */}
                       {hasWarning && (
-                        <div className="px-3 py-1.5 bg-red-100 border-b border-red-200 flex items-center justify-between">
+                        <div className="px-3 py-1.5 bg-red-100 border-b border-red-200 flex items-center justify-between rounded-t">
                           <div className="flex items-center gap-2">
                             <AlertCircle size={14} className="text-red-600" />
                             <span className="text-xs font-medium text-red-700">
@@ -1219,7 +1224,7 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
                       )}
 
                       {/* Client header */}
-                      <div className={`px-3 py-2 border-b flex items-center justify-between ${hasWarning ? 'bg-red-50' : 'bg-gray-50'}`}>
+                      <div className={`px-3 py-2 border-b flex items-center justify-between ${hasWarning ? 'bg-red-50' : 'bg-gray-50 rounded-t'}`}>
                         <div className="flex items-center gap-2">
                           <span className={`font-semibold ${hasWarning ? 'text-red-800' : ''}`}>{client.name}</span>
                           {client.zone && (
@@ -1495,7 +1500,7 @@ export default function MenuBuilderTab({ clients, recipes, selectedWeekId }) {
 
                       {/* Add-ons section */}
                       {addons.length > 0 && (
-                        <div className="px-3 py-2 border-t bg-purple-50">
+                        <div className="px-3 py-2 border-t bg-purple-50 rounded-b">
                           <div className="text-xs font-semibold text-purple-700 mb-2">ADD-ONS</div>
                           <div className="space-y-2">
                             {addons.map((addon, idx) => {
